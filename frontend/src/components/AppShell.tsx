@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 const NAV_ITEMS = [
   { to: "/compare", label: "Expression Compare", hint: "Gene across groups" },
   { to: "/signature", label: "Signature Score", hint: "Gene set, ranked" },
+  { to: "/rank", label: "Sample Ranking", hint: "Pick candidates" },
   { to: "/survival", label: "Survival", hint: "Kaplan–Meier + Cox" },
 ] as const;
 

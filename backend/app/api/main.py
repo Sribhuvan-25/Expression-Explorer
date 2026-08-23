@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.analysis.compare import expression_by_group, kruskal_wallis, pairwise_tests
+from app.analysis.ranking import rank_by_gene, rank_by_signature
 from app.analysis.signature import auc_signature_score, log2_mean_signature_score
 from app.analysis.survival import binarize_by_median, build_survival_frame, cox_model, kaplan_meier_curves
 from app.config import settings
@@ -111,6 +112,31 @@ def signature_score(dataset_id: str, body: SignatureRequest):
     scorer = auc_signature_score if body.method == "auc" else log2_mean_signature_score
     scores = scorer(ds.matrix, feature_ids)
     return {"genes": body.genes, "method": body.method, "scores": scores.to_dict()}
+
+
+@app.get("/datasets/{dataset_id}/rank")
+def rank(dataset_id: str, gene: str):
+    """Every sample sorted high to low by one gene's expression, with
+    sample metadata attached — e.g. 'which DepMap cell lines have the
+    highest MYCN expression', for picking cell lines to purchase."""
+    ds = _get_dataset(dataset_id)
+    feature_id = _resolve_gene(ds, gene)
+    df = rank_by_gene(ds.matrix, ds.samples, feature_id)
+    return {"gene": gene, "n": len(df), "rows": df.to_dict("records")}
+
+
+class RankSignatureRequest(BaseModel):
+    genes: list[str]
+    method: Literal["auc", "log2_mean"] = "auc"
+
+
+@app.post("/datasets/{dataset_id}/rank-signature")
+def rank_signature(dataset_id: str, body: RankSignatureRequest):
+    """Same as /rank, but ordered by a multi-gene signature score."""
+    ds = _get_dataset(dataset_id)
+    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    df = rank_by_signature(ds.matrix, ds.samples, feature_ids, method=body.method)
+    return {"genes": body.genes, "method": body.method, "n": len(df), "rows": df.to_dict("records")}
 
 
 class SurvivalRequest(BaseModel):

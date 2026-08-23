@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "./components/AppShell";
 import { DatasetStatus } from "./components/DatasetStatus";
 import { ComparePage } from "./pages/ComparePage";
+import { RankPage } from "./pages/RankPage";
 import { SignaturePage } from "./pages/SignaturePage";
 import { SurvivalPage } from "./pages/SurvivalPage";
 
@@ -19,6 +20,7 @@ export default function App() {
             <Route index element={<Navigate to="/compare" replace />} />
             <Route path="/compare" element={<ComparePage />} />
             <Route path="/signature" element={<SignaturePage />} />
+            <Route path="/rank" element={<RankPage />} />
             <Route path="/survival" element={<SurvivalPage />} />
           </Route>
         </Routes>

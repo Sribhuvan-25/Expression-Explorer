@@ -72,6 +72,17 @@ export interface SurvivalResult {
   } | null;
 }
 
+export interface RankRow {
+  sample_id: string;
+  value: number;
+  [metadataKey: string]: string | number | null;
+}
+
+export interface RankResult {
+  n: number;
+  rows: RankRow[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -100,5 +111,12 @@ export const api = {
     request<SurvivalResult>(`/datasets/${datasetId}/survival`, {
       method: "POST",
       body: JSON.stringify({ genes, covariates }),
+    }),
+  rankByGene: (datasetId: string, gene: string) =>
+    request<RankResult & { gene: string }>(`/datasets/${datasetId}/rank?gene=${encodeURIComponent(gene)}`),
+  rankBySignature: (datasetId: string, genes: string[], method: "auc" | "log2_mean" = "auc") =>
+    request<RankResult & { genes: string[]; method: string }>(`/datasets/${datasetId}/rank-signature`, {
+      method: "POST",
+      body: JSON.stringify({ genes, method }),
     }),
 };
