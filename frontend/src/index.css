@@ -1,0 +1,151 @@
+@import "tailwindcss";
+@import "./theme.css";
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --ground: #FBFAF8;
+  --surface: #FFFFFF;
+  --surface-sunk: #F3F2EE;
+  --surface-hover: #EDECE6;
+  --ink: #1A1D21;
+  --ink-soft: #4A5054;
+  --ink-mute: #767D82;
+  --rule: #E2E1DB;
+  --rule-firm: #CFCEC6;
+
+  --accent: #1F6F5C;
+  --accent-strong: #175347;
+  --accent-soft: #E8F1ED;
+  --accent-ink: #0E3A30;
+
+  --hot: #B4472E;
+  --hot-soft: #F8EAE5;
+  --cool: #2C6E9B;
+  --cool-soft: #E6EFF6;
+  --warn: #8A6410;
+  --warn-soft: #F7F0DC;
+
+  --focus-ring: #1F6F5C;
+
+  --f-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #14171A;
+    --surface: #1B1F22;
+    --surface-sunk: #22262A;
+    --surface-hover: #282D31;
+    --ink: #EDECE7;
+    --ink-soft: #BFC3C4;
+    --ink-mute: #8D9396;
+    --rule: #2E3438;
+    --rule-firm: #414850;
+
+    --accent: #6DBFA5;
+    --accent-strong: #8AD0B9;
+    --accent-soft: #1B322C;
+    --accent-ink: #B7E4D3;
+
+    --hot: #E0836A;
+    --hot-soft: #3A241E;
+    --cool: #7FB4D8;
+    --cool-soft: #1C2C38;
+    --warn: #D9B25C;
+    --warn-soft: #332A16;
+
+    --focus-ring: #6DBFA5;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #14171A;
+  --surface: #1B1F22;
+  --surface-sunk: #22262A;
+  --surface-hover: #282D31;
+  --ink: #EDECE7;
+  --ink-soft: #BFC3C4;
+  --ink-mute: #8D9396;
+  --rule: #2E3438;
+  --rule-firm: #414850;
+
+  --accent: #6DBFA5;
+  --accent-strong: #8AD0B9;
+  --accent-soft: #1B322C;
+  --accent-ink: #B7E4D3;
+
+  --hot: #E0836A;
+  --hot-soft: #3A241E;
+  --cool: #7FB4D8;
+  --cool-soft: #1C2C38;
+  --warn: #D9B25C;
+  --warn-soft: #332A16;
+
+  --focus-ring: #6DBFA5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule-firm);
+  border-radius: 5px;
+  border: 2px solid var(--ground);
+}
+
+code,
+.mono {
+  font-family: var(--f-mono);
+}
+
+.font-display {
+  font-family: var(--f-display);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
