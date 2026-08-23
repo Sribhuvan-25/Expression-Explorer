@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: "/signature", label: "Signature Score", hint: "Gene set, ranked" },
   { to: "/rank", label: "Sample Ranking", hint: "Pick candidates" },
   { to: "/survival", label: "Survival", hint: "Kaplan–Meier + Cox" },
+  { to: "/genome-tracks", label: "Genome Tracks", hint: "ChIP-seq / ATAC-seq" },
 ] as const;
 
 function MarkGlyph() {
