@@ -12,6 +12,8 @@ import httpx
 import pandas as pd
 
 from app.config import settings
+from app.ingest.liu2017_etp import load_etp_status
+from app.ingest.target_mrd import load_mrd_status
 from app.models.contract import (
     AssayType,
     Dataset,
@@ -134,9 +136,28 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
         matrix.to_parquet(matrix_path)
         clinical.to_parquet(clinical_path)
 
+    # ETP/near-ETP/non-ETP status isn't in any GDC clinical file for this
+    # project (checked all 9 clinical supplements) — sourced separately
+    # from Liu et al. 2017, the genomic characterization paper for this
+    # exact TARGET T-ALL cohort. Only ~190 of the ~530 RNA-seq samples get
+    # a classification; the rest simply lacked immunophenotyping and stay
+    # unlabeled rather than guessed at.
+    etp_status = load_etp_status()
+    # Day-29 MRD status, same source and threshold Wang et al. 2025 used
+    # (TARGET's Phase II Validation clinical supplement, MRD_neg <=0.01).
+    mrd_status = load_mrd_status()
+
+    def _group_columns(sid: str) -> dict:
+        cols = {}
+        if sid in etp_status.index:
+            cols["etp_status"] = etp_status[sid]
+        if sid in mrd_status.index:
+            cols["mrd_status"] = mrd_status[sid]
+        return cols
+
     samples = clinical.copy()
     samples["dataset_id"] = "target_all_p2"
-    samples["group_columns"] = [{} for _ in range(len(samples))]
+    samples["group_columns"] = samples["sample_id"].map(_group_columns)
     samples = samples[samples["sample_id"].isin(matrix.columns)].reset_index(drop=True)
     matrix = matrix[samples["sample_id"].tolist()]
 
@@ -166,7 +187,7 @@ register(
         dataset_id="target_all_p2",
         display_name="TARGET ALL-P2 (paediatric T-ALL)",
         loader=load,
-        group_columns=("vital_status",),
+        group_columns=("vital_status", "etp_status", "mrd_status"),
         supports_survival=True,
     )
 )
