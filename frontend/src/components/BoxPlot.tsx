@@ -171,7 +171,7 @@ export function BoxPlot({ points, valueLabel = "Expression" }: { points: Compare
       </svg>
       {hover && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border border-rule bg-surface px-2.5 py-1.5 shadow-lg"
+          className="pointer-events-none absolute z-10 rounded-[3px] border border-rule bg-surface px-2.5 py-1.5 shadow-lg"
           style={{ left: hover.x + 12, top: hover.y - 10 }}
         >
           <p className="font-mono text-[10.5px] text-ink-mute">{hover.sample}</p>

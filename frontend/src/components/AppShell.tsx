@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import type { ReactNode } from "react";
+import { Sources } from "./Sources";
 
 const NAV_ITEMS = [
   { to: "/compare", label: "Expression Compare", hint: "Gene across groups" },
@@ -35,7 +36,7 @@ function NavRow({ to, label, hint }: { to: string; label: string; hint: string }
       to={to}
       className={({ isActive }) =>
         [
-          "group flex flex-col gap-0.5 rounded-md px-3 py-2.5 transition-colors",
+          "group flex flex-col gap-0.5 rounded-[3px] px-3 py-2.5 transition-colors",
           isActive
             ? "bg-accent-soft text-accent-ink"
             : "text-ink-soft hover:bg-surface-hover hover:text-ink",
@@ -68,14 +69,9 @@ export function AppShell({ rail }: { rail?: ReactNode }) {
       <aside className="flex w-[248px] shrink-0 flex-col border-r border-rule bg-surface">
         <div className="flex items-center gap-2.5 border-b border-rule px-4 py-4">
           <MarkGlyph />
-          <div className="flex flex-col leading-tight">
-            <span className="font-display text-[15px] font-semibold tracking-tight">
-              Expression Explorer
-            </span>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-              ETP-ALL &middot; v0
-            </span>
-          </div>
+          <span className="font-display text-[15px] font-semibold tracking-tight">
+            Expression Explorer
+          </span>
         </div>
 
         <nav className="flex flex-col gap-1 px-2.5 py-3">
@@ -91,13 +87,7 @@ export function AppShell({ rail }: { rail?: ReactNode }) {
 
         {rail}
 
-        <div className="border-t border-rule px-4 py-3">
-          <p className="font-mono text-[10px] leading-relaxed text-ink-mute">
-            Data: TARGET-ALL-P2 (GDC), DepMap 24Q4
-            <br />
-            Method: Wang et al., J Exp Med 2025
-          </p>
-        </div>
+        <Sources />
       </aside>
 
       <main className="flex-1 overflow-y-auto">

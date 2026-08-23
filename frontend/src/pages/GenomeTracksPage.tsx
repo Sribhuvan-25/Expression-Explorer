@@ -125,7 +125,7 @@ export function GenomeTracksPage() {
 
         <Panel>
           {status === "error" && (
-            <div className="rounded-md border-l-[3px] border-hot bg-hot-soft px-4 py-3">
+            <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Track load failed</p>
               <p className="mt-1 text-[13px] text-ink">{errorMsg}</p>
               <p className="mt-1 text-[12px] text-ink-mute">

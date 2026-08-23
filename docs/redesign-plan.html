@@ -1,0 +1,419 @@
+<title>UI Redesign Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root{
+    --ground:#F4F6F8;
+    --surface:#FFFFFF;
+    --surface-sunk:#EAEEF2;
+    --ink:#131A22;
+    --ink-soft:#3D4A57;
+    --ink-mute:#5C6B79;
+    --rule:#DCE2E8;
+    --rule-firm:#B9C4CE;
+
+    --accent:#2455A4;
+    --accent-strong:#1A3E7C;
+    --accent-soft:#E4EDF9;
+    --accent-ink:#1A3E7C;
+
+    --hot:#B4472E;
+    --hot-soft:#F8EAE5;
+    --cool:#2C6E9B;
+    --cool-soft:#E6EFF6;
+    --warn:#8A6410;
+    --warn-soft:#F7F0DC;
+
+    --f-display:"Space Grotesk",-apple-system,sans-serif;
+    --f-body:"Space Grotesk",-apple-system,sans-serif;
+    --f-mono:"JetBrains Mono",ui-monospace,monospace;
+
+    --measure:72ch;
+    --pad:clamp(1.15rem,4vw,2.6rem);
+  }
+
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0B1018; --surface:#131A22; --surface-sunk:#182029;
+      --ink:#EDEFF3; --ink-soft:#B7C0CA; --ink-mute:#7C8A97;
+      --rule:#232E3A; --rule-firm:#334252;
+      --accent:#5B96E0; --accent-strong:#7DAEEE; --accent-soft:#1D2733; --accent-ink:#7DAEEE;
+      --hot:#E0836A; --hot-soft:#3A241E; --cool:#7FB4D8; --cool-soft:#1C2C38;
+      --warn:#D9B25C; --warn-soft:#332A16;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0B1018; --surface:#131A22; --surface-sunk:#182029;
+    --ink:#EDEFF3; --ink-soft:#B7C0CA; --ink-mute:#7C8A97;
+    --rule:#232E3A; --rule-firm:#334252;
+    --accent:#5B96E0; --accent-strong:#7DAEEE; --accent-soft:#1D2733; --accent-ink:#7DAEEE;
+    --hot:#E0836A; --hot-soft:#3A241E; --cool:#7FB4D8; --cool-soft:#1C2C38;
+    --warn:#D9B25C; --warn-soft:#332A16;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink); font-family:var(--f-body);
+    font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+    margin:0; letter-spacing:-.006em;
+  }
+  .wrap{max-width:var(--measure);margin:0 auto;padding:var(--pad)}
+
+  header.mast{
+    display:flex;flex-direction:column;gap:.85rem;
+    padding-block:clamp(1rem,3vw,2rem) clamp(1.6rem,4vw,2.4rem);
+    border-bottom:2px solid var(--ink);
+  }
+  .kicker{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0}
+  h1{font-family:var(--f-display);font-weight:700;font-size:clamp(1.9rem,5.5vw,2.9rem);line-height:1.05;letter-spacing:-.028em;text-wrap:balance;margin:0}
+  .standfirst{font-size:1.05rem;color:var(--ink-soft);margin:0;max-width:60ch}
+
+  section{padding-block:clamp(1.8rem,4.5vw,2.6rem);border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:1rem}
+  section:last-of-type{border-bottom:none}
+  h2{font-family:var(--f-display);font-weight:700;font-size:clamp(1.3rem,3.2vw,1.65rem);line-height:1.16;letter-spacing:-.02em;margin:0;display:flex;align-items:baseline;gap:.65rem}
+  h2 .num{font-family:var(--f-mono);font-size:.7rem;font-weight:500;color:var(--accent);letter-spacing:.08em;flex:none}
+  h3{font-family:var(--f-body);font-weight:600;font-size:.98rem;margin:.4rem 0 0}
+  p{margin:0}
+  a{color:var(--accent)}
+  code{font-family:var(--f-mono);font-size:.85em;background:var(--surface-sunk);border:1px solid var(--rule);border-radius:2px;padding:.06em .32em}
+  ul,ol{margin:0;padding-left:1.2rem;display:flex;flex-direction:column;gap:.4rem}
+  li::marker{color:var(--ink-mute)}
+  li strong{font-weight:600}
+
+  .note{background:var(--accent-soft);border-left:3px solid var(--accent);padding:.9rem 1.1rem;border-radius:0 3px 3px 0;display:flex;flex-direction:column;gap:.4rem}
+  .note .lbl{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .note.done{background:var(--cool-soft);border-left-color:var(--cool)}
+  .note.done .lbl{color:var(--cool)}
+  .note.flag{background:var(--warn-soft);border-left-color:var(--warn)}
+  .note.flag .lbl{color:var(--warn)}
+  .note.big{background:var(--hot-soft);border-left-color:var(--hot)}
+  .note.big .lbl{color:var(--hot)}
+
+  .swatch-row{display:flex;flex-wrap:wrap;gap:.6rem}
+  .swatch{display:flex;align-items:center;gap:.5rem;background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:.4rem .7rem .4rem .5rem;font-size:.82rem}
+  .swatch .chip{width:20px;height:20px;border-radius:3px;border:1px solid rgba(0,0,0,.12);flex-shrink:0}
+  .swatch code{background:none;border:none;padding:0;font-size:.76rem;color:var(--ink-mute)}
+
+  .type-sample{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:1rem 1.2rem;display:flex;flex-direction:column;gap:.3rem}
+  .type-sample .role{font-family:var(--f-mono);font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-mute)}
+  .type-sample .sample-display{font-family:"Space Grotesk";font-size:1.7rem;font-weight:700;letter-spacing:-.02em}
+  .type-sample .sample-mono{font-family:"JetBrains Mono";font-size:.95rem}
+
+  .phases{display:flex;flex-direction:column;gap:.8rem}
+  .phase{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:1rem 1.15rem;display:grid;grid-template-columns:auto 1fr;gap:.3rem .9rem}
+  .phase .idx{font-family:var(--f-mono);font-size:.68rem;font-weight:500;color:#fff;background:var(--accent);border-radius:3px;padding:.2em .5em;align-self:start;letter-spacing:.05em;white-space:nowrap}
+  .phase h3{margin:0;align-self:center;font-size:1rem}
+  .phase .body{grid-column:2;display:flex;flex-direction:column;gap:.5rem;font-size:.92rem;color:var(--ink-soft)}
+  .phase .files{font-family:var(--f-mono);font-size:.74rem;color:var(--ink-mute);border-top:1px dashed var(--rule-firm);padding-top:.5rem}
+
+  .before-after{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  @media (max-width:38rem){.before-after{grid-template-columns:1fr}}
+  .ba-col{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--surface)}
+  .ba-head{padding:.5rem .8rem;font-family:var(--f-mono);font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--rule)}
+  .ba-head.old{color:var(--hot);background:var(--hot-soft)}
+  .ba-head.new{color:var(--cool);background:var(--cool-soft)}
+  .ba-body{padding:.85rem .9rem;font-size:.85rem;color:var(--ink-soft);display:flex;flex-direction:column;gap:.5rem}
+
+  .sources-demo{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--surface);max-width:26rem}
+  .sources-demo summary{padding:.6rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:.4rem;list-style:none}
+  .sources-demo summary::-webkit-details-marker{display:none}
+  .sources-demo summary::before{content:"▸";font-size:.7rem;color:var(--ink-mute)}
+  .sources-demo[open] summary::before{content:"▾"}
+  .sources-demo .inner{padding:.2rem .9rem .8rem;font-size:.8rem;color:var(--ink-soft);display:flex;flex-direction:column;gap:.4rem}
+  .sources-demo .src{display:flex;flex-direction:column;gap:.1rem;padding:.4rem 0;border-top:1px solid var(--rule)}
+  .sources-demo .src .name{font-weight:600;font-size:.82rem}
+  .sources-demo .src .meta{font-family:var(--f-mono);font-size:.7rem;color:var(--ink-mute)}
+
+  table{border-collapse:collapse;width:100%;font-size:.85rem}
+  th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-mute);font-weight:500;background:var(--surface-sunk)}
+  .tw{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+
+  /* workspace mock diagram */
+  .mock{border:1px solid var(--rule);border-radius:5px;overflow:hidden;background:var(--surface-sunk)}
+  .mock-bar{
+    display:flex;align-items:center;gap:.5rem;padding:.5rem .7rem;background:var(--surface);border-bottom:1px solid var(--rule);
+  }
+  .mock-cmd{
+    flex:1;font-family:var(--f-mono);font-size:.76rem;color:var(--ink-mute);
+    background:var(--surface-sunk);border:1px solid var(--rule-firm);border-radius:3px;padding:.35rem .6rem;
+  }
+  .mock-cmd b{color:var(--accent);font-weight:600}
+  .mock-grid{display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--rule);height:230px}
+  .mock-pane{background:var(--surface);padding:.6rem .7rem;display:flex;flex-direction:column;gap:.4rem;overflow:hidden}
+  .mock-pane .tab{
+    font-family:var(--f-mono);font-size:.62rem;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--accent);background:var(--accent-soft);display:inline-block;padding:.15em .5em;border-radius:2px;
+    align-self:flex-start;
+  }
+  .mock-pane .title{font-size:.78rem;font-weight:600;color:var(--ink)}
+  .mock-pane .fake-controls{display:flex;gap:.3rem}
+  .mock-pane .fake-controls span{
+    height:16px;flex:1;background:var(--surface-sunk);border:1px solid var(--rule);border-radius:2px;
+  }
+  .mock-pane .fake-chart{flex:1;background:var(--surface-sunk);border-radius:2px;position:relative;overflow:hidden}
+  .mock-pane .fake-chart svg{width:100%;height:100%}
+
+  footer{padding-block:1.6rem 2.4rem;border-top:2px solid var(--ink);margin-top:.4rem;font-size:.85rem;color:var(--ink-mute)}
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="kicker">Implementation plan — revised, not yet built</p>
+    <h1>UI Redesign — Workspace Model</h1>
+    <p class="standfirst">
+      Revised after feedback: a reskin wasn't enough. This replaces the page-per-analysis structure with an
+      IDE-style workspace — resizable, splittable panes, a command bar as the fast way in, query controls that
+      stay visible (never auto-collapsed), and purposeful motion. Palette/type direction from the first pass
+      carries over unchanged: <strong>Clinical</strong> — navy, cobalt, sharp corners, Space Grotesk.
+    </p>
+  </header>
+
+  <section>
+    <h2><span class="num">01</span> What's actually changing</h2>
+    <p>The previous plan kept the existing five-page structure (Compare, Signature, Rank, Survival, Genome
+      Tracks as separate routes) and only changed colors/fonts. That's a reskin, not a redesign. The real
+      gap: each analysis lives in isolation — run a comparison, want to also see survival for the same gene,
+      and you navigate away and lose the first result entirely.</p>
+    <div class="note big">
+      <span class="lbl">The core change</span>
+      <p>Analyses become <strong>panes</strong> in one workspace, not pages. A pane is a live instance of one
+        analysis — its own query controls plus its own result — and panes can be split, resized, and arranged
+        side by side. Run a comparison in one pane, split right, run survival on the same gene in the new
+        pane, look at both at once. This is genuinely how a research tool should feel in this era — closer to
+        an IDE or a notebook than a five-tab SaaS dashboard.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span> Workspace layout</h2>
+    <p>Built on <a href="https://dockview.dev" target="_blank">dockview</a> — a zero-dependency React docking
+      layout library (tabs, groups, resizable grid splits, drag-to-rearrange) already used for exactly this
+      kind of IDE-style interface. Not building a pane manager from scratch; that's a solved problem and
+      reinventing it would be the wrong use of effort here.</p>
+
+    <div class="mock">
+      <div class="mock-bar">
+        <div class="mock-cmd"><b>&gt;</b> MYCN survival on TARGET, split with ETP status compare&hellip;</div>
+      </div>
+      <div class="mock-grid">
+        <div class="mock-pane">
+          <span class="tab">Compare</span>
+          <span class="title">MYCN by ETP status</span>
+          <div class="fake-controls"><span></span><span></span><span></span></div>
+          <div class="fake-chart">
+            <svg viewBox="0 0 200 90"><line x1="20" y1="10" x2="20" y2="75" stroke="#B9C4CE"/><line x1="20" y1="75" x2="190" y2="75" stroke="#B9C4CE"/>
+              <rect x="55" y="35" width="26" height="25" fill="#2455A4" fill-opacity=".25" stroke="#2455A4"/>
+              <rect x="130" y="20" width="26" height="30" fill="#B4472E" fill-opacity=".25" stroke="#B4472E"/></svg>
+          </div>
+        </div>
+        <div class="mock-pane">
+          <span class="tab">Survival</span>
+          <span class="title">MYCN signature, KM curve</span>
+          <div class="fake-controls"><span></span><span></span></div>
+          <div class="fake-chart">
+            <svg viewBox="0 0 200 90"><line x1="20" y1="10" x2="20" y2="75" stroke="#B9C4CE"/><line x1="20" y1="75" x2="190" y2="75" stroke="#B9C4CE"/>
+              <polyline points="20,15 90,15 90,35 140,35 140,55 190,55" fill="none" stroke="#2455A4" stroke-width="2"/>
+              <polyline points="20,15 70,15 70,45 120,45 120,68 190,68" fill="none" stroke="#B4472E" stroke-width="2"/></svg>
+          </div>
+        </div>
+        <div class="mock-pane">
+          <span class="tab">Rank</span>
+          <span class="title">Cell lines by MYCN</span>
+          <div class="fake-controls"><span></span></div>
+          <div class="fake-chart">
+            <svg viewBox="0 0 200 90">
+              <rect x="10" y="8" width="150" height="10" fill="#2455A4" fill-opacity=".3"/>
+              <rect x="10" y="22" width="120" height="10" fill="#2455A4" fill-opacity=".22"/>
+              <rect x="10" y="36" width="95" height="10" fill="#2455A4" fill-opacity=".16"/>
+              <rect x="10" y="50" width="70" height="10" fill="#2455A4" fill-opacity=".12"/></svg>
+          </div>
+        </div>
+        <div class="mock-pane" style="align-items:center;justify-content:center;color:var(--ink-mute);font-size:.78rem">
+          drop a new pane here, or press <code style="margin-left:.3em">⌘K</code>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:.85rem;color:var(--ink-mute)">Illustrative mock, not final pixels — shows the shape:
+      multiple live analyses, each with its own visible controls, arranged in a resizable grid.</p>
+
+    <h3>What a pane is, concretely</h3>
+    <ul>
+      <li>Each pane wraps one existing page component (<code>ComparePage</code>, <code>SurvivalPage</code>,
+        etc.) — <strong>the analysis logic and API calls don't change</strong>, only how they're framed and
+        arranged on screen.</li>
+      <li>Query controls render inside the pane, always visible — this was explicit feedback: don't collapse
+        controls away once a result exists. Density comes from a more compact control strip, not from hiding
+        anything.</li>
+      <li>Panes are addressable — dockview tracks layout state, which can be serialized so a workspace
+        arrangement survives a refresh (stretch goal, not required for v1).</li>
+      <li><strong>Genome Tracks is a special case</strong>: igv.js instances are heavy (remote bigWig
+        streaming) and don't tolerate being resized/remounted casually. It gets its own pane type that
+        defers/guards against layout thrashing rather than behaving like the lightweight chart panes.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span> Command bar</h2>
+    <p>The fast way in — <code>⌘K</code> / <code>Ctrl+K</code> opens a command palette. Typing a gene symbol
+      jumps straight toward results; typing an analysis name opens that pane type. Forms still exist inside
+      each pane for full control — the command bar is a faster front door, not a replacement for the
+      controls.</p>
+    <ul>
+      <li><strong>Gene-first:</strong> type <code>MYCN</code> → suggested actions: "Compare MYCN", "Signature
+        score with MYCN", "Rank by MYCN" — pick one, a new pane opens pre-filled and already querying.</li>
+      <li><strong>Action-first:</strong> type <code>survival</code> → opens a blank Survival pane focused on
+        its gene-set input.</li>
+      <li><strong>Split-aware:</strong> holding a modifier (or a trailing flag like "split right") opens the
+        result into a new pane beside the current one instead of replacing it — matches the mock above.</li>
+      <li>Built on a lightweight fuzzy-match list, not a new dependency-heavy command-palette library — the
+        surface area here is small (5 analysis types × known genes/presets).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span> Motion</h2>
+    <p>Purposeful and restrained — motion that clarifies a state change, never decoration.</p>
+    <ul>
+      <li><strong>Chart entrance:</strong> box plots and survival curves draw in (stroke-dasharray reveal or a
+        quick fade+rise), so a new result reads as "this just arrived" rather than popping in instantly.</li>
+      <li><strong>Pane operations:</strong> dockview's own split/resize/drag transitions, tuned to feel quick
+        (150–200ms) rather than showy.</li>
+      <li><strong>Loading → loaded:</strong> the current abrupt swap (spinner → full result) gets a brief
+        crossfade so the layout doesn't jump.</li>
+      <li><strong>Explicitly not doing:</strong> number count-ups, decorative background motion, anything that
+        would make a hard chart-reading task feel gimmicky. This is a research tool.</li>
+      <li><code>prefers-reduced-motion</code> respected throughout — instant transitions when set.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span> Palette (unchanged from first pass)</h2>
+    <p>Direction confirmed: <strong>Clinical</strong> — dark navy by default, sharp corners, cobalt accent.</p>
+    <h3>Dark (default)</h3>
+    <div class="swatch-row">
+      <div class="swatch"><span class="chip" style="background:#0B1120"></span><code>#0B1120 ground</code></div>
+      <div class="swatch"><span class="chip" style="background:#131A22"></span><code>#131A22 surface</code></div>
+      <div class="swatch"><span class="chip" style="background:#EDEFF3"></span><code>#EDEFF3 ink</code></div>
+      <div class="swatch"><span class="chip" style="background:#232E3A"></span><code>#232E3A rule</code></div>
+      <div class="swatch"><span class="chip" style="background:#4A8FE0"></span><code>#4A8FE0 accent</code></div>
+    </div>
+    <h3>Light</h3>
+    <div class="swatch-row">
+      <div class="swatch"><span class="chip" style="background:#F4F6F8"></span><code>#F4F6F8 ground</code></div>
+      <div class="swatch"><span class="chip" style="background:#FFFFFF;border:1px solid #ddd"></span><code>#FFFFFF surface</code></div>
+      <div class="swatch"><span class="chip" style="background:#131A22"></span><code>#131A22 ink</code></div>
+      <div class="swatch"><span class="chip" style="background:#DCE2E8"></span><code>#DCE2E8 rule</code></div>
+      <div class="swatch"><span class="chip" style="background:#2455A4"></span><code>#2455A4 accent</code></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span> Typography (unchanged from first pass)</h2>
+    <div class="type-sample">
+      <span class="role">Display / H1 — Space Grotesk 700</span>
+      <span class="sample-display">Gene expression across sample groups</span>
+    </div>
+    <div class="type-sample">
+      <span class="role">Mono / data — JetBrains Mono 500</span>
+      <span class="sample-mono">MYCN · p = 0.0114 · n = 44</span>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">07</span> Sources — collapsed disclosure (unchanged from first pass)</h2>
+    <p>Still applies exactly as before: the version subtitle and hardcoded footer citation are removed. A
+      collapsed-by-default Sources disclosure replaces it, backed by a real list (paper/dataset, identifier,
+      detail, optional URL) instead of a hand-edited sentence — this scales as more papers and datasets are
+      added. In the workspace model this lives in a persistent corner of the shell, not per-pane.</p>
+    <div class="sources-demo">
+      <details>
+        <summary>Sources</summary>
+        <div class="inner">
+          <div class="src"><span class="name">Wang et al., J Exp Med 2025</span><span class="meta">10.1084/jem.20231349 · seed paper</span></div>
+          <div class="src"><span class="name">TARGET-ALL-P2 (GDC)</span><span class="meta">phs000218 / phs000463 · 469 samples</span></div>
+          <div class="src"><span class="name">DepMap 24Q4 Public</span><span class="meta">via Figshare · 186 lymphoid lines</span></div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span> Responsiveness</h2>
+    <p>Desktop through tablet, ~900px and up — unchanged target from the first pass. The workspace model makes
+      this more important, not less: a pane grid needs a sane collapse behavior on a narrower screen.</p>
+    <ul>
+      <li><strong>≥1024px:</strong> full dockview grid, multiple panes side by side as shown in the mock.</li>
+      <li><strong>900–1024px:</strong> dockview's grid degrades to a single-column stack of tabs rather than
+        forcing panes to shrink past usability — still splittable, just defaults to less side-by-side.</li>
+      <li><strong>&lt;900px:</strong> out of scope, flagged not silently broken, same as before.</li>
+      <li>Genome Tracks pane keeps its own min-width guard regardless of breakpoint.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">09</span> Downloadable figures (unchanged from first pass)</h2>
+    <p>PNG export with stats baked in, via the existing hand-built SVG charts → canvas → blob path. No new
+      dependency. Export button lives in each pane's chart header.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">10</span> Build order</h2>
+    <p>This is bigger than the first plan — the pane system is foundational and everything else sits on top
+      of it. Sequenced so each phase is independently useful, not one big-bang rewrite.</p>
+    <div class="phases">
+      <div class="phase">
+        <span class="idx">1</span>
+        <h3>Tokens + fonts</h3>
+        <div class="body"><p>Same as before — palette and font swap first, fastest way to confirm the visual
+          direction before any structural work.</p></div>
+      </div>
+      <div class="phase">
+        <span class="idx">2</span>
+        <h3>Dockview shell</h3>
+        <div class="body"><p>Install dockview, replace the react-router page structure with a single
+          workspace route hosting a dockview grid. Wrap each existing page component as a pane content
+          renderer — no analysis logic changes, just how it's mounted. One default pane open on load
+          (Compare), matching today's "land on Compare" behavior.</p></div>
+      </div>
+      <div class="phase">
+        <span class="idx">3</span>
+        <h3>Multi-pane operations</h3>
+        <div class="body"><p>Split/open-new-pane actions wired up (a "+" affordance and/or right-click →
+          split), Genome Tracks' special-case guard, layout persistence to localStorage so a refresh doesn't
+          lose the arrangement.</p></div>
+      </div>
+      <div class="phase">
+        <span class="idx">4</span>
+        <h3>Command bar</h3>
+        <div class="body"><p>⌘K palette, gene-first and action-first entry, wired to open/split panes.</p></div>
+      </div>
+      <div class="phase">
+        <span class="idx">5</span>
+        <h3>Motion + shell polish</h3>
+        <div class="body"><p>Chart entrance animation, loading→loaded crossfade, sharp-corner primitives,
+          Sources disclosure, drop the version subtitle.</p></div>
+      </div>
+      <div class="phase">
+        <span class="idx">6</span>
+        <h3>Figure export + responsive pass</h3>
+        <div class="body"><p>PNG export hook, tablet breakpoint behavior for the dockview grid.</p></div>
+      </div>
+    </div>
+    <div class="note flag">
+      <span class="lbl">Honest sizing</span>
+      <p>Phases 2–3 (the actual workspace rebuild) are the majority of the effort here — genuinely a
+        different application shell, not a styling pass. Phases 1 and 5 are comparatively fast. Worth
+        building and checking in after phase 2 lands before continuing, rather than committing to the full
+        sequence blind.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>Nothing in this plan has been implemented yet — revised scope for review before code changes begin.</p>
+  </footer>
+
+</div>

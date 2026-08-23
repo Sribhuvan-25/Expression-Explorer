@@ -61,7 +61,7 @@ export function SurvivalPage() {
                   <select
                     value={datasetId}
                     onChange={(e) => setDatasetId(e.target.value)}
-                    className="w-full rounded-md border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                    className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
                   >
                     {survivalCapable.map((d) => (
                       <option key={d.dataset_id} value={d.dataset_id}>

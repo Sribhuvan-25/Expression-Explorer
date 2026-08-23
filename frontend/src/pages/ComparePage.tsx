@@ -58,7 +58,7 @@ export function ComparePage() {
               <select
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
-                className="w-full rounded-md border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
               >
                 {datasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
@@ -76,7 +76,7 @@ export function ComparePage() {
                 onChange={(e) => setGeneInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && run()}
                 placeholder="e.g. MYCN"
-                className="w-full rounded-md border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
               />
             </div>
             <div className="min-w-[14ch] flex-1">
@@ -87,7 +87,7 @@ export function ComparePage() {
                 value={groupColumn}
                 onChange={(e) => setGroupColumn(e.target.value)}
                 disabled={!activeDataset || activeDataset.group_columns.length === 0}
-                className="w-full rounded-md border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
+                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
               >
                 {activeDataset?.group_columns.map((g) => (
                   <option key={g} value={g}>

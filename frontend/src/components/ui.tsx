@@ -32,7 +32,7 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-lg border border-rule bg-surface ${className}`}>
+    <section className={`rounded-[4px] border border-rule bg-surface ${className}`}>
       {title && (
         <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
           <h2 className="text-[12.5px] font-semibold text-ink">{title}</h2>
@@ -55,7 +55,7 @@ export function GeneTagInput({
 }) {
   return (
     <div>
-      <div className="flex flex-wrap gap-1.5 rounded-md border border-rule bg-ground p-2 focus-within:border-accent">
+      <div className="flex flex-wrap gap-1.5 rounded-[3px] border border-rule bg-ground p-2 focus-within:border-accent">
         {genes.map((g) => (
           <span
             key={g}
@@ -133,7 +133,7 @@ export function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
-      className="flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex items-center justify-center gap-2 rounded-[3px] bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
     >
       {loading && (
         <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -168,7 +168,7 @@ export function Stat({
 
 export function EmptyState({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-rule-firm py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-rule-firm py-16 text-center">
       <div className="text-ink-mute">{icon}</div>
       <p className="text-[13.5px] font-medium text-ink-soft">{title}</p>
       <p className="max-w-[40ch] text-[12.5px] text-ink-mute">{description}</p>
@@ -178,7 +178,7 @@ export function EmptyState({ icon, title, description }: { icon: ReactNode; titl
 
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded-md border-l-[3px] border-hot bg-hot-soft px-4 py-3">
+    <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
       <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Request failed</p>
       <p className="mt-1 text-[13px] text-ink">{message}</p>
     </div>
@@ -193,7 +193,7 @@ export function DataTable({
   rows: Record<string, ReactNode>[];
 }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-rule">
+    <div className="overflow-x-auto rounded-[3px] border border-rule">
       <table className="w-full min-w-[28rem] border-collapse text-[12.5px]">
         <thead>
           <tr>

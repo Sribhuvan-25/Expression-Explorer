@@ -23,7 +23,7 @@ from app.registry import ensure_loaded, get_descriptor, list_descriptors
 
 ensure_loaded()
 
-app = FastAPI(title="ETP-ALL Expression Explorer API")
+app = FastAPI(title="Expression Explorer API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
