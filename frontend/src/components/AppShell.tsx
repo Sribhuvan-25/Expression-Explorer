@@ -1,14 +1,17 @@
-import { NavLink, Outlet } from "react-router-dom";
-import type { ReactNode } from "react";
+import type { DockviewApi } from "dockview-react";
+import { useCallback, useState } from "react";
+import { openPane, Workspace } from "./Workspace";
 import { Sources } from "./Sources";
+import { PANE_LABELS, type PaneType } from "../panes/registry";
+import { DatasetStatus } from "./DatasetStatus";
 
-const NAV_ITEMS = [
-  { to: "/compare", label: "Expression Compare", hint: "Gene across groups" },
-  { to: "/signature", label: "Signature Score", hint: "Gene set, ranked" },
-  { to: "/rank", label: "Sample Ranking", hint: "Pick candidates" },
-  { to: "/survival", label: "Survival", hint: "Kaplan–Meier + Cox" },
-  { to: "/genome-tracks", label: "Genome Tracks", hint: "ChIP-seq / ATAC-seq" },
-] as const;
+const NAV_ITEMS: { type: PaneType; hint: string }[] = [
+  { type: "compare", hint: "Gene across groups" },
+  { type: "signature", hint: "Gene set, ranked" },
+  { type: "rank", hint: "Pick candidates" },
+  { type: "survival", hint: "Kaplan–Meier + Cox" },
+  { type: "genome-tracks", hint: "ChIP-seq / ATAC-seq" },
+];
 
 function MarkGlyph() {
   return (
@@ -30,68 +33,60 @@ function MarkGlyph() {
   );
 }
 
-function NavRow({ to, label, hint }: { to: string; label: string; hint: string }) {
+function NavRow({ type, hint, onOpen }: { type: PaneType; hint: string; onOpen: (splitRight: boolean) => void }) {
   return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        [
-          "group flex flex-col gap-0.5 rounded-[3px] px-3 py-2.5 transition-colors",
-          isActive
-            ? "bg-accent-soft text-accent-ink"
-            : "text-ink-soft hover:bg-surface-hover hover:text-ink",
-        ].join(" ")
-      }
+    <button
+      type="button"
+      onClick={(e) => onOpen(e.altKey || e.metaKey)}
+      title="Click to open · Alt/Cmd-click to split beside the active pane"
+      className="group flex flex-col gap-0.5 rounded-[3px] px-3 py-2.5 text-left text-ink-soft transition-colors hover:bg-surface-hover hover:text-ink"
     >
-      {({ isActive }) => (
-        <>
-          <span className="flex items-center gap-2 text-[13.5px] font-medium">
-            <span
-              className={[
-                "h-1.5 w-1.5 rounded-full transition-colors",
-                isActive ? "bg-accent" : "bg-rule-firm group-hover:bg-ink-mute",
-              ].join(" ")}
-            />
-            {label}
-          </span>
-          <span className="pl-3.5 font-mono text-[10.5px] uppercase tracking-wider text-ink-mute">
-            {hint}
-          </span>
-        </>
-      )}
-    </NavLink>
+      <span className="flex items-center gap-2 text-[13.5px] font-medium">
+        <span className="h-1.5 w-1.5 rounded-full bg-rule-firm transition-colors group-hover:bg-accent" />
+        {PANE_LABELS[type]}
+      </span>
+      <span className="pl-3.5 font-mono text-[10.5px] uppercase tracking-wider text-ink-mute">{hint}</span>
+    </button>
   );
 }
 
-export function AppShell({ rail }: { rail?: ReactNode }) {
+export function AppShell() {
+  const [api, setApi] = useState<DockviewApi | null>(null);
+
+  const handleApiReady = useCallback((readyApi: DockviewApi) => {
+    setApi(readyApi);
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden bg-ground text-ink">
       <aside className="flex w-[248px] shrink-0 flex-col border-r border-rule bg-surface">
         <div className="flex items-center gap-2.5 border-b border-rule px-4 py-4">
           <MarkGlyph />
-          <span className="font-display text-[15px] font-semibold tracking-tight">
-            Expression Explorer
-          </span>
+          <span className="font-display text-[15px] font-semibold tracking-tight">Expression Explorer</span>
         </div>
 
         <nav className="flex flex-col gap-1 px-2.5 py-3">
           <span className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-            Analyses
+            Analyses — click to open, alt-click to split
           </span>
           {NAV_ITEMS.map((item) => (
-            <NavRow key={item.to} {...item} />
+            <NavRow
+              key={item.type}
+              {...item}
+              onOpen={(splitRight) => api && openPane(api, item.type, { splitRight })}
+            />
           ))}
         </nav>
 
         <div className="flex-1" />
 
-        {rail}
+        <DatasetStatus />
 
         <Sources />
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
+      <main className="min-w-0 flex-1 overflow-hidden">
+        <Workspace onApiReady={handleApiReady} />
       </main>
     </div>
   );

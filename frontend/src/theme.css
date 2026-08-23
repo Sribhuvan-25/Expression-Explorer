@@ -25,3 +25,41 @@
   --font-sans: var(--f-body);
   --font-mono: var(--f-mono);
 }
+
+/* Dockview theme overrides — maps the workspace pane chrome onto the same
+   design tokens as the rest of the app, so panes don't look like a
+   different, unstyled tool bolted on. */
+.dockview-theme-expression {
+  --dv-border-radius: 0px;
+  --dv-tab-border-radius: 0px;
+  --dv-sash-border-radius: 0px;
+  --dv-dropdown-border-radius: 0px;
+  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-spacing-padding: 0px;
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--accent);
+
+  --dv-group-view-background-color: var(--ground);
+  --dv-tabs-and-actions-container-background-color: var(--surface);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--ground);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface);
+  --dv-tab-divider-color: var(--rule);
+  --dv-activegroup-visiblepanel-tab-color: var(--ink);
+  --dv-activegroup-hiddenpanel-tab-color: var(--ink-mute);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--ink-mute);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--ink-mute);
+  --dv-separator-border: var(--rule);
+  --dv-paneview-header-border-color: var(--rule);
+  --dv-paneview-active-outline-color: var(--accent);
+
+  --dv-icon-hover-background-color: var(--surface-hover);
+  --dv-drag-over-background-color: var(--accent-soft);
+  --dv-drag-over-border-color: var(--accent);
+  --dv-edge-dock-indicator-color: var(--accent);
+  --dv-tabs-container-scrollbar-color: var(--rule-firm);
+
+  font-family: var(--f-body);
+}
