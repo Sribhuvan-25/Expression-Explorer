@@ -18,13 +18,13 @@ function MarkGlyph() {
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
       <path
         d="M4 18C4 18 6 4 11 4C16 4 18 18 18 18"
-        stroke="var(--accent)"
+        stroke="var(--rail-accent)"
         strokeWidth="1.6"
         strokeLinecap="round"
       />
       <path
         d="M4 11C4 11 7 15 11 11C15 7 18 11 18 11"
-        stroke="var(--accent)"
+        stroke="var(--rail-accent)"
         strokeWidth="1.6"
         strokeLinecap="round"
         opacity="0.55"
@@ -39,13 +39,13 @@ function NavRow({ type, hint, onOpen }: { type: PaneType; hint: string; onOpen: 
       type="button"
       onClick={(e) => onOpen(e.altKey || e.metaKey)}
       title="Click to open · Alt/Cmd-click to split beside the active pane"
-      className="group flex flex-col gap-0.5 rounded-[3px] px-3 py-2.5 text-left text-ink-soft transition-colors hover:bg-surface-hover hover:text-ink"
+      className="group flex flex-col gap-0.5 rounded-[3px] px-3 py-2.5 text-left text-rail-ink-mute transition-colors hover:bg-rail-active-bg hover:text-rail-ink"
     >
       <span className="flex items-center gap-2 text-[13.5px] font-medium">
-        <span className="h-1.5 w-1.5 rounded-full bg-rule-firm transition-colors group-hover:bg-accent" />
+        <span className="h-1.5 w-1.5 rounded-full bg-rail-rule transition-colors group-hover:bg-rail-accent" />
         {PANE_LABELS[type]}
       </span>
-      <span className="pl-3.5 font-mono text-[10.5px] uppercase tracking-wider text-ink-mute">{hint}</span>
+      <span className="pl-3.5 font-mono text-[10.5px] uppercase tracking-wider text-rail-ink-mute">{hint}</span>
     </button>
   );
 }
@@ -59,14 +59,16 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-ground text-ink">
-      <aside className="flex w-[248px] shrink-0 flex-col border-r border-rule bg-surface">
-        <div className="flex items-center gap-2.5 border-b border-rule px-4 py-4">
+      <aside className="flex w-[248px] shrink-0 flex-col border-r border-rail-rule bg-rail-bg">
+        <div className="flex items-center gap-2.5 border-b border-rail-rule px-4 py-4">
           <MarkGlyph />
-          <span className="font-display text-[15px] font-semibold tracking-tight">Expression Explorer</span>
+          <span className="font-display text-[15px] font-semibold tracking-tight text-rail-ink">
+            Expression Explorer
+          </span>
         </div>
 
         <nav className="flex flex-col gap-1 px-2.5 py-3">
-          <span className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+          <span className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-wider text-rail-ink-mute">
             Analyses — click to open, alt-click to split
           </span>
           {NAV_ITEMS.map((item) => (

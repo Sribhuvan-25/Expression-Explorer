@@ -39,31 +39,36 @@ const SOURCES: Source[] = [
 
 export function Sources() {
   return (
-    <details className="group border-t border-rule">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2.5 text-[12px] font-medium text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
+    <details className="group border-t border-rail-rule">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2.5 text-[12px] font-medium text-rail-ink-mute hover:text-rail-ink [&::-webkit-details-marker]:hidden">
         <svg
           width="9"
           height="9"
           viewBox="0 0 9 9"
-          className="text-ink-mute transition-transform group-open:rotate-90"
+          className="text-rail-ink-mute transition-transform group-open:rotate-90"
           fill="none"
         >
           <path d="M2.5 1L6.5 4.5L2.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         Sources
-        <span className="font-mono text-[10px] text-ink-mute">({SOURCES.length})</span>
+        <span className="font-mono text-[10px] text-rail-ink-mute">({SOURCES.length})</span>
       </summary>
       <div className="flex flex-col gap-2.5 px-4 pb-3">
         {SOURCES.map((s) => (
-          <div key={s.name} className="flex flex-col gap-0.5 border-t border-rule pt-2 first:border-t-0 first:pt-0">
+          <div key={s.name} className="flex flex-col gap-0.5 border-t border-rail-rule pt-2 first:border-t-0 first:pt-0">
             {s.url ? (
-              <a href={s.url} target="_blank" rel="noreferrer" className="text-[12px] font-medium text-ink hover:text-accent">
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[12px] font-medium text-rail-ink hover:text-rail-accent"
+              >
                 {s.name}
               </a>
             ) : (
-              <span className="text-[12px] font-medium text-ink">{s.name}</span>
+              <span className="text-[12px] font-medium text-rail-ink">{s.name}</span>
             )}
-            <span className="font-mono text-[10px] text-ink-mute">
+            <span className="font-mono text-[10px] text-rail-ink-mute">
               {s.identifier} &middot; {s.detail}
             </span>
           </div>

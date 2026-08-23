@@ -21,6 +21,15 @@
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
 
+  --color-rail-bg: var(--rail-bg);
+  --color-rail-surface: var(--rail-surface);
+  --color-rail-rule: var(--rail-rule);
+  --color-rail-ink: var(--rail-ink);
+  --color-rail-ink-mute: var(--rail-ink-mute);
+  --color-rail-active-bg: var(--rail-active-bg);
+  --color-rail-active-ink: var(--rail-active-ink);
+  --color-rail-accent: var(--rail-accent);
+
   --font-display: var(--f-display);
   --font-sans: var(--f-body);
   --font-mono: var(--f-mono);

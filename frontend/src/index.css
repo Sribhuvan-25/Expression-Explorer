@@ -2,75 +2,13 @@
 @import "./theme.css";
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-/* Clinical direction: dark navy is the default look, light is the
-   explicit alternative — so :root (unstamped / dark-preferred) carries
-   the dark palette, and :root[data-theme="light"] overrides it. */
+/* Fixed split design, confirmed direction: the sidebar rail is always
+   dark navy (the Clinical identity), the working canvas is always a
+   light off-white where results are actually read. This isn't a
+   light/dark theme toggle — --rail-* is constant; --ground/--surface
+   (the canvas) is the only pair that would ever theme, and for now
+   there is only the light canvas. */
 :root {
-  --ground: #0B1120;
-  --surface: #131A22;
-  --surface-sunk: #182029;
-  --surface-hover: #1C2530;
-  --ink: #EDEFF3;
-  --ink-soft: #B7C0CA;
-  --ink-mute: #7C8A97;
-  --rule: #232E3A;
-  --rule-firm: #334252;
-
-  --accent: #4A8FE0;
-  --accent-strong: #6DA6EA;
-  --accent-soft: #1A2836;
-  --accent-ink: #7DAEEE;
-
-  --hot: #E0836A;
-  --hot-soft: #3A241E;
-  --cool: #7FB4D8;
-  --cool-soft: #1C2C38;
-  --warn: #D9B25C;
-  --warn-soft: #332A16;
-
-  --focus-ring: #4A8FE0;
-
-  --radius-sm: 3px;
-  --radius: 5px;
-
-  --f-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --f-body: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  color-scheme: dark;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --ground: #F4F6F8;
-    --surface: #FFFFFF;
-    --surface-sunk: #EAEEF2;
-    --surface-hover: #E2E7EC;
-    --ink: #131A22;
-    --ink-soft: #3D4A57;
-    --ink-mute: #5C6B79;
-    --rule: #DCE2E8;
-    --rule-firm: #B9C4CE;
-
-    --accent: #2455A4;
-    --accent-strong: #1A3E7C;
-    --accent-soft: #E4EDF9;
-    --accent-ink: #1A3E7C;
-
-    --hot: #B4472E;
-    --hot-soft: #F8EAE5;
-    --cool: #2C6E9B;
-    --cool-soft: #E6EFF6;
-    --warn: #8A6410;
-    --warn-soft: #F7F0DC;
-
-    --focus-ring: #2455A4;
-
-    color-scheme: light;
-  }
-}
-
-:root[data-theme="light"] {
   --ground: #F4F6F8;
   --surface: #FFFFFF;
   --surface-sunk: #EAEEF2;
@@ -94,6 +32,23 @@
   --warn-soft: #F7F0DC;
 
   --focus-ring: #2455A4;
+
+  --radius-sm: 3px;
+  --radius: 5px;
+
+  /* The rail: always dark navy, never themed. */
+  --rail-bg: #0B1120;
+  --rail-surface: #131A22;
+  --rail-rule: #232E3A;
+  --rail-ink: #EDEFF3;
+  --rail-ink-mute: #7C8A97;
+  --rail-active-bg: #1A2836;
+  --rail-active-ink: #7DAEEE;
+  --rail-accent: #4A8FE0;
+
+  --f-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-body: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   color-scheme: light;
 }

@@ -10,11 +10,9 @@ export function DatasetStatus() {
   });
 
   return (
-    <div className="border-t border-rule px-4 py-3">
-      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-mute">Active dataset</p>
-      {isLoading && (
-        <p className="text-[12px] text-ink-mute">Connecting…</p>
-      )}
+    <div className="border-t border-rail-rule px-4 py-3">
+      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-rail-ink-mute">Active dataset</p>
+      {isLoading && <p className="text-[12px] text-rail-ink-mute">Connecting…</p>}
       {isError && (
         <div className="flex items-start gap-1.5">
           <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-hot" />
@@ -23,10 +21,10 @@ export function DatasetStatus() {
       )}
       {data && (
         <div className="flex items-start gap-1.5">
-          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rail-accent" />
           <div>
-            <p className="text-[12.5px] font-medium text-ink">{data.display_name}</p>
-            <p className="font-mono text-[10.5px] text-ink-mute">{data.n_samples} samples</p>
+            <p className="text-[12.5px] font-medium text-rail-ink">{data.display_name}</p>
+            <p className="font-mono text-[10.5px] text-rail-ink-mute">{data.n_samples} samples</p>
           </div>
         </div>
       )}
