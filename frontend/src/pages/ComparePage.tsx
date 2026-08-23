@@ -52,7 +52,7 @@ export function ComparePage() {
 
       <div className="flex flex-col gap-5 px-8 py-6">
         <Panel title="Query">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:flex-wrap">
+          <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
             <div className="min-w-[14ch] flex-1">
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
                 Dataset

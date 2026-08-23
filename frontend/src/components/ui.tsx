@@ -106,7 +106,7 @@ export function PresetButton({
       type="button"
       onClick={onClick}
       className={[
-        "rounded-full border px-3 py-1 font-mono text-[11px] transition-colors",
+        "whitespace-nowrap rounded-[3px] border px-3 py-1 font-mono text-[11px] transition-colors",
         active
           ? "border-accent bg-accent-soft text-accent-ink"
           : "border-rule text-ink-mute hover:border-rule-firm hover:text-ink-soft",
@@ -133,7 +133,7 @@ export function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
-      className="flex items-center justify-center gap-2 rounded-[3px] bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex items-center justify-center gap-2 whitespace-nowrap rounded-[3px] bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
     >
       {loading && (
         <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />

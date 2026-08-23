@@ -44,15 +44,38 @@ const LOCI: Record<string, string> = {
   ZMIZ1: "chr10:80,750,000-81,150,000", // gene: 80,828,723-81,076,276
 };
 
+// igv.js lays out its track rows, ruler, and controls at fixed internal
+// widths and doesn't tolerate being squeezed the way the rest of this app
+// reflows -- a resize mid-render can leave tracks visually corrupted
+// rather than just cramped. Rather than fight that, this pane refuses to
+// mount igv.js below this width and asks for a wider pane instead.
+const MIN_IGV_WIDTH = 480;
+
 export function GenomeTracksPage() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const browserRef = useRef<any>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error" | "too-narrow">("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const [locus, setLocus] = useState("MYB");
+  const [tooNarrow, setTooNarrow] = useState(false);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!wrapperRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      setTooNarrow(width > 0 && width < MIN_IGV_WIDTH);
+    });
+    observer.observe(wrapperRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    // Only mount once, the first time the pane is wide enough — igv.js
+    // doesn't tolerate resize well, so this deliberately does not tear
+    // down and remount if the pane narrows again after loading; the
+    // ResizeObserver above only gates the *initial* mount.
+    if (!containerRef.current || tooNarrow || browserRef.current) return;
     let cancelled = false;
 
     igv
@@ -93,8 +116,10 @@ export function GenomeTracksPage() {
         browserRef.current = null;
       }
     };
+    // locus intentionally excluded — switching locus is handled by the
+    // effect below via browser.search(), not by remounting igv.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tooNarrow]);
 
   useEffect(() => {
     if (browserRef.current && status === "ready") {
@@ -124,18 +149,39 @@ export function GenomeTracksPage() {
         </Panel>
 
         <Panel>
-          {status === "error" && (
-            <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
-              <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Track load failed</p>
-              <p className="mt-1 text-[13px] text-ink">{errorMsg}</p>
-              <p className="mt-1 text-[12px] text-ink-mute">
-                These files are hosted directly on NCBI's FTP server — this usually means a network or CORS issue
-                reaching ftp.ncbi.nlm.nih.gov from the browser, not a bug in this page.
-              </p>
-            </div>
-          )}
-          {status === "loading" && <p className="py-8 text-center text-[13px] text-ink-mute">Loading tracks…</p>}
-          <div ref={containerRef} className="igv-container" style={{ display: status === "error" ? "none" : "block" }} />
+          <div ref={wrapperRef}>
+            {tooNarrow && (
+              <div className="flex flex-col items-center gap-1.5 py-14 text-center">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-ink-mute">
+                  <rect x="3" y="5" width="18" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                <p className="text-[13px] font-medium text-ink-soft">Pane too narrow for the genome browser</p>
+                <p className="max-w-[32ch] text-[12px] text-ink-mute">
+                  igv.js lays out its track rows at a fixed internal width — widen this pane (or close a
+                  neighboring split) to load it.
+                </p>
+              </div>
+            )}
+            {!tooNarrow && status === "error" && (
+              <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Track load failed</p>
+                <p className="mt-1 text-[13px] text-ink">{errorMsg}</p>
+                <p className="mt-1 text-[12px] text-ink-mute">
+                  These files are hosted directly on NCBI's FTP server — this usually means a network or CORS
+                  issue reaching ftp.ncbi.nlm.nih.gov from the browser, not a bug in this page.
+                </p>
+              </div>
+            )}
+            {!tooNarrow && status === "loading" && (
+              <p className="py-8 text-center text-[13px] text-ink-mute">Loading tracks…</p>
+            )}
+            <div
+              ref={containerRef}
+              className="igv-container"
+              style={{ display: tooNarrow || status === "error" ? "none" : "block" }}
+            />
+          </div>
         </Panel>
 
         <Panel title="Tracks shown">

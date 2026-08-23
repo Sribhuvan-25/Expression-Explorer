@@ -10,10 +10,18 @@ import { SurvivalPage } from "../pages/SurvivalPage";
 // wrapper below gives every pane its own scroll region and strips the
 // page-level width centering (panes are already width-constrained by the
 // dockview grid), without forking each page component.
+//
+// @container: page components wrap their query fields with `sm:flex-row`
+// etc, which key off *viewport* width — fine for a single full-width
+// page, but wrong once a page is squeezed into a ~300px pane sitting
+// inside a wide window. Establishing a container context here lets the
+// page components' field-wrap rules key off @container variants (see
+// ui.tsx / page field rows) that respond to the pane's actual rendered
+// width instead of the viewport.
 function paneFrame(Component: React.ComponentType) {
   return function PaneContent(_props: IDockviewPanelProps) {
     return (
-      <div className="h-full overflow-y-auto [&>div]:mx-0 [&>div]:max-w-none">
+      <div className="@container h-full overflow-y-auto [&>div]:mx-0 [&>div]:max-w-none">
         <Component />
       </div>
     );
