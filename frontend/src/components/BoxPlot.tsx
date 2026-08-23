@@ -24,7 +24,15 @@ interface GroupStats {
   color: string;
 }
 
-export function BoxPlot({ points, valueLabel = "Expression" }: { points: ComparePoint[]; valueLabel?: string }) {
+export function BoxPlot({
+  points,
+  valueLabel = "Expression",
+  svgRef,
+}: {
+  points: ComparePoint[];
+  valueLabel?: string;
+  svgRef?: React.RefObject<SVGSVGElement | null>;
+}) {
   const [hover, setHover] = useState<{ x: number; y: number; sample: string; value: number } | null>(null);
 
   const groups = useMemo<GroupStats[]>(() => {
@@ -67,7 +75,13 @@ export function BoxPlot({ points, valueLabel = "Expression" }: { points: Compare
 
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={`Box plot of ${valueLabel} by group`}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full"
+        role="img"
+        aria-label={`Box plot of ${valueLabel} by group`}
+      >
         {tickValues.map((t, i) => (
           <g key={i}>
             <line x1={margin.left} x2={width - margin.right} y1={y(t)} y2={y(t)} stroke="var(--rule)" strokeWidth={1} />

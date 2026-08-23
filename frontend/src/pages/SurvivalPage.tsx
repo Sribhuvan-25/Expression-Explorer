@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
 import { SurvivalPlot } from "../components/SurvivalCurve";
+import { ExportButton } from "../components/ExportButton";
 
 const PRESETS: Record<string, string[]> = {
   "ETP-TF5 (paper)": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
@@ -10,6 +11,7 @@ const PRESETS: Record<string, string[]> = {
 };
 
 export function SurvivalPage() {
+  const chartRef = useRef<SVGSVGElement>(null);
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
   const survivalCapable = datasets.filter((d) => d.supports_survival);
@@ -124,9 +126,25 @@ export function SurvivalPage() {
               <>
                 <Panel
                   title={`Survival — ${data.genes.join(", ")}`}
-                  action={<span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>}
+                  action={
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>
+                      <ExportButton
+                        svgRef={chartRef}
+                        filename={`survival-${data.genes.join("-")}`}
+                        title={`Survival — ${data.genes.join(", ")}`}
+                        subtitle={`n = ${data.n} · LOW/HIGH split at median signature score`}
+                        statLines={[
+                          `Log-rank p = ${data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}`,
+                          ...(data.cox
+                            ? [`Cox model p = ${data.cox.log_likelihood_p_value.toExponential(2)}`]
+                            : []),
+                        ]}
+                      />
+                    </div>
+                  }
                 >
-                  <SurvivalPlot curves={data.curves} />
+                  <SurvivalPlot curves={data.curves} svgRef={chartRef} />
                 </Panel>
 
                 <Panel title="Statistics">

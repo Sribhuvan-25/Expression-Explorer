@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
 import { BoxPlot } from "../components/BoxPlot";
+import { ExportButton } from "../components/ExportButton";
 
 export function ComparePage() {
+  const chartRef = useRef<SVGSVGElement>(null);
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
 
@@ -126,12 +128,27 @@ export function ComparePage() {
             <Panel
               title={`${data.gene} by ${data.group_column}`}
               action={
-                <span className="font-mono text-[10.5px] text-ink-mute">
-                  n = {data.points.length}
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono text-[10.5px] text-ink-mute">n = {data.points.length}</span>
+                  <ExportButton
+                    svgRef={chartRef}
+                    filename={`${data.gene}-by-${data.group_column}`}
+                    title={`${data.gene} by ${data.group_column}`}
+                    subtitle={`n = ${data.points.length} · Mann–Whitney with FDR correction`}
+                    statLines={[
+                      `Kruskal-Wallis p = ${
+                        data.kruskal_wallis.p_value != null ? data.kruskal_wallis.p_value.toExponential(2) : "—"
+                      }`,
+                      ...data.pairwise_tests.map(
+                        (t) =>
+                          `${t.group_a} vs ${t.group_b}: p = ${t.p_value < 0.001 ? t.p_value.toExponential(2) : t.p_value.toFixed(4)}`,
+                      ),
+                    ]}
+                  />
+                </div>
               }
             >
-              <BoxPlot points={data.points} valueLabel={`${data.gene} (expression)`} />
+              <BoxPlot points={data.points} valueLabel={`${data.gene} (expression)`} svgRef={chartRef} />
             </Panel>
 
             <Panel title="Statistics">

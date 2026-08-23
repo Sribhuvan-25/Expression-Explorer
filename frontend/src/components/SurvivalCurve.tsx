@@ -7,7 +7,13 @@ const CURVE_COLORS: Record<string, string> = {
 };
 const FALLBACK_COLORS = ["var(--accent)", "var(--warn)", "#8B6DBF"];
 
-export function SurvivalPlot({ curves }: { curves: Record<string, SurvivalCurve> }) {
+export function SurvivalPlot({
+  curves,
+  svgRef,
+}: {
+  curves: Record<string, SurvivalCurve>;
+  svgRef?: React.RefObject<SVGSVGElement | null>;
+}) {
   const [hover, setHover] = useState<{ x: number; y: number; label: string; days: number; prob: number } | null>(null);
 
   const width = 640;
@@ -34,7 +40,13 @@ export function SurvivalPlot({ curves }: { curves: Record<string, SurvivalCurve>
 
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Kaplan-Meier survival curves">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full"
+        role="img"
+        aria-label="Kaplan-Meier survival curves"
+      >
         {yTicks.map((t) => (
           <g key={t}>
             <line x1={margin.left} x2={width - margin.right} y1={y(t)} y2={y(t)} stroke="var(--rule)" strokeWidth={1} />
