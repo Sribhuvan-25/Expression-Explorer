@@ -6,8 +6,8 @@ import { SurvivalPlot } from "../components/SurvivalCurve";
 import { ExportButton } from "../components/ExportButton";
 
 const PRESETS: Record<string, string[]> = {
-  "ETP-TF5 (paper)": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
-  "ZMIZ1-5 (paper)": ["MEF2C", "BCL2", "MYB", "MYCN", "ZMIZ1"],
+  "ETP-TF5": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
+  "ZMIZ1-5": ["MEF2C", "BCL2", "MYB", "MYCN", "ZMIZ1"],
 };
 
 export function SurvivalPage() {
@@ -21,8 +21,8 @@ export function SurvivalPage() {
     if (!datasetId && survivalCapable.length > 0) setDatasetId(survivalCapable[0].dataset_id);
   }, [survivalCapable, datasetId]);
 
-  const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5 (paper)"]);
-  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5 (paper)");
+  const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5"]);
+  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5");
   const [query, setQuery] = useState<{ datasetId: string; genes: string[] } | null>(null);
 
   const { data, isFetching, error } = useQuery({
@@ -40,7 +40,7 @@ export function SurvivalPage() {
       <PageHeader
         eyebrow="Survival"
         title="Kaplan–Meier by signature score"
-        description="Samples are binarized at the median signature score into LOW/HIGH groups; log-rank test and a Cox proportional hazards model follow the paper's approach."
+        description="Samples are binarized at the median signature score into LOW/HIGH groups, then compared with a log-rank test and a Cox proportional hazards model."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">

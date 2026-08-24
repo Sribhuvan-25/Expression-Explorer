@@ -56,7 +56,7 @@ export function ComparePage() {
       <PageHeader
         eyebrow="Expression Compare"
         title="Gene expression across sample groups"
-        description="Box plot with pairwise Mann–Whitney tests and FDR correction, matching the paper's group-comparison methodology."
+        description="Box plot with pairwise Mann–Whitney tests and FDR correction."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">

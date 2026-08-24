@@ -4,8 +4,8 @@ import { api } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, EmptyState, ErrorState, DataTable } from "../components/ui";
 
 const PRESETS: Record<string, string[]> = {
-  "ETP-TF5 (paper)": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
-  "ZMIZ1-5 (paper)": ["MEF2C", "BCL2", "MYB", "MYCN", "ZMIZ1"],
+  "ETP-TF5": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
+  "ZMIZ1-5": ["MEF2C", "BCL2", "MYB", "MYCN", "ZMIZ1"],
 };
 
 export function SignaturePage() {
@@ -17,9 +17,9 @@ export function SignaturePage() {
     if (!datasetId && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
   }, [datasets, datasetId]);
 
-  const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5 (paper)"]);
+  const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5"]);
   const [method, setMethod] = useState<"auc" | "log2_mean">("auc");
-  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5 (paper)");
+  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5");
   const [query, setQuery] = useState<{ datasetId: string; genes: string[]; method: "auc" | "log2_mean" } | null>(null);
 
   const { data, isFetching, error } = useQuery({
@@ -43,7 +43,7 @@ export function SignaturePage() {
       <PageHeader
         eyebrow="Signature Score"
         title="Score any gene set across samples"
-        description="AUCell-equivalent rank-based scoring (or a simpler log2-mean), matching the paper's method. Enter a custom gene set or start from a preset."
+        description="AUCell-equivalent rank-based scoring, or a simpler log2-mean. Enter a custom gene set or start from a preset."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">
@@ -106,7 +106,7 @@ export function SignaturePage() {
                       method === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
                     }`}
                   >
-                    {m === "auc" ? "AUCell (paper)" : "log2 mean"}
+                    {m === "auc" ? "AUCell" : "log2 mean"}
                   </button>
                 ))}
               </div>
