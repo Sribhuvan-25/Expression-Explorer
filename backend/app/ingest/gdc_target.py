@@ -5,9 +5,11 @@ knows about GDC's API shape — everything downstream sees a Dataset.
 """
 from __future__ import annotations
 
+import fcntl
 import gzip
 import io
 import time
+from contextlib import contextmanager
 
 import httpx
 import pandas as pd
@@ -122,6 +124,27 @@ def _download_star_counts(client: httpx.Client, file_id: str) -> pd.DataFrame:
     return df[["gene_name", "tpm_unstranded"]]
 
 
+@contextmanager
+def _load_lock():
+    """Guards the whole download-and-assemble section so two concurrent
+    requests for an uncached dataset can't both enter it at once. Without
+    this, two overlapping requests each build and clean up their own view
+    of the same shared samples_dir, and one's cleanup unlinking a file the
+    other already deleted crashes with FileNotFoundError (seen in
+    production: two overlapping requests to a cold /datasets/target_all_p2
+    raced exactly this way). A waiting request blocks until the first
+    finishes, then re-checks the cache and finds it already populated.
+    """
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    lock_path = CACHE_DIR / ".load.lock"
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
 def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
     """Build the TARGET-ALL-P2 Dataset. Caches the assembled matrix to
     Parquet so repeat runs don't re-hit the GDC API."""
@@ -144,51 +167,64 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
         matrix = pd.read_parquet(matrix_path)
         clinical = pd.read_parquet(clinical_path)
     else:
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        with _client() as client:
-            files = list_open_rna_files(client)
-            if limit:
-                files = files[:limit]
+        with _load_lock():
+            # Re-check now that we hold the lock: a request that was
+            # waiting behind another one that just finished the full
+            # download should read the now-populated cache, not repeat
+            # the work (or worse, race the samples_dir cleanup below --
+            # this exact race crashed production with FileNotFoundError
+            # when two overlapping requests both unlinked the same file).
+            if use_cache and matrix_path.exists() and clinical_path.exists():
+                matrix = pd.read_parquet(matrix_path)
+                clinical = pd.read_parquet(clinical_path)
+            else:
+                samples_dir.mkdir(parents=True, exist_ok=True)
+                with _client() as client:
+                    files = list_open_rna_files(client)
+                    if limit:
+                        files = files[:limit]
 
-            gene_names: pd.Series | None = None
-            if (CACHE_DIR / "gene_names.parquet").exists():
-                gene_names = pd.read_parquet(CACHE_DIR / "gene_names.parquet")["gene_name"]
+                    gene_names: pd.Series | None = None
+                    if (CACHE_DIR / "gene_names.parquet").exists():
+                        gene_names = pd.read_parquet(CACHE_DIR / "gene_names.parquet")["gene_name"]
 
-            for f in files:
-                case = (f.get("cases") or [{}])[0]
-                sample_id = case.get("submitter_id", f["file_id"])
-                sample_path = samples_dir / f"{sample_id}.parquet"
-                if sample_path.exists():
-                    continue
-                gene_frame = _download_star_counts(client, f["file_id"])
-                gene_frame[["tpm_unstranded"]].to_parquet(sample_path)
-                if gene_names is None:
-                    gene_names = gene_frame["gene_name"]
-                    gene_names.to_frame("gene_name").to_parquet(CACHE_DIR / "gene_names.parquet")
+                    for f in files:
+                        case = (f.get("cases") or [{}])[0]
+                        sample_id = case.get("submitter_id", f["file_id"])
+                        sample_path = samples_dir / f"{sample_id}.parquet"
+                        if sample_path.exists():
+                            continue
+                        gene_frame = _download_star_counts(client, f["file_id"])
+                        gene_frame[["tpm_unstranded"]].to_parquet(sample_path)
+                        if gene_names is None:
+                            gene_names = gene_frame["gene_name"]
+                            gene_names.to_frame("gene_name").to_parquet(CACHE_DIR / "gene_names.parquet")
 
-            clinical = fetch_clinical(client)
+                    clinical = fetch_clinical(client)
 
-        # Assemble the wide matrix from raw numpy arrays with a shared,
-        # pre-known index, not `pd.DataFrame({sample: series, ...})` or
-        # `pd.concat(axis=1)` -- both build a Series (or read one back)
-        # per sample and then pay to align each one's index against every
-        # other's, which measured ~1.4-2.5GB peak at this cohort's real
-        # size (~530 samples x ~60k genes) and was the actual driver
-        # behind the Railway OOM kill, not the download step. Every
-        # sample comes from the same STAR-Counts gene model, so the index
-        # is identical across all of them; skipping pandas' alignment
-        # machinery entirely and building the DataFrame from bare arrays
-        # cut measured peak memory to ~440MB for the same shape.
-        sample_paths = sorted(samples_dir.glob("*.parquet"))
-        gene_index = pd.read_parquet(sample_paths[0]).index
-        data = {p.stem: pd.read_parquet(p)["tpm_unstranded"].to_numpy() for p in sample_paths}
-        matrix = pd.DataFrame(data, index=gene_index, copy=False)
-        matrix.to_parquet(matrix_path)
-        clinical.to_parquet(clinical_path)
+                # Assemble the wide matrix from raw numpy arrays with a
+                # shared, pre-known index, not
+                # `pd.DataFrame({sample: series, ...})` or
+                # `pd.concat(axis=1)` -- both build a Series (or read one
+                # back) per sample and then pay to align each one's index
+                # against every other's, which measured ~1.4-2.5GB peak at
+                # this cohort's real size (~530 samples x ~60k genes) and
+                # was the actual driver behind the Railway OOM kill, not
+                # the download step. Every sample comes from the same
+                # STAR-Counts gene model, so the index is identical across
+                # all of them; skipping pandas' alignment machinery
+                # entirely and building the DataFrame from bare arrays cut
+                # measured peak memory to ~440MB for the same shape.
+                sample_paths = sorted(samples_dir.glob("*.parquet"))
+                gene_index = pd.read_parquet(sample_paths[0]).index
+                data = {p.stem: pd.read_parquet(p)["tpm_unstranded"].to_numpy() for p in sample_paths}
+                matrix = pd.DataFrame(data, index=gene_index, copy=False)
+                matrix.to_parquet(matrix_path)
+                clinical.to_parquet(clinical_path)
 
-        for p in sample_paths:
-            p.unlink()
-        samples_dir.rmdir()
+                for p in sample_paths:
+                    p.unlink(missing_ok=True)
+                samples_dir.rmdir()
 
     # ETP/near-ETP/non-ETP status isn't in any GDC clinical file for this
     # project (checked all 9 clinical supplements) — sourced separately

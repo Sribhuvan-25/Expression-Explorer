@@ -1,4 +1,5 @@
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -175,6 +176,70 @@ def test_load_assembles_matrix_from_downloaded_samples(tmp_path, monkeypatch):
     )
     dataset2 = gdc_target.load(use_cache=True)
     assert set(dataset2.matrix.columns) == {"SAMPLE_A", "SAMPLE_B"}
+
+
+def test_load_survives_concurrent_calls(tmp_path, monkeypatch):
+    """Reproduces the production crash: two overlapping requests for the
+    same uncached dataset both entered the download-and-assemble section
+    at once, and one's cleanup unlinking a sample file the other had
+    already deleted raised FileNotFoundError. Runs load() from two
+    threads simultaneously and asserts both succeed with a consistent
+    result instead of one of them crashing."""
+    monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    def fake_list_open_rna_files(client):
+        # A small artificial delay per file widens the race window so
+        # two threads are actually likely to overlap inside the
+        # download loop, not just at entry.
+        return [
+            {"file_id": f"f-{i}", "cases": [{"submitter_id": f"SAMPLE_{i}"}]} for i in range(5)
+        ]
+
+    def fake_download_star_counts(client, file_id):
+        time.sleep(0.01)
+        return pd.DataFrame(
+            {"gene_name": ["GENE1", "GENE2"], "tpm_unstranded": [1.0, 2.0]},
+            index=["ENSG1", "ENSG2"],
+        )
+
+    def fake_fetch_clinical(client):
+        return pd.DataFrame(
+            {
+                "sample_id": [f"SAMPLE_{i}" for i in range(5)],
+                "vital_status": ["Alive"] * 5,
+                "days_to_death": [None] * 5,
+                "days_to_last_follow_up": [200] * 5,
+            }
+        )
+
+    monkeypatch.setattr(gdc_target, "list_open_rna_files", fake_list_open_rna_files)
+    monkeypatch.setattr(gdc_target, "_download_star_counts", fake_download_star_counts)
+    monkeypatch.setattr(gdc_target, "fetch_clinical", fake_fetch_clinical)
+    monkeypatch.setattr(gdc_target, "load_etp_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
+
+    results: list = [None, None]
+    errors: list = [None, None]
+
+    def run(i):
+        try:
+            results[i] = gdc_target.load(use_cache=True)
+        except Exception as exc:  # noqa: BLE001
+            errors[i] = exc
+
+    t1 = threading.Thread(target=run, args=(0,))
+    t2 = threading.Thread(target=run, args=(1,))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    assert errors == [None, None], f"concurrent load() raised: {errors}"
+    assert results[0] is not None and results[1] is not None
+    assert set(results[0].matrix.columns) == {f"SAMPLE_{i}" for i in range(5)}
+    assert set(results[1].matrix.columns) == {f"SAMPLE_{i}" for i in range(5)}
 
 
 class _NullContextClient:
