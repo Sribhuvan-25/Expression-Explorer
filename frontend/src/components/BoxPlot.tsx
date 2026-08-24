@@ -39,6 +39,15 @@ export function BoxPlot({
   svgRef?: React.RefObject<SVGSVGElement | null>;
 }) {
   const [hover, setHover] = useState<{ x: number; y: number; sample: string; value: number } | null>(null);
+  // Expression data is routinely right-skewed -- a single high-expressing
+  // outlier on a linear axis compresses every other group into a sliver
+  // near zero, even though the underlying stats (computed on raw values,
+  // not the chart) are unaffected. log(x+1) rather than a bare log: real
+  // zero values are common in this data and log(0) is undefined, but
+  // log1p maps 0 -> 0 cleanly while still compressing the long tail.
+  const [logScale, setLogScale] = useState(false);
+  const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
+  const untransform = (v: number) => (logScale ? Math.expm1(v) : v);
 
   const groups = useMemo<GroupStats[]>(() => {
     const byGroup = new Map<string, number[]>();
@@ -81,18 +90,47 @@ export function BoxPlot({
   const plotW = bandW * groups.length;
   const width = plotW + margin.left + margin.right;
 
-  const allValues = points.map((p) => p.value);
-  const yMax = Math.max(...allValues, 1) * 1.08;
-  const yMin = Math.min(0, Math.min(...allValues));
-  const y = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+  // Domain (yMin/yMax/tick spacing) is computed in transformed space so
+  // log mode actually compresses the long tail instead of just relabeling
+  // a linear axis; y() converts a raw value to a pixel position by
+  // transforming first. Tick *values* are generated evenly in transformed
+  // space, then untransformed back to real units for their labels, so
+  // log-mode ticks land at genuinely log-spaced real values (e.g.
+  // 0, 1, 10, 100) rather than evenly-spaced-in-linear-space numbers that
+  // would defeat the point of compressing the axis.
+  const allTransformed = points.map((p) => transform(p.value));
+  const tMax = Math.max(...allTransformed, transform(1)) * (logScale ? 1.04 : 1.08);
+  const tMin = logScale ? 0 : Math.min(0, Math.min(...allTransformed));
+  const y = (v: number) => margin.top + plotH - ((transform(v) - tMin) / (tMax - tMin || 1)) * plotH;
 
   const boxW = Math.min(64, bandW * 0.38);
 
   const yTicks = 5;
-  const tickValues = Array.from({ length: yTicks + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / yTicks);
+  const tickValues = Array.from({ length: yTicks + 1 }, (_, i) => untransform(tMin + ((tMax - tMin) * i) / yTicks));
 
   return (
-    <div className="relative overflow-x-auto">
+    <div>
+      <div className="mb-2 flex items-center justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => setLogScale(false)}
+          className={`rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors ${
+            !logScale ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+          }`}
+        >
+          Linear
+        </button>
+        <button
+          type="button"
+          onClick={() => setLogScale(true)}
+          className={`rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors ${
+            logScale ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+          }`}
+        >
+          Log scale
+        </button>
+      </div>
+      <div className="relative overflow-x-auto">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
@@ -224,6 +262,7 @@ export function BoxPlot({
           <p className="font-mono text-[12px] font-semibold text-ink">{hover.value.toFixed(3)}</p>
         </div>
       )}
+      </div>
     </div>
   );
 }
