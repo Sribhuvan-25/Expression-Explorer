@@ -14,7 +14,6 @@ import {
 
 const PRESETS: Record<string, string[]> = {
   "MYCN only": ["MYCN"],
-  "PP2A subunits (unconfirmed)": ["PPP2CA", "PPP2CB", "PPP2R1A", "PPP2R1B"],
 };
 
 export function RankPage() {
@@ -120,11 +119,6 @@ export function RankPage() {
               Rank {genes.length} gene{genes.length === 1 ? "" : "s"}
             </PrimaryButton>
           </div>
-
-          <p className="mt-2.5 text-[11.5px] text-warn">
-            There is no confirmed canonical "PP2A signature" — the preset above is a guess at core catalytic and
-            scaffold subunits, not a validated gene set.
-          </p>
         </Panel>
 
         {error && <ErrorState message={(error as Error).message} />}
