@@ -65,6 +65,50 @@ def test_download_star_counts_does_not_retry_http_error(monkeypatch):
     assert calls["n"] == 1
 
 
+def test_load_recovers_from_corrupt_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    # Simulates a checkpoint write interrupted mid-write (e.g. an OOM
+    # kill) -- not valid parquet at all.
+    (tmp_path / "matrix.partial.parquet").write_bytes(b"not a parquet file")
+
+    fetch_calls = []
+
+    def fake_list_open_rna_files(client):
+        return [{"file_id": "f-a", "cases": [{"submitter_id": "SAMPLE_A"}]}]
+
+    def fake_download_star_counts(client, file_id):
+        fetch_calls.append(file_id)
+        return pd.DataFrame(
+            {"gene_name": ["GENE1"], "tpm_unstranded": [9.0]},
+            index=["ENSG1"],
+        )
+
+    def fake_fetch_clinical(client):
+        return pd.DataFrame(
+            {
+                "sample_id": ["SAMPLE_A"],
+                "vital_status": ["Alive"],
+                "days_to_death": [None],
+                "days_to_last_follow_up": [200],
+            }
+        )
+
+    monkeypatch.setattr(gdc_target, "list_open_rna_files", fake_list_open_rna_files)
+    monkeypatch.setattr(gdc_target, "_download_star_counts", fake_download_star_counts)
+    monkeypatch.setattr(gdc_target, "fetch_clinical", fake_fetch_clinical)
+    monkeypatch.setattr(gdc_target, "load_etp_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
+
+    # Must not raise -- corrupt checkpoint should be discarded, not fatal.
+    dataset = gdc_target.load(use_cache=True)
+
+    assert fetch_calls == ["f-a"]
+    assert set(dataset.matrix.columns) == {"SAMPLE_A"}
+
+
 def test_load_resumes_from_partial_checkpoint(tmp_path, monkeypatch):
     monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
     tmp_path.mkdir(parents=True, exist_ok=True)

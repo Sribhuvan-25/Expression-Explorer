@@ -148,7 +148,15 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
             # most that many re-downloads, not the whole cohort.
             columns: dict[str, pd.Series] = {}
             if use_cache and partial_path.exists():
-                columns = {col: pd.read_parquet(partial_path)[col] for col in pd.read_parquet(partial_path).columns}
+                # A checkpoint write can itself be interrupted (e.g. an
+                # OOM kill mid-write) and leave a truncated/corrupt
+                # parquet file -- treat that as no checkpoint rather than
+                # crashing every subsequent request permanently.
+                try:
+                    partial_df = pd.read_parquet(partial_path)
+                    columns = {col: partial_df[col] for col in partial_df.columns}
+                except Exception:
+                    partial_path.unlink(missing_ok=True)
             gene_names: pd.Series | None = None
             if (CACHE_DIR / "gene_names.parquet").exists():
                 gene_names = pd.read_parquet(CACHE_DIR / "gene_names.parquet")["gene_name"]
