@@ -129,56 +129,66 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
     matrix_path = CACHE_DIR / "matrix.parquet"
     clinical_path = CACHE_DIR / "clinical.parquet"
 
-    partial_path = CACHE_DIR / "matrix.partial.parquet"
+    # Each downloaded sample is written straight to its own tiny parquet
+    # file the moment it's parsed, instead of being held as a Series in a
+    # growing in-memory dict. Holding all ~530 samples' full gene vectors
+    # in memory at once (plus rebuilding a `pd.DataFrame(dict)` from
+    # scratch on every checkpoint) is what pushed this past ~7GB and got
+    # the container OOM-killed on Railway; per-sample files cap memory to
+    # roughly one sample at a time regardless of cohort size, and one
+    # already-written sample survives a crash without needing a separate
+    # checkpoint step at all.
+    samples_dir = CACHE_DIR / "samples"
 
     if use_cache and matrix_path.exists() and clinical_path.exists():
         matrix = pd.read_parquet(matrix_path)
         clinical = pd.read_parquet(clinical_path)
     else:
+        samples_dir.mkdir(parents=True, exist_ok=True)
         with _client() as client:
             files = list_open_rna_files(client)
             if limit:
                 files = files[:limit]
 
-            # A full run is 500+ sequential downloads; on a memory- or
-            # time-constrained host a mid-run OOM kill or restart used to
-            # discard every file fetched so far since nothing was written
-            # until the very end. Resume from a partial checkpoint if one
-            # exists, and re-checkpoint every 50 files so a crash costs at
-            # most that many re-downloads, not the whole cohort.
-            columns: dict[str, pd.Series] = {}
-            if use_cache and partial_path.exists():
-                # A checkpoint write can itself be interrupted (e.g. an
-                # OOM kill mid-write) and leave a truncated/corrupt
-                # parquet file -- treat that as no checkpoint rather than
-                # crashing every subsequent request permanently.
-                try:
-                    partial_df = pd.read_parquet(partial_path)
-                    columns = {col: partial_df[col] for col in partial_df.columns}
-                except Exception:
-                    partial_path.unlink(missing_ok=True)
             gene_names: pd.Series | None = None
             if (CACHE_DIR / "gene_names.parquet").exists():
                 gene_names = pd.read_parquet(CACHE_DIR / "gene_names.parquet")["gene_name"]
 
-            for i, f in enumerate(files):
+            for f in files:
                 case = (f.get("cases") or [{}])[0]
                 sample_id = case.get("submitter_id", f["file_id"])
-                if sample_id in columns:
+                sample_path = samples_dir / f"{sample_id}.parquet"
+                if sample_path.exists():
                     continue
                 gene_frame = _download_star_counts(client, f["file_id"])
-                columns[sample_id] = gene_frame["tpm_unstranded"]
+                gene_frame[["tpm_unstranded"]].to_parquet(sample_path)
                 if gene_names is None:
                     gene_names = gene_frame["gene_name"]
                     gene_names.to_frame("gene_name").to_parquet(CACHE_DIR / "gene_names.parquet")
-                if (i + 1) % 50 == 0:
-                    pd.DataFrame(columns).to_parquet(partial_path)
 
-            matrix = pd.DataFrame(columns)
             clinical = fetch_clinical(client)
+
+        # Assemble the wide matrix from raw numpy arrays with a shared,
+        # pre-known index, not `pd.DataFrame({sample: series, ...})` or
+        # `pd.concat(axis=1)` -- both build a Series (or read one back)
+        # per sample and then pay to align each one's index against every
+        # other's, which measured ~1.4-2.5GB peak at this cohort's real
+        # size (~530 samples x ~60k genes) and was the actual driver
+        # behind the Railway OOM kill, not the download step. Every
+        # sample comes from the same STAR-Counts gene model, so the index
+        # is identical across all of them; skipping pandas' alignment
+        # machinery entirely and building the DataFrame from bare arrays
+        # cut measured peak memory to ~440MB for the same shape.
+        sample_paths = sorted(samples_dir.glob("*.parquet"))
+        gene_index = pd.read_parquet(sample_paths[0]).index
+        data = {p.stem: pd.read_parquet(p)["tpm_unstranded"].to_numpy() for p in sample_paths}
+        matrix = pd.DataFrame(data, index=gene_index, copy=False)
         matrix.to_parquet(matrix_path)
         clinical.to_parquet(clinical_path)
-        partial_path.unlink(missing_ok=True)
+
+        for p in sample_paths:
+            p.unlink()
+        samples_dir.rmdir()
 
     # ETP/near-ETP/non-ETP status isn't in any GDC clinical file for this
     # project (checked all 9 clinical supplements) — sourced separately

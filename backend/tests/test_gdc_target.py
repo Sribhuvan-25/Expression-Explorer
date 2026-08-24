@@ -65,58 +65,20 @@ def test_download_star_counts_does_not_retry_http_error(monkeypatch):
     assert calls["n"] == 1
 
 
-def test_load_recovers_from_corrupt_checkpoint(tmp_path, monkeypatch):
+def test_load_skips_samples_already_downloaded(tmp_path, monkeypatch):
     monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
     tmp_path.mkdir(parents=True, exist_ok=True)
 
-    # Simulates a checkpoint write interrupted mid-write (e.g. an OOM
-    # kill) -- not valid parquet at all.
-    (tmp_path / "matrix.partial.parquet").write_bytes(b"not a parquet file")
-
-    fetch_calls = []
-
-    def fake_list_open_rna_files(client):
-        return [{"file_id": "f-a", "cases": [{"submitter_id": "SAMPLE_A"}]}]
-
-    def fake_download_star_counts(client, file_id):
-        fetch_calls.append(file_id)
-        return pd.DataFrame(
-            {"gene_name": ["GENE1"], "tpm_unstranded": [9.0]},
-            index=["ENSG1"],
-        )
-
-    def fake_fetch_clinical(client):
-        return pd.DataFrame(
-            {
-                "sample_id": ["SAMPLE_A"],
-                "vital_status": ["Alive"],
-                "days_to_death": [None],
-                "days_to_last_follow_up": [200],
-            }
-        )
-
-    monkeypatch.setattr(gdc_target, "list_open_rna_files", fake_list_open_rna_files)
-    monkeypatch.setattr(gdc_target, "_download_star_counts", fake_download_star_counts)
-    monkeypatch.setattr(gdc_target, "fetch_clinical", fake_fetch_clinical)
-    monkeypatch.setattr(gdc_target, "load_etp_status", lambda: pd.Series(dtype=str))
-    monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
-    monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
-
-    # Must not raise -- corrupt checkpoint should be discarded, not fatal.
-    dataset = gdc_target.load(use_cache=True)
-
-    assert fetch_calls == ["f-a"]
-    assert set(dataset.matrix.columns) == {"SAMPLE_A"}
-
-
-def test_load_resumes_from_partial_checkpoint(tmp_path, monkeypatch):
-    monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
-    tmp_path.mkdir(parents=True, exist_ok=True)
-
-    partial = pd.DataFrame({"SAMPLE_A": pd.Series([1.0, 2.0], index=["ENSG1", "ENSG2"])})
-    partial.to_parquet(tmp_path / "matrix.partial.parquet")
-    gene_names = pd.Series(["GENE1", "GENE2"], index=["ENSG1", "ENSG2"])
-    gene_names.to_frame("gene_name").to_parquet(tmp_path / "gene_names.parquet")
+    # Simulates a prior run that crashed after SAMPLE_A was already
+    # written to disk -- each sample is its own file now, so a crash
+    # mid-run only costs the samples not yet written, and resuming is
+    # just "does this sample's file already exist," no separate
+    # checkpoint step to go stale or get corrupted.
+    samples_dir = tmp_path / "samples"
+    samples_dir.mkdir(parents=True)
+    pd.DataFrame({"tpm_unstranded": [1.0, 2.0]}, index=["ENSG1", "ENSG2"]).to_parquet(
+        samples_dir / "SAMPLE_A.parquet"
+    )
 
     fetch_calls = []
 
@@ -152,10 +114,67 @@ def test_load_resumes_from_partial_checkpoint(tmp_path, monkeypatch):
 
     dataset = gdc_target.load(use_cache=True)
 
-    # SAMPLE_A was already in the checkpoint -- only SAMPLE_B should be fetched.
+    # SAMPLE_A's file already existed -- only SAMPLE_B should be fetched.
     assert fetch_calls == ["f-b"]
     assert set(dataset.matrix.columns) == {"SAMPLE_A", "SAMPLE_B"}
-    assert not (tmp_path / "matrix.partial.parquet").exists()
+    assert dataset.matrix.loc["ENSG1", "SAMPLE_A"] == 1.0
+    assert dataset.matrix.loc["ENSG1", "SAMPLE_B"] == 9.0
+    # Per-sample files and the scratch dir are cleaned up once the
+    # combined matrix is written.
+    assert not samples_dir.exists()
+
+
+def test_load_assembles_matrix_from_downloaded_samples(tmp_path, monkeypatch):
+    monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    def fake_list_open_rna_files(client):
+        return [
+            {"file_id": "f-a", "cases": [{"submitter_id": "SAMPLE_A"}]},
+            {"file_id": "f-b", "cases": [{"submitter_id": "SAMPLE_B"}]},
+        ]
+
+    def fake_download_star_counts(client, file_id):
+        tpm = 1.0 if file_id == "f-a" else 2.0
+        return pd.DataFrame(
+            {"gene_name": ["GENE1", "GENE2"], "tpm_unstranded": [tpm, tpm]},
+            index=["ENSG1", "ENSG2"],
+        )
+
+    def fake_fetch_clinical(client):
+        return pd.DataFrame(
+            {
+                "sample_id": ["SAMPLE_A", "SAMPLE_B"],
+                "vital_status": ["Alive", "Dead"],
+                "days_to_death": [None, 100],
+                "days_to_last_follow_up": [200, None],
+            }
+        )
+
+    monkeypatch.setattr(gdc_target, "list_open_rna_files", fake_list_open_rna_files)
+    monkeypatch.setattr(gdc_target, "_download_star_counts", fake_download_star_counts)
+    monkeypatch.setattr(gdc_target, "fetch_clinical", fake_fetch_clinical)
+    monkeypatch.setattr(gdc_target, "load_etp_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
+
+    dataset = gdc_target.load(use_cache=True)
+
+    assert set(dataset.matrix.columns) == {"SAMPLE_A", "SAMPLE_B"}
+    assert dataset.matrix.loc["ENSG1", "SAMPLE_A"] == 1.0
+    assert dataset.matrix.loc["ENSG1", "SAMPLE_B"] == 2.0
+    assert (tmp_path / "matrix.parquet").exists()
+    assert not (tmp_path / "samples").exists()
+
+    # A second call with the assembled matrix.parquet already present
+    # should read the cache, not touch the network layer at all.
+    monkeypatch.setattr(
+        gdc_target,
+        "list_open_rna_files",
+        lambda client: (_ for _ in ()).throw(AssertionError("should not re-list files")),
+    )
+    dataset2 = gdc_target.load(use_cache=True)
+    assert set(dataset2.matrix.columns) == {"SAMPLE_A", "SAMPLE_B"}
 
 
 class _NullContextClient:
