@@ -15,6 +15,14 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+# The container now pre-warms every dataset's cache (a ~5 minute, 530-file
+# GDC download for target_all_p2, plus DepMap's own fetch) before uvicorn
+# binds, so /health doesn't respond until that finishes. The old 30s
+# timeout killed every deploy before the healthcheck could ever pass --
+# confirmed in Railway's deploy diagnosis (Build/Deploy both succeeded,
+# only Healthcheck failed, at exactly 30s). 900s covers a full cold
+# double-dataset prewarm with real margin; every deploy after the first
+# is fast since the persistent volume keeps the cache warm.
+healthcheckTimeout = 900
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
