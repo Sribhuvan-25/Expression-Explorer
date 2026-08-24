@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
 import { BoxPlot } from "../components/BoxPlot";
 import { ExportButton } from "../components/ExportButton";
+import { GroupFilter, useGroupFilter } from "../components/GroupFilter";
 
 export function ComparePage() {
   const chartRef = useRef<SVGSVGElement>(null);
@@ -41,6 +42,14 @@ export function ComparePage() {
     const gene = geneInput.trim().toUpperCase();
     if (gene && datasetId && groupColumn) setQuery({ datasetId, gene, groupColumn });
   };
+
+  const { groupCounts, selected: selectedGroups, setSelected: setSelectedGroups } = useGroupFilter(
+    data?.points ?? [],
+  );
+  const filteredPoints = useMemo(
+    () => (data ? data.points.filter((p) => selectedGroups.has(p.group)) : []),
+    [data, selectedGroups],
+  );
 
   return (
     <div className="mx-auto max-w-[900px]">
@@ -129,12 +138,15 @@ export function ComparePage() {
               title={`${data.gene} by ${data.group_column}`}
               action={
                 <div className="flex items-center gap-2.5">
-                  <span className="font-mono text-[10.5px] text-ink-mute">n = {data.points.length}</span>
+                  <span className="font-mono text-[10.5px] text-ink-mute">
+                    n = {filteredPoints.length}
+                    {filteredPoints.length !== data.points.length && ` of ${data.points.length}`}
+                  </span>
                   <ExportButton
                     svgRef={chartRef}
                     filename={`${data.gene}-by-${data.group_column}`}
                     title={`${data.gene} by ${data.group_column}`}
-                    subtitle={`n = ${data.points.length} · Mann–Whitney with FDR correction`}
+                    subtitle={`n = ${filteredPoints.length} · Mann–Whitney with FDR correction`}
                     statLines={[
                       `Kruskal-Wallis p = ${
                         data.kruskal_wallis.p_value != null ? data.kruskal_wallis.p_value.toExponential(2) : "—"
@@ -148,10 +160,24 @@ export function ComparePage() {
                 </div>
               }
             >
-              <BoxPlot points={data.points} valueLabel={`${data.gene} (expression)`} svgRef={chartRef} />
+              <div className="mb-3">
+                <GroupFilter groupCounts={groupCounts} selected={selectedGroups} onChange={setSelectedGroups} />
+              </div>
+              {filteredPoints.length > 0 ? (
+                <BoxPlot points={filteredPoints} valueLabel={`${data.gene} (expression)`} svgRef={chartRef} />
+              ) : (
+                <p className="py-8 text-center text-[12.5px] text-ink-mute">
+                  No groups selected — check at least one group above to see the chart.
+                </p>
+              )}
             </Panel>
 
             <Panel title="Statistics">
+              {groupCounts.length > 6 && (
+                <p className="mb-3 text-[11.5px] text-ink-mute">
+                  Computed across all {groupCounts.length} groups, independent of the chart filter above.
+                </p>
+              )}
               <div className="mb-4 flex gap-8">
                 <Stat
                   label="Kruskal-Wallis p"

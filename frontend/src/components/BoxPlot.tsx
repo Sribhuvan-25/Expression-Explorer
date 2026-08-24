@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { ComparePoint } from "../lib/api";
 
 const GROUP_COLORS = ["var(--cool)", "var(--hot)", "var(--accent)", "var(--warn)", "#8B6DBF", "#5C8A6B"];
+const MAX_LABEL_CHARS = 18;
 
 function quantile(sorted: number[], q: number): number {
   const pos = (sorted.length - 1) * q;
@@ -11,6 +12,10 @@ function quantile(sorted: number[], q: number): number {
     return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
   }
   return sorted[base];
+}
+
+function truncateLabel(label: string): string {
+  return label.length > MAX_LABEL_CHARS ? `${label.slice(0, MAX_LABEL_CHARS - 1)}…` : label;
 }
 
 interface GroupStats {
@@ -56,29 +61,45 @@ export function BoxPlot({
     });
   }, [points]);
 
-  const width = 640;
+  // Each group needs a minimum band width for its label to stay legible —
+  // below ~60px, horizontal text collides with its neighbors (this is
+  // what broke with high-cardinality columns like DepMap's ~40-value
+  // "subtype"). Rather than cram everything into a fixed width, the SVG
+  // grows with the group count and scrolls horizontally within its panel;
+  // labels rotate once bands get narrow enough that horizontal text would
+  // still be tight even at the wider width, and long group names are
+  // truncated with a title tooltip for the full text.
+  const MIN_BAND_WIDTH = 60;
+  const ROTATE_LABEL_THRESHOLD = 92;
   const height = 340;
   const margin = { top: 20, right: 24, bottom: 44, left: 52 };
-  const plotW = width - margin.left - margin.right;
-  const plotH = height - margin.top - margin.bottom;
+
+  const bandW = Math.max(MIN_BAND_WIDTH, 640 / Math.max(groups.length, 1));
+  const rotateLabels = bandW < ROTATE_LABEL_THRESHOLD;
+  const bottomMargin = rotateLabels ? 92 : margin.bottom;
+  const plotH = height - margin.top - bottomMargin;
+  const plotW = bandW * groups.length;
+  const width = plotW + margin.left + margin.right;
 
   const allValues = points.map((p) => p.value);
   const yMax = Math.max(...allValues, 1) * 1.08;
   const yMin = Math.min(0, Math.min(...allValues));
   const y = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
-  const bandW = plotW / groups.length;
   const boxW = Math.min(64, bandW * 0.38);
 
   const yTicks = 5;
   const tickValues = Array.from({ length: yTicks + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / yTicks);
 
   return (
-    <div className="relative">
+    <div className="relative overflow-x-auto">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
+        width={width}
+        height={height}
+        className="max-w-none"
+        style={{ minWidth: "100%" }}
         role="img"
         aria-label={`Box plot of ${valueLabel} by group`}
       >
@@ -159,26 +180,37 @@ export function BoxPlot({
                   />
                 ))}
 
-              <text
-                x={cx}
-                y={margin.top + plotH + 18}
-                textAnchor="middle"
-                fontSize={11}
-                fontWeight={600}
-                fill="var(--ink)"
-              >
-                {g.group}
-              </text>
-              <text
-                x={cx}
-                y={margin.top + plotH + 32}
-                textAnchor="middle"
-                fontSize={9.5}
-                fontFamily="var(--f-mono)"
-                className="fill-[var(--ink-mute)]"
-              >
-                n={g.values.length}
-              </text>
+              {rotateLabels ? (
+                <text
+                  x={cx}
+                  y={margin.top + plotH + 12}
+                  textAnchor="end"
+                  fontSize={10.5}
+                  fontWeight={600}
+                  fill="var(--ink)"
+                  transform={`rotate(-40 ${cx} ${margin.top + plotH + 12})`}
+                >
+                  <title>{g.group}</title>
+                  {truncateLabel(g.group)}
+                </text>
+              ) : (
+                <text x={cx} y={margin.top + plotH + 18} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--ink)">
+                  <title>{g.group}</title>
+                  {truncateLabel(g.group)}
+                </text>
+              )}
+              {!rotateLabels && (
+                <text
+                  x={cx}
+                  y={margin.top + plotH + 32}
+                  textAnchor="middle"
+                  fontSize={9.5}
+                  fontFamily="var(--f-mono)"
+                  className="fill-[var(--ink-mute)]"
+                >
+                  n={g.values.length}
+                </text>
+              )}
             </g>
           );
         })}
