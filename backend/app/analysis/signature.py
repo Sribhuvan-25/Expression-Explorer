@@ -10,6 +10,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+# np.trapezoid only exists from numpy 2.0 onward (np.trapz, its
+# predecessor, is deprecated there but still the only option pre-2.0).
+# requirements.txt pins numpy>=2.0, but that doesn't retroactively fix an
+# already-deployed environment still running an older numpy underneath a
+# transitive pin from pandas/scipy -- confirmed this crashed with
+# AttributeError in production (numpy 1.26.4) even with the pin in place
+# until the next full rebuild. Falling back at import time means this
+# keeps working regardless of which numpy is actually installed anywhere.
+_trapezoid = getattr(np, "trapezoid", None) or np.trapz
+
 
 def auc_signature_score(
     matrix: pd.DataFrame,
@@ -49,7 +59,7 @@ def auc_signature_score(
         # trapezoid from rank 0 to max_rank, step increments at each hit
         x = np.concatenate([[0], hit_ranks, [max_rank]])
         y = np.concatenate([[0], cum_hits, [cum_hits[-1]]])
-        auc = np.trapezoid(y, x)
+        auc = _trapezoid(y, x)
         max_possible = max_rank * len(present)
         scores[sample] = auc / max_possible if max_possible > 0 else 0.0
 
