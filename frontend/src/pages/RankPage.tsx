@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, type RankResult } from "../lib/api";
 import {
   DataTable,
   EmptyState,
@@ -39,10 +39,15 @@ export function RankPage() {
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["rank", query],
-    queryFn: () =>
+    // rankByGene and rankBySignature return different extra fields (gene
+    // vs genes+method) on top of the shared RankResult shape -- normalized
+    // to RankResult here so useQuery infers one concrete type instead of
+    // a union it can't resolve (this broke `vite build`'s stricter
+    // type-checking pass even though `tsc --noEmit` alone accepted it).
+    queryFn: async (): Promise<RankResult> =>
       query!.genes.length === 1
-        ? api.rankByGene(query!.datasetId, query!.genes[0])
-        : api.rankBySignature(query!.datasetId, query!.genes),
+        ? await api.rankByGene(query!.datasetId, query!.genes[0])
+        : await api.rankBySignature(query!.datasetId, query!.genes),
     enabled: !!query,
   });
 

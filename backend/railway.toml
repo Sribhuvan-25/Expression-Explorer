@@ -1,0 +1,20 @@
+# Railway deployment config. Lives inside backend/ since Railway's config
+# file does not follow a service's Root Directory setting -- it must sit
+# where it applies. In the Railway dashboard, set this service's Root
+# Directory to "backend" (Settings -> Source), which makes the Dockerfile
+# path below and its COPY instructions resolve correctly against this
+# directory rather than the repo root.
+#
+# The persistent volume is NOT configurable from this file -- Railway
+# volumes are attached via the dashboard (Settings -> Volumes), mounted at
+# /data/cache to match CACHE_DIR in app/config.py. See docs/deployment.md.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

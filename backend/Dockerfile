@@ -14,4 +14,6 @@ RUN mkdir -p /data/cache
 
 EXPOSE 8420
 
-CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8420"]
+# Railway (and most PaaS) inject $PORT at runtime rather than using a fixed
+# port -- default to 8420 for local/docker-compose use where PORT isn't set.
+CMD uvicorn app.api.main:app --host 0.0.0.0 --port ${PORT:-8420}
