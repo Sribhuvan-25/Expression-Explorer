@@ -50,6 +50,15 @@ def _assemble_ranking(samples: pd.DataFrame, values: pd.Series) -> pd.DataFrame:
         meta = pd.json_normalize(samples.set_index("sample_id").loc[df["sample_id"], "group_columns"])
         meta.index = df["sample_id"].to_numpy()
         for col in meta.columns:
-            df[col] = df["sample_id"].map(meta[col])
+            # Not every sample carries every metadata key (e.g. TARGET-ALL-P2's
+            # etp_status/mrd_status are only populated for the subset of
+            # samples with that classification) -- pandas leaves those as
+            # NaN, which Starlette's default JSONResponse rejects outright
+            # (allow_nan=False), turning any ranking request that includes
+            # an incompletely-classified sample into an unhandled 500. None
+            # serializes to JSON null and the frontend already renders a
+            # missing value as "—".
+            values = df["sample_id"].map(meta[col])
+            df[col] = values.astype(object).where(values.notna(), None)
 
     return df.sort_values("value", ascending=False).reset_index(drop=True)
