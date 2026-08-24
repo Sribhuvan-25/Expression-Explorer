@@ -59,11 +59,24 @@ export function GenomeTracksPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [locus, setLocus] = useState("MYB");
   const [tooNarrow, setTooNarrow] = useState(false);
+  // Distinct from tooNarrow=false: that only means "not known to be too
+  // narrow," which is also true before the pane has been laid out at all
+  // (width 0). Dockview restores multiple panes from a saved layout in
+  // one batch on page load, and this pane's container can report width 0
+  // on the ResizeObserver's first callback, before the grid settles --
+  // igv.js mounted against a 0-width container never recovers even once
+  // the container gets real dimensions a moment later (it doesn't
+  // re-measure post-mount). Opening the pane fresh from the sidebar
+  // (not from a restored layout) never hit this, which is what exposed
+  // the gap: the old guard let a genuinely-unmeasured pane through as if
+  // it were "wide enough."
+  const [hasMeasured, setHasMeasured] = useState(false);
 
   useEffect(() => {
     if (!wrapperRef.current) return;
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0;
+      if (width > 0) setHasMeasured(true);
       setTooNarrow(width > 0 && width < MIN_IGV_WIDTH);
     });
     observer.observe(wrapperRef.current);
@@ -75,9 +88,26 @@ export function GenomeTracksPage() {
     // doesn't tolerate resize well, so this deliberately does not tear
     // down and remount if the pane narrows again after loading; the
     // ResizeObserver above only gates the *initial* mount.
-    if (!containerRef.current || tooNarrow || browserRef.current) return;
+    if (!containerRef.current || !hasMeasured || tooNarrow || browserRef.current) return;
     let cancelled = false;
 
+    // igv.js's createBrowser() calls containerRef.current.attachShadow(...)
+    // and mounts browser.root *inside that shadow root*, with its own
+    // adopted stylesheet (igv's real .igv-container rule is `display: flex;
+    // position: relative; ...`, scoped to that shadow tree). containerRef
+    // .current.children will therefore always report 0 -- the content is
+    // in containerRef.current.shadowRoot, not in light-DOM children. That
+    // is expected and NOT a sign igv.js failed to attach: do not reparent
+    // browser.root elsewhere. Manually moving it out of the shadow root
+    // and into this element's light DOM (a workaround previously here)
+    // detaches it from that adopted stylesheet, so it silently falls back
+    // to default UA styling (plain `display: block`, no flex, no
+    // `position: relative`) -- every descendant still exists and still
+    // carries igv's inline pixel styles, but with no CSS establishing the
+    // container's own box, the whole tree renders at 0x0. Passing the
+    // final, already-mounted container straight to createBrowser and
+    // leaving browser.root exactly where igv.js put it avoids this
+    // entirely.
     igv
       .createBrowser(containerRef.current, {
         genome: "hg19",
@@ -92,14 +122,6 @@ export function GenomeTracksPage() {
       })
       .then((browser: any) => {
         if (cancelled) return;
-        // igv.js 3.8.5's createBrowser constructs browser.root correctly
-        // but doesn't reliably append it to the given parent element in
-        // this environment (confirmed: browser.parent === container, but
-        // browser.root was never attached to it) -- attach it ourselves
-        // as a defensive fallback so tracks actually render.
-        if (browser.root && containerRef.current && !containerRef.current.contains(browser.root)) {
-          containerRef.current.appendChild(browser.root);
-        }
         browserRef.current = browser;
         setStatus("ready");
       })
@@ -119,7 +141,7 @@ export function GenomeTracksPage() {
     // locus intentionally excluded — switching locus is handled by the
     // effect below via browser.search(), not by remounting igv.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tooNarrow]);
+  }, [tooNarrow, hasMeasured]);
 
   useEffect(() => {
     if (browserRef.current && status === "ready") {
@@ -132,7 +154,7 @@ export function GenomeTracksPage() {
       <PageHeader
         eyebrow="Genome Tracks"
         title="ZMIZ1 binding and chromatin accessibility"
-        description="Raw ChIP-seq and ATAC-seq signal from Wang et al. 2025 (GSE225559), LOUCY and THP-6 cells, hg19. These are RPM-normalized coverage tracks — no peaks are called here, this is signal for visual inspection only."
+        description="Raw ChIP-seq and ATAC-seq signal (GSE225559), LOUCY and THP-6 cells, hg19. These are RPM-normalized coverage tracks — no peaks are called here, this is signal for visual inspection only."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">
@@ -179,7 +201,15 @@ export function GenomeTracksPage() {
             <div
               ref={containerRef}
               className="igv-container"
-              style={{ display: tooNarrow || status === "error" ? "none" : "block" }}
+              // igv.js sizes its own tracks off this element's height at
+              // mount time and never re-measures afterward -- with no
+              // CSS height rule, a bare block div starts at 0 height
+              // (nothing has rendered into it yet, and nothing ever will
+              // if igv.js bails on a 0-height mount), so mounting hinges
+              // on the container already having real space to render
+              // into. minHeight guarantees that regardless of content
+              // state or when in the layout cycle mounting happens.
+              style={{ display: tooNarrow || status === "error" ? "none" : "block", minHeight: 420 }}
             />
           </div>
         </Panel>
