@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gzip
 import io
+import time
 
 import httpx
 import pandas as pd
@@ -93,9 +94,24 @@ def _download_star_counts(client: httpx.Client, file_id: str) -> pd.DataFrame:
     Ensembl id later) since GDC ships the authoritative GENCODE symbol
     alongside each row.
     """
-    resp = client.get(f"/data/{file_id}", follow_redirects=True)
-    resp.raise_for_status()
-    raw = resp.content
+    # GDC drops the connection mid-transfer often enough from cloud IPs
+    # (observed repeatedly from Railway, not reproducible locally) that a
+    # bare single-attempt request kills a 500+ file run over one flaky
+    # file. Retry transient network failures with backoff; a real HTTP
+    # error status (4xx/5xx) still raises immediately via raise_for_status.
+    last_exc: Exception | None = None
+    for attempt in range(4):
+        try:
+            resp = client.get(f"/data/{file_id}", follow_redirects=True)
+            resp.raise_for_status()
+            raw = resp.content
+            break
+        except httpx.TransportError as exc:
+            last_exc = exc
+            if attempt < 3:
+                time.sleep(2**attempt)
+    else:
+        raise last_exc
     if raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
     lines = raw.decode().splitlines()
@@ -113,6 +129,8 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
     matrix_path = CACHE_DIR / "matrix.parquet"
     clinical_path = CACHE_DIR / "clinical.parquet"
 
+    partial_path = CACHE_DIR / "matrix.partial.parquet"
+
     if use_cache and matrix_path.exists() and clinical_path.exists():
         matrix = pd.read_parquet(matrix_path)
         clinical = pd.read_parquet(clinical_path)
@@ -121,20 +139,38 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
             files = list_open_rna_files(client)
             if limit:
                 files = files[:limit]
-            columns = {}
+
+            # A full run is 500+ sequential downloads; on a memory- or
+            # time-constrained host a mid-run OOM kill or restart used to
+            # discard every file fetched so far since nothing was written
+            # until the very end. Resume from a partial checkpoint if one
+            # exists, and re-checkpoint every 50 files so a crash costs at
+            # most that many re-downloads, not the whole cohort.
+            columns: dict[str, pd.Series] = {}
+            if use_cache and partial_path.exists():
+                columns = {col: pd.read_parquet(partial_path)[col] for col in pd.read_parquet(partial_path).columns}
             gene_names: pd.Series | None = None
-            for f in files:
+            if (CACHE_DIR / "gene_names.parquet").exists():
+                gene_names = pd.read_parquet(CACHE_DIR / "gene_names.parquet")["gene_name"]
+
+            for i, f in enumerate(files):
                 case = (f.get("cases") or [{}])[0]
                 sample_id = case.get("submitter_id", f["file_id"])
+                if sample_id in columns:
+                    continue
                 gene_frame = _download_star_counts(client, f["file_id"])
                 columns[sample_id] = gene_frame["tpm_unstranded"]
                 if gene_names is None:
                     gene_names = gene_frame["gene_name"]
+                    gene_names.to_frame("gene_name").to_parquet(CACHE_DIR / "gene_names.parquet")
+                if (i + 1) % 50 == 0:
+                    pd.DataFrame(columns).to_parquet(partial_path)
+
             matrix = pd.DataFrame(columns)
             clinical = fetch_clinical(client)
-            gene_names.to_frame("gene_name").to_parquet(CACHE_DIR / "gene_names.parquet")
         matrix.to_parquet(matrix_path)
         clinical.to_parquet(clinical_path)
+        partial_path.unlink(missing_ok=True)
 
     # ETP/near-ETP/non-ETP status isn't in any GDC clinical file for this
     # project (checked all 9 clinical supplements) — sourced separately
