@@ -43,6 +43,19 @@ export function ComparePage() {
     if (gene && datasetId && groupColumn) setQuery({ datasetId, gene, groupColumn });
   };
 
+  // Same class of bug as Signature Score: changing the dataset, gene, or
+  // grouping leaves the PREVIOUS query's chart and stats fully rendered
+  // with nothing marking them stale, since `query` only updates inside
+  // run(). Comparing it against the live form state is what lets a fresh
+  // run clear this safely, without hiding results the moment a field
+  // changes (the user might be about to type the same gene back in).
+  const resultsAreStale =
+    !!data &&
+    !!query &&
+    (query.datasetId !== datasetId ||
+      query.gene !== geneInput.trim().toUpperCase() ||
+      query.groupColumn !== groupColumn);
+
   const { groupCounts, selected: selectedGroups, setSelected: setSelectedGroups } = useGroupFilter(
     data?.points ?? [],
   );
@@ -134,6 +147,15 @@ export function ComparePage() {
 
         {data && (
           <>
+            {resultsAreStale && (
+              <p className="rounded-[3px] border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12.5px] text-ink">
+                Query settings changed since this ran — these results are from{" "}
+                {datasets.find((d) => d.dataset_id === query!.datasetId)?.display_name ?? query!.datasetId}
+                {" · "}
+                {query!.gene} by {query!.groupColumn}. Run again to refresh.
+              </p>
+            )}
+            <div className={resultsAreStale ? "flex flex-col gap-5 opacity-50" : "contents"}>
             <Panel
               title={`${data.gene} by ${data.group_column}`}
               action={
@@ -209,6 +231,7 @@ export function ComparePage() {
                 <p className="text-[12.5px] text-ink-mute">Only one group present — no pairwise test to show.</p>
               )}
             </Panel>
+            </div>
           </>
         )}
       </div>

@@ -193,14 +193,21 @@ export function DataTable({
   rows: Record<string, ReactNode>[];
 }) {
   return (
-    <div className="overflow-x-auto rounded-[3px] border border-rule">
+    // `sticky` pins relative to the nearest scrolling ancestor, not just
+    // any ancestor with overflow set -- this div previously had
+    // overflow-x-auto only, so on tall tables (TARGET's 469 rows) the
+    // actual vertical scroll happened on a distant dockview pane several
+    // levels up, and the header scrolled off-screen with the body instead
+    // of staying pinned. max-h + overflow-y-auto makes this div itself the
+    // scrolling ancestor sticky needs.
+    <div className="max-h-[70vh] overflow-x-auto overflow-y-auto rounded-[3px] border border-rule">
       <table className="w-full min-w-[28rem] border-collapse text-[12.5px]">
         <thead>
           <tr>
             {columns.map((c) => (
               <th
                 key={c.key}
-                className={`sticky top-0 border-b border-rule bg-surface-sunk px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-mute ${
+                className={`sticky top-0 z-10 border-b border-rule bg-surface-sunk px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-mute ${
                   c.align === "right" ? "text-right" : "text-left"
                 }`}
               >

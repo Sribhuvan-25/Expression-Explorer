@@ -11,6 +11,7 @@ import {
   PresetButton,
   PrimaryButton,
 } from "../components/ui";
+import { exportRowsAsCsv } from "../lib/exportTable";
 
 const PRESETS: Record<string, string[]> = {
   "MYCN only": ["MYCN"],
@@ -138,7 +139,33 @@ export function RankPage() {
         {data && (
           <Panel
             title={isSingleGene ? `Ranked by ${query!.genes[0]}` : `Ranked by signature (${query!.genes.join(", ")})`}
-            action={<span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>}
+            action={
+              <div className="flex items-center gap-2.5">
+                <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    exportRowsAsCsv(
+                      `${isSingleGene ? query!.genes[0] : query!.genes.join("-")}-ranking`,
+                      [
+                        { key: "rank", label: "#" },
+                        { key: "sample_id", label: "sample" },
+                        ...metadataKeys.map((k) => ({ key: k, label: k })),
+                        { key: "value", label: "value" },
+                      ],
+                      data.rows.map((row, i) => ({ ...row, rank: i + 1 })),
+                    )
+                  }
+                  title="Download as CSV"
+                  className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  CSV
+                </button>
+              </div>
+            }
           >
             <DataTable
               columns={[
