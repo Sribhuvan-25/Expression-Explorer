@@ -45,7 +45,11 @@ function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number 
       </div>
       <div className="flex h-14 items-end gap-[1.5px] rounded-[3px] border border-rule bg-ground px-2 pt-2">
         {counts.map((c, i) => {
-          const inTable = i / BINS >= cutoffFrac;
+          // A bin is "in the table" if its right edge is past the cutoff --
+          // using the left edge (i / BINS) excluded the bin the cutoff
+          // itself falls inside, so the shaded region under-covered the
+          // labeled top-N by 1-2 samples.
+          const inTable = (i + 1) / BINS > cutoffFrac;
           return (
             <span
               key={i}
@@ -87,6 +91,15 @@ export function SignaturePage() {
   const run = () => {
     if (genes.length > 0 && datasetId) setQuery({ datasetId, genes, method });
   };
+
+  // A results table from the PREVIOUS query is only safe to keep on screen
+  // while it still describes the current form state. The moment the user
+  // changes dataset or method, `data` reflects a query that no longer
+  // matches what's selected -- e.g. 186 DepMap rows staying on screen,
+  // still labeled "n = 186", after switching to TARGET, with nothing
+  // marking them stale. Comparing against the query that produced `data`
+  // (not the live form state) is what lets a fresh run clear this safely.
+  const resultsAreStale = !!data && !!query && (query.datasetId !== datasetId || query.method !== method);
 
   const rows = data
     ? Object.entries(data.scores)
@@ -197,6 +210,15 @@ export function SignaturePage() {
             title={`Scores — ${data.genes.join(", ")}`}
             action={<span className="font-mono text-[10.5px] text-ink-mute">n = {rows.length}</span>}
           >
+            {resultsAreStale && (
+              <p className="mb-3 rounded-[3px] border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12.5px] text-ink">
+                Dataset or method changed since this ran — these results are from{" "}
+                {datasets.find((d) => d.dataset_id === query!.datasetId)?.display_name ?? query!.datasetId}
+                {" · "}
+                {query!.method === "auc" ? "AUCell" : "log2 mean"}. Run again to refresh.
+              </p>
+            )}
+            <div className={resultsAreStale ? "opacity-50" : undefined}>
             <ScoreDistribution scores={rows.map(([, v]) => v)} shown={Math.min(25, rows.length)} />
             <DataTable
               columns={[
@@ -230,6 +252,7 @@ export function SignaturePage() {
                 Showing top 25 of {rows.length} samples — the distribution above covers all {rows.length}.
               </p>
             )}
+            </div>
           </Panel>
         )}
       </div>

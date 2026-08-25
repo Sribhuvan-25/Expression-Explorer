@@ -107,6 +107,8 @@ class SignatureRequest(BaseModel):
 
 @app.post("/datasets/{dataset_id}/signature-score")
 def signature_score(dataset_id: str, body: SignatureRequest):
+    if not body.genes:
+        raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
     feature_ids = [_resolve_gene(ds, g) for g in body.genes]
     scorer = auc_signature_score if body.method == "auc" else log2_mean_signature_score
@@ -133,6 +135,8 @@ class RankSignatureRequest(BaseModel):
 @app.post("/datasets/{dataset_id}/rank-signature")
 def rank_signature(dataset_id: str, body: RankSignatureRequest):
     """Same as /rank, but ordered by a multi-gene signature score."""
+    if not body.genes:
+        raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
     feature_ids = [_resolve_gene(ds, g) for g in body.genes]
     df = rank_by_signature(ds.matrix, ds.samples, feature_ids, method=body.method)
@@ -146,6 +150,8 @@ class SurvivalRequest(BaseModel):
 
 @app.post("/datasets/{dataset_id}/survival")
 def survival(dataset_id: str, body: SurvivalRequest):
+    if not body.genes:
+        raise HTTPException(422, "At least one gene is required.")
     descriptor = get_descriptor(dataset_id)
     if not descriptor.supports_survival:
         raise HTTPException(
