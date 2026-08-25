@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { DockviewReact, type DockviewApi, type DockviewReadyEvent } from "dockview-react";
+import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IWatermarkPanelProps } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import { PANE_COMPONENTS, PANE_LABELS, type PaneType } from "../panes/registry";
 
@@ -47,6 +47,34 @@ export function openPane(api: DockviewApi, type: PaneType, options?: { splitRigh
         ? { referencePanel: api.activePanel.id, direction: "right" }
         : undefined,
   });
+}
+
+// Shown by dockview itself whenever no pane is open -- closing the last
+// tab used to leave a genuinely blank dark rectangle with no way to tell
+// whether the app had crashed or was just empty, and no visible path back
+// in short of clicking the sidebar (which still works, but nothing on
+// screen said so).
+function EmptyWorkspace({ containerApi }: IWatermarkPanelProps) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-ink-mute">
+        <path d="M4 20V10M12 20V4M20 20V14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+      <div>
+        <p className="text-[13.5px] font-medium text-ink-soft">No analysis open</p>
+        <p className="mt-1 max-w-[36ch] text-[12.5px] text-ink-mute">
+          Choose one from the sidebar to get started.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => openPane(containerApi, "compare")}
+        className="mt-1 rounded-[3px] border border-rule-firm bg-surface px-3 py-1.5 text-[12.5px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
+      >
+        Open {PANE_LABELS.compare}
+      </button>
+    </div>
+  );
 }
 
 export function Workspace({ onApiReady }: { onApiReady?: (api: DockviewApi) => void }) {
@@ -117,7 +145,12 @@ export function Workspace({ onApiReady }: { onApiReady?: (api: DockviewApi) => v
 
   return (
     <div ref={rootRef} className="h-full w-full">
-      <DockviewReact className="dockview-theme-expression" components={PANE_COMPONENTS} onReady={onReady} />
+      <DockviewReact
+        className="dockview-theme-expression"
+        components={PANE_COMPONENTS}
+        watermarkComponent={EmptyWorkspace}
+        onReady={onReady}
+      />
     </div>
   );
 }
