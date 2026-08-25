@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import { PANE_COMPONENTS, PANE_LABELS, type PaneType } from "../panes/registry";
@@ -50,8 +50,12 @@ export function openPane(api: DockviewApi, type: PaneType, options?: { splitRigh
 }
 
 export function Workspace({ onApiReady }: { onApiReady?: (api: DockviewApi) => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const apiRef = useRef<DockviewApi | null>(null);
+
   const onReady = useCallback(
     (event: DockviewReadyEvent) => {
+      apiRef.current = event.api;
       onApiReady?.(event.api);
 
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -74,8 +78,45 @@ export function Workspace({ onApiReady }: { onApiReady?: (api: DockviewApi) => v
     [onApiReady],
   );
 
+  // dockview-react calls api.layout() exactly once, on mount -- there is
+  // no ResizeObserver anywhere in the library watching its own root
+  // element for later size changes; that's left entirely to the host.
+  // Without this, resizing the actual browser window (not a dockview
+  // pane drag, which the library does handle internally) left every pane
+  // latched at its mount-time width: charts stayed the old width inside a
+  // now-narrower ancestor, clipped with no scrollbar to reach the excess
+  // since the overflow was absorbed by intermediate `overflow-x: visible`
+  // containers rather than surfacing at the page level.
+  //
+  // Both a ResizeObserver on the root element AND a window 'resize'
+  // listener call layout(), not just one: they catch different cases.
+  // ResizeObserver fires for any size change of this element regardless
+  // of cause (e.g. the sidebar's own width changing at a breakpoint,
+  // independent of the window); 'resize' is the reliable signal for an
+  // actual browser-window resize specifically. Relying on only the
+  // observer left a real gap -- some resize paths (a window resize
+  // delivered as a single native reflow rather than the OS's usual
+  // incremental resize-drag events) did not reliably produce a
+  // ResizeObserver callback in testing, while 'resize' always fired.
+  useEffect(() => {
+    if (!rootRef.current) return;
+    const el = rootRef.current;
+    const relayout = () => {
+      if (!apiRef.current || !rootRef.current) return;
+      const { clientWidth, clientHeight } = rootRef.current;
+      apiRef.current.layout(clientWidth, clientHeight);
+    };
+    const observer = new ResizeObserver(relayout);
+    observer.observe(el);
+    window.addEventListener("resize", relayout);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", relayout);
+    };
+  }, []);
+
   return (
-    <div className="h-full w-full">
+    <div ref={rootRef} className="h-full w-full">
       <DockviewReact className="dockview-theme-expression" components={PANE_COMPONENTS} onReady={onReady} />
     </div>
   );
