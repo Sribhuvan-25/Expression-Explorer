@@ -74,6 +74,60 @@ def test_rank_by_gene_and_signature_end_to_end_with_missing_metadata():
     jsonable_encoder(sig_result.to_dict(orient="records"))  # must not raise
 
 
+def test_assemble_ranking_includes_top_level_group_columns():
+    """A dataset may expose a group column as a top-level samples column
+    rather than a key inside group_columns -- TARGET-ALL-P2's vital_status
+    is a declared field on SampleMetadata, and the dataset advertises it in
+    group_columns. Ranking previously flattened only the nested dict, so
+    vital_status was silently absent from every ranking row even though
+    /compare grouped by it fine."""
+    samples = pd.DataFrame(
+        {
+            "sample_id": ["S1", "S2", "S3"],
+            "dataset_id": ["d", "d", "d"],
+            "vital_status": ["Alive", "Dead", None],
+            "group_columns": [{"etp_status": "ETP"}, {}, {"etp_status": "near-ETP"}],
+        }
+    )
+    values = pd.Series({"S1": 3.0, "S2": 1.0, "S3": 2.0})
+
+    result = _assemble_ranking(samples, values)
+
+    assert "vital_status" in result.columns
+    assert result.loc[result["sample_id"] == "S1", "vital_status"].iloc[0] == "Alive"
+    assert result.loc[result["sample_id"] == "S2", "vital_status"].iloc[0] == "Dead"
+    # Missing values still serialize as null, not NaN.
+    assert result.loc[result["sample_id"] == "S3", "vital_status"].iloc[0] is None
+    # Nested keys still work alongside top-level ones.
+    assert result.loc[result["sample_id"] == "S1", "etp_status"].iloc[0] == "ETP"
+    # Bookkeeping columns are not echoed back as metadata.
+    assert "dataset_id" not in result.columns
+    assert "group_columns" not in result.columns
+
+
+def test_assemble_ranking_omits_survival_input_columns():
+    """days_to_death / days_to_last_follow_up are inputs to the survival
+    analysis, not annotation for a ranking table -- including them just
+    widens the table with numbers that are meaningless out of that
+    context."""
+    samples = pd.DataFrame(
+        {
+            "sample_id": ["S1", "S2"],
+            "vital_status": ["Alive", "Dead"],
+            "days_to_death": [None, 400.0],
+            "days_to_last_follow_up": [1200.0, None],
+            "group_columns": [{}, {}],
+        }
+    )
+    result = _assemble_ranking(samples, pd.Series({"S1": 2.0, "S2": 1.0}))
+
+    assert "vital_status" in result.columns
+    assert "days_to_death" not in result.columns
+    assert "days_to_last_follow_up" not in result.columns
+
+    JSONResponse(content=jsonable_encoder(result.to_dict(orient="records")))
+
+
 def test_rank_by_gene_missing_gene_raises():
     matrix = pd.DataFrame({"S1": [1.0]}, index=["G1"])
     samples = pd.DataFrame({"sample_id": ["S1"], "group_columns": [{}]})
