@@ -9,6 +9,12 @@ export interface DatasetSummary {
   display_name: string;
   group_columns: string[];
   supports_survival: boolean;
+  // Provenance, included so the sidebar can show what a dataset actually
+  // is without a follow-up request per dataset. Optional: a dataset that
+  // failed to load is still listed, just without these.
+  n_samples?: number;
+  assay_type?: string;
+  accession?: string;
 }
 
 export interface DatasetSource {
@@ -48,6 +54,12 @@ export interface CompareResult {
   points: ComparePoint[];
   pairwise_tests: PairwiseTest[];
   kruskal_wallis: { h_stat: number | null; p_value: number | null };
+  // How much of the cohort this comparison actually ran on. A grouping
+  // column populated for only part of a dataset (TARGET classifies
+  // etp_status for 190 of 469) otherwise silently narrows the analysis.
+  n_dataset_total: number;
+  n_excluded: number;
+  exclusion_reason: string;
 }
 
 export interface SurvivalPoint {
@@ -67,9 +79,24 @@ export interface SurvivalResult {
   logrank_p_value?: number;
   cox: {
     n: number;
-    coefficients: Record<string, { coef: number; "exp(coef)": number; p: number }>;
+    coefficients: Record<
+      string,
+      {
+        coef: number;
+        "exp(coef)": number;
+        "exp(coef) lower 95%": number;
+        "exp(coef) upper 95%": number;
+        p: number;
+      }
+    >;
     log_likelihood_p_value: number;
   } | null;
+  // Patients with no follow-up time at all can't be placed on a survival
+  // curve and are dropped -- surfaced so "n = 466" on a 469-sample dataset
+  // doesn't read as a different cohort.
+  n_dataset_total: number;
+  n_excluded: number;
+  exclusion_reason: string;
 }
 
 export interface RankRow {

@@ -192,6 +192,12 @@ export function ComparePage() {
                   No groups selected — check at least one group above to see the chart.
                 </p>
               )}
+              {data.n_excluded > 0 && (
+                <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
+                  This grouping covers {data.points.length} of {data.n_dataset_total} samples in the dataset —{" "}
+                  {data.n_excluded} excluded ({data.exclusion_reason}).
+                </p>
+              )}
             </Panel>
 
             <Panel title="Statistics">

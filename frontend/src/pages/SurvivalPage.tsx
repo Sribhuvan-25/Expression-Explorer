@@ -128,7 +128,10 @@ export function SurvivalPage() {
                   title={`Survival — ${data.genes.join(", ")}`}
                   action={
                     <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>
+                      <span className="font-mono text-[10.5px] text-ink-mute">
+                        n = {data.n}
+                        {data.n_excluded > 0 && ` of ${data.n_dataset_total}`}
+                      </span>
                       <ExportButton
                         svgRef={chartRef}
                         filename={`survival-${data.genes.join("-")}`}
@@ -145,6 +148,12 @@ export function SurvivalPage() {
                   }
                 >
                   <SurvivalPlot curves={data.curves} svgRef={chartRef} />
+                  {data.n_excluded > 0 && (
+                    <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
+                      Showing {data.n} of {data.n_dataset_total} samples in this dataset —{" "}
+                      {data.n_excluded} excluded ({data.exclusion_reason}).
+                    </p>
+                  )}
                 </Panel>
 
                 <Panel title="Statistics">

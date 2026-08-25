@@ -26,11 +26,18 @@ export function DatasetStatus() {
         </div>
       )}
       {data && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {data.datasets.map((d) => (
             <div key={d.dataset_id} className="flex items-start gap-1.5">
               <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rail-accent" />
-              <p className="text-[12.5px] font-medium text-rail-ink">{d.display_name}</p>
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-medium leading-snug text-rail-ink">{d.display_name}</p>
+                <p className="font-mono text-[10px] text-rail-ink-mute">
+                  {d.n_samples != null && `${d.n_samples} samples`}
+                  {d.assay_type && ` · ${d.assay_type.replace(/_/g, "-")}`}
+                  {d.supports_survival && " · survival"}
+                </p>
+              </div>
             </div>
           ))}
         </div>

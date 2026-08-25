@@ -59,17 +59,31 @@ def health():
 
 @app.get("/datasets")
 def list_datasets():
-    return {
-        "datasets": [
-            {
-                "dataset_id": d.dataset_id,
-                "display_name": d.display_name,
-                "group_columns": list(d.group_columns),
-                "supports_survival": d.supports_survival,
-            }
-            for d in list_descriptors()
-        ]
-    }
+    # n_samples/assay/accession come from the loaded dataset's own source
+    # record rather than the descriptor, so the listing can show provenance
+    # (how many samples, which assay, which accession) without the frontend
+    # making a follow-up request per dataset. _get_dataset is lru_cached and
+    # every dataset is pre-warmed at startup, so this stays cheap.
+    out = []
+    for d in list_descriptors():
+        entry = {
+            "dataset_id": d.dataset_id,
+            "display_name": d.display_name,
+            "group_columns": list(d.group_columns),
+            "supports_survival": d.supports_survival,
+        }
+        try:
+            source = _get_dataset(d.dataset_id).source
+            entry["n_samples"] = source.n_samples
+            entry["assay_type"] = source.assay_type
+            entry["accession"] = source.accession
+        except Exception:
+            # A dataset that fails to load should still be listed (so the
+            # UI can show it exists) rather than taking down the whole
+            # registry listing.
+            pass
+        out.append(entry)
+    return {"datasets": out}
 
 
 @app.get("/datasets/{dataset_id}")
@@ -92,9 +106,18 @@ def compare(dataset_id: str, gene: str, group_column: str):
     df = expression_by_group(ds.matrix, ds.samples, feature_id, group_column)
     if df.empty:
         raise HTTPException(400, f"No samples with both expression and a value for '{group_column}'.")
+    # Grouping columns are often populated for only part of a cohort --
+    # TARGET-ALL-P2 classifies etp_status for 190 of its 469 samples, so a
+    # comparison "on TARGET" is silently running on 40% of it. That's a
+    # material caveat for anyone reading the p-values, so report what was
+    # left out rather than only what was included.
+    n_total = len(ds.samples)
     return {
         "gene": gene,
         "group_column": group_column,
+        "n_dataset_total": n_total,
+        "n_excluded": n_total - len(df),
+        "exclusion_reason": f"no value recorded for '{group_column}'",
         "points": df.to_dict("records"),
         "pairwise_tests": pairwise_tests(df).to_dict("records"),
         "kruskal_wallis": kruskal_wallis(df),
@@ -165,6 +188,15 @@ def survival(dataset_id: str, body: SurvivalRequest):
     surv_df = build_survival_frame(ds.samples, scores)
     if len(surv_df) < 10:
         raise HTTPException(400, "Fewer than 10 complete cases (score + clinical data) for survival analysis.")
+    # Survival runs on fewer samples than the dataset holds: a patient with
+    # neither days_to_death nor days_to_last_follow_up has no time axis to
+    # be plotted on and is dropped by build_survival_frame. Reporting only
+    # the surviving count made that look like a different dataset entirely
+    # -- a reviewer sees 469 samples listed but "n = 466" on the curve and
+    # reasonably asks which cohort this is. Return the accounting so the UI
+    # can say so outright.
+    n_total = len(ds.samples)
+    n_excluded = n_total - len(surv_df)
     group = binarize_by_median(surv_df)
     result = kaplan_meier_curves(surv_df, group)
     try:
@@ -179,4 +211,11 @@ def survival(dataset_id: str, body: SurvivalRequest):
     # samples) surfaced as an unhandled 500 instead of cox: null.
     except (ValueError, ConvergenceError, StatError):
         result["cox"] = None
-    return {"genes": body.genes, "n": len(surv_df), **result}
+    return {
+        "genes": body.genes,
+        "n": len(surv_df),
+        "n_dataset_total": n_total,
+        "n_excluded": n_excluded,
+        "exclusion_reason": "no follow-up time recorded",
+        **result,
+    }
