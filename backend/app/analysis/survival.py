@@ -25,6 +25,16 @@ def build_survival_frame(
     df["signature_score"] = signature_scores.reindex(df["sample_id"]).to_numpy()
     df["event"] = (df["vital_status"] == "Dead").astype(int)
     df["duration"] = df["days_to_death"].where(df["event"] == 1, df["days_to_last_follow_up"])
+    # A covariate a caller wants to control for (e.g. etp_status, MRD
+    # status) may live inside each sample's nested group_columns dict
+    # rather than as a top-level field -- flatten it here so cox_model can
+    # select it by name either way, instead of raising KeyError.
+    if "group_columns" in df.columns:
+        meta = pd.json_normalize(df["group_columns"])
+        meta.index = df.index
+        for col in meta.columns:
+            if col not in df.columns:
+                df[col] = meta[col]
     return df.dropna(subset=["duration", "signature_score"])
 
 
@@ -67,15 +77,24 @@ def cox_model(df: pd.DataFrame, covariates: list[str] | None = None) -> dict:
     """Cox proportional hazards with the signature score as the primary
     predictor, plus optional covariates (paper controls for day-29 MRD,
     CNS status, diagnostic age, WBC where available)."""
-    cols = ["duration", "event", "signature_score"] + (covariates or [])
+    covariates = covariates or []
+    unknown = [c for c in covariates if c not in df.columns]
+    if unknown:
+        raise ValueError(f"Unknown covariate(s): {', '.join(unknown)}")
+    cols = ["duration", "event", "signature_score"] + covariates
     cph_df = df[cols].dropna()
     if len(cph_df) < 10:
         raise ValueError("Too few complete cases for a Cox model (need >= 10).")
     cph = CoxPHFitter()
     cph.fit(cph_df, duration_col="duration", event_col="event")
     summary = cph.summary
+    # Include the HR confidence interval lifelines already computes --
+    # without it a hazard ratio has no indication of how precisely it's
+    # estimated, which matters most for exactly the case a reader would
+    # check it: is this HR actually distinguishable from 1.
+    cols = ["coef", "exp(coef)", "exp(coef) lower 95%", "exp(coef) upper 95%", "p"]
     return {
         "n": len(cph_df),
-        "coefficients": summary[["coef", "exp(coef)", "p"]].to_dict("index"),
+        "coefficients": summary[cols].to_dict("index"),
         "log_likelihood_p_value": cph.log_likelihood_ratio_test().p_value,
     }

@@ -17,6 +17,7 @@ from app.analysis.compare import expression_by_group, kruskal_wallis, pairwise_t
 from app.analysis.ranking import rank_by_gene, rank_by_signature
 from app.analysis.signature import auc_signature_score, log2_mean_signature_score
 from app.analysis.survival import binarize_by_median, build_survival_frame, cox_model, kaplan_meier_curves
+from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
 from app.models.contract import Dataset
 from app.registry import ensure_loaded, get_descriptor, list_descriptors
@@ -168,6 +169,14 @@ def survival(dataset_id: str, body: SurvivalRequest):
     result = kaplan_meier_curves(surv_df, group)
     try:
         result["cox"] = cox_model(surv_df, covariates=body.covariates)
-    except ValueError:
+    # Too few complete cases or an unknown covariate name (ValueError, both
+    # raised deliberately by cox_model), and a degenerate fit -- a sparsely
+    # populated or collinear covariate -- that lifelines itself rejects
+    # (ConvergenceError/StatError) all mean the same thing to a caller: the
+    # KM curves above are still valid, but no Cox model could be fit for
+    # this covariate choice. Previously only ValueError was caught, so a
+    # sparse covariate (e.g. etp_status, populated for a subset of TARGET
+    # samples) surfaced as an unhandled 500 instead of cox: null.
+    except (ValueError, ConvergenceError, StatError):
         result["cox"] = None
     return {"genes": body.genes, "n": len(surv_df), **result}
