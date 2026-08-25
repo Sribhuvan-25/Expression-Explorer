@@ -1,15 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "./components/AppShell";
+import { ApiError } from "./lib/api";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       // A retry only makes sense for a transient failure (a dropped
-      // connection, a 5xx). Our API throws a plain Error whose message is
-      // prefixed with the HTTP status code (see lib/api.ts's request()),
-      // so a 4xx here means the request itself was invalid -- e.g. "gene
-      // not found" -- and retrying sends the exact same request that will
+      // connection, a 5xx). ApiError carries the real HTTP status, so a
+      // 4xx here means the request itself was invalid -- e.g. "gene not
+      // found" -- and retrying sends the exact same request that will
       // fail the exact same way. Retrying those was also silently making
       // queries un-resolvable in some conditions: TanStack Query's retry
       // step gates on focusManager.isFocused(), which falls back to
@@ -22,8 +22,7 @@ const queryClient = new QueryClient({
       // genes) instead of depending on a browser signal this app doesn't
       // otherwise care about.
       retry: (failureCount, error) => {
-        const status = Number(error instanceof Error ? error.message.slice(0, 3) : NaN);
-        if (status >= 400 && status < 500) return false;
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
         return failureCount < 1;
       },
     },

@@ -83,14 +83,59 @@ export interface RankResult {
   rows: RankRow[];
 }
 
+// Carries the HTTP status as a real property instead of encoding it into
+// the message text -- callers that need to distinguish "this request was
+// invalid, don't retry it" (4xx) from "this was transient, worth another
+// try" (5xx/network) read error.status directly rather than parsing the
+// leading characters of a message meant for display.
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+// FastAPI error responses come in two shapes: our own HTTPException(status,
+// "message") calls always produce {detail: string}; a request that fails
+// Pydantic validation before a handler ever runs (a missing/malformed
+// field) produces {detail: [{loc, msg, type, ...}, ...]}. Both used to be
+// shown to the user as the raw response body -- '404 Not Found:
+// {"detail":"Gene \'X\' not found in dataset."}' -- which is legible with
+// effort but is JSON plumbing, not a sentence a domain expert should have
+// to parse. This extracts the human-readable message from either shape,
+// falling back to the raw body only if the response isn't the JSON error
+// shape the backend actually sends (e.g. a proxy timeout page, or the
+// backend being down entirely).
+async function parseErrorMessage(res: Response): Promise<string> {
+  const body = await res.text();
+  try {
+    const parsed = JSON.parse(body);
+    const detail = parsed?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((e) => {
+          const field = Array.isArray(e?.loc) ? e.loc.filter((p: unknown) => p !== "body").join(".") : null;
+          const msg = typeof e?.msg === "string" ? e.msg : "Invalid value";
+          return field ? `${field}: ${msg}` : msg;
+        })
+        .join("; ");
+    }
+  } catch {
+    // Not JSON -- fall through to the generic message below.
+  }
+  return body || `${res.status} ${res.statusText}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    throw new ApiError(res.status, await parseErrorMessage(res));
   }
   return res.json();
 }
