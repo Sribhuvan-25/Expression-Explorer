@@ -51,6 +51,13 @@ const LOCI: Record<string, string> = {
 // mount igv.js below this width and asks for a wider pane instead.
 const MIN_IGV_WIDTH = 480;
 
+// Module-scope, not component state: tracks which container nodes have an
+// igv.createBrowser() call currently in flight, so React StrictMode's
+// mount/cleanup/mount double-invoke in dev can't start a second real mount
+// against the same node before the first one resolves. See the effect
+// below for why this can't be done with `cancelled` alone.
+const mountingContainers = new WeakSet<HTMLDivElement>();
+
 export function GenomeTracksPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -74,10 +81,24 @@ export function GenomeTracksPage() {
 
   useEffect(() => {
     if (!wrapperRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0;
+    const apply = (width: number) => {
       if (width > 0) setHasMeasured(true);
       setTooNarrow(width > 0 && width < MIN_IGV_WIDTH);
+    };
+    // React StrictMode runs this effect, its cleanup, then the effect
+    // again, all synchronously in the same tick -- before a ResizeObserver
+    // has delivered its guaranteed first callback for the node it just
+    // started observing. The first observer's disconnect() (in the
+    // phantom cleanup) can race ahead of that pending delivery and drop
+    // it, and re-observing the same already-stable-sized node from the
+    // second observer isn't reliably guaranteed to fire an initial
+    // callback either -- so under StrictMode `hasMeasured` could stay
+    // false forever, and the igv mount effect (gated on it) never ran.
+    // Reading the width synchronously here covers the case the observer
+    // misses; the observer stays registered for genuine later resizes.
+    apply(wrapperRef.current.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      apply(entries[0]?.contentRect.width ?? 0);
     });
     observer.observe(wrapperRef.current);
     return () => observer.disconnect();
@@ -89,27 +110,31 @@ export function GenomeTracksPage() {
     // down and remount if the pane narrows again after loading; the
     // ResizeObserver above only gates the *initial* mount.
     if (!containerRef.current || !hasMeasured || tooNarrow || browserRef.current) return;
+    const container = containerRef.current;
     let cancelled = false;
 
-    // igv.js's createBrowser() calls containerRef.current.attachShadow(...)
-    // and mounts browser.root *inside that shadow root*, with its own
-    // adopted stylesheet (igv's real .igv-container rule is `display: flex;
-    // position: relative; ...`, scoped to that shadow tree). containerRef
-    // .current.children will therefore always report 0 -- the content is
-    // in containerRef.current.shadowRoot, not in light-DOM children. That
-    // is expected and NOT a sign igv.js failed to attach: do not reparent
-    // browser.root elsewhere. Manually moving it out of the shadow root
-    // and into this element's light DOM (a workaround previously here)
-    // detaches it from that adopted stylesheet, so it silently falls back
-    // to default UA styling (plain `display: block`, no flex, no
-    // `position: relative`) -- every descendant still exists and still
-    // carries igv's inline pixel styles, but with no CSS establishing the
-    // container's own box, the whole tree renders at 0x0. Passing the
-    // final, already-mounted container straight to createBrowser and
-    // leaving browser.root exactly where igv.js put it avoids this
-    // entirely.
+    // React StrictMode (main.tsx) double-invokes every effect in dev:
+    // mount -> cleanup -> mount again, synchronously, against the SAME
+    // container node. igv.createBrowser's underlying `new Browser(...)`
+    // runs synchronously and unconditionally appends a fresh
+    // `.igv-container` root into the node's shadow DOM (creating the
+    // shadow root itself is idempotent -- igv.js checks
+    // `parentDiv.shadowRoot` first -- but the browser instance and its DOM
+    // tree are not). The `cancelled` flag above only stops this *effect*
+    // from touching `browserRef` after teardown; it does not stop
+    // createBrowser's synchronous DOM mutation from happening a second
+    // time against the same node before the first call's promise has even
+    // resolved, which would stack two Browser instances' markup in one
+    // shadow root. Tracking "is a createBrowser call in flight for this
+    // exact node" outside React's effect lifecycle (a plain WeakSet, not
+    // state) makes the second StrictMode invocation a no-op instead of a
+    // second real mount, while still allowing a genuinely new node (a
+    // second split pane) to mount normally.
+    if (mountingContainers.has(container)) return;
+    mountingContainers.add(container);
+
     igv
-      .createBrowser(containerRef.current, {
+      .createBrowser(container, {
         genome: "hg19",
         locus: LOCI[locus],
         tracks: TRACKS.map((t) => ({
@@ -121,11 +146,16 @@ export function GenomeTracksPage() {
         })),
       })
       .then((browser: any) => {
-        if (cancelled) return;
+        mountingContainers.delete(container);
+        if (cancelled) {
+          igv.removeBrowser(browser);
+          return;
+        }
         browserRef.current = browser;
         setStatus("ready");
       })
       .catch((err: unknown) => {
+        mountingContainers.delete(container);
         if (cancelled) return;
         setErrorMsg(err instanceof Error ? err.message : String(err));
         setStatus("error");
