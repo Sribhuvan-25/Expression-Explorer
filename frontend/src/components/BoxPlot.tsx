@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComparePoint } from "../lib/api";
 
 const GROUP_COLORS = ["var(--cool)", "var(--hot)", "var(--accent)", "var(--warn)", "#8B6DBF", "#5C8A6B"];
@@ -49,6 +49,23 @@ export function BoxPlot({
   const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
   const untransform = (v: number) => (logScale ? Math.expm1(v) : v);
 
+  // The chart sizes itself to whatever space it's actually given rather
+  // than to a hardcoded width. Before this, band width came from a fixed
+  // `640 / groupCount`, so a single-group chart drew a ~40px box stranded
+  // in the middle of a 1400px panel, and every chart ignored its pane's
+  // real width entirely.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0) setContainerWidth(w);
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const groups = useMemo<GroupStats[]>(() => {
     const byGroup = new Map<string, number[]>();
     for (const p of points) {
@@ -79,16 +96,33 @@ export function BoxPlot({
   // still be tight even at the wider width, and long group names are
   // truncated with a title tooltip for the full text.
   const MIN_BAND_WIDTH = 60;
+  // Cap band width so a couple of groups don't stretch into absurdly wide
+  // bands, but let a small number of groups claim proportionally more
+  // room -- a single-group chart pinned to a narrow band reads as a
+  // stranded sliver in a wide pane, which is exactly the reported bug.
+  const MAX_BAND_WIDTH = groups.length <= 2 ? 420 : groups.length <= 4 ? 300 : 220;
   const ROTATE_LABEL_THRESHOLD = 92;
-  const height = 340;
   const margin = { top: 20, right: 24, bottom: 44, left: 52 };
 
-  const bandW = Math.max(MIN_BAND_WIDTH, 640 / Math.max(groups.length, 1));
+  // Fall back to a sane default only until the first measurement lands.
+  const availableWidth = Math.max(containerWidth || 720, 320);
+  const innerWidth = Math.max(availableWidth - margin.left - margin.right, MIN_BAND_WIDTH);
+
+  const n = Math.max(groups.length, 1);
+  const fittedBand = innerWidth / n;
+  const bandW = Math.min(MAX_BAND_WIDTH, Math.max(MIN_BAND_WIDTH, fittedBand));
   const rotateLabels = bandW < ROTATE_LABEL_THRESHOLD;
   const bottomMargin = rotateLabels ? 92 : margin.bottom;
-  const plotH = height - margin.top - bottomMargin;
+
   const plotW = bandW * groups.length;
-  const width = plotW + margin.left + margin.right;
+  // Grow taller when there's room, so a wide pane doesn't produce a short
+  // letterbox strip; stays within a range that reads well either way.
+  const height = Math.round(Math.min(520, Math.max(340, plotW * 0.42)));
+  const plotH = height - margin.top - bottomMargin;
+  // When bands hit their cap the plot is narrower than the pane -- centre
+  // it instead of leaving all the slack on one side.
+  const leftPad = margin.left + Math.max(0, (innerWidth - plotW) / 2);
+  const width = Math.max(plotW + margin.left + margin.right, availableWidth);
 
   // Domain (yMin/yMax/tick spacing) is computed in transformed space so
   // log mode actually compresses the long tail instead of just relabeling
@@ -103,13 +137,16 @@ export function BoxPlot({
   const tMin = logScale ? 0 : Math.min(0, Math.min(...allTransformed));
   const y = (v: number) => margin.top + plotH - ((transform(v) - tMin) / (tMax - tMin || 1)) * plotH;
 
-  const boxW = Math.min(64, bandW * 0.38);
+  // Scales with the band instead of being capped at a fixed 64px, so a
+  // roomy chart draws a proportioned box rather than a thin sliver. Still
+  // bounded, since a box much wider than this stops reading as a box plot.
+  const boxW = Math.min(150, Math.max(18, bandW * 0.5));
 
   const yTicks = 5;
   const tickValues = Array.from({ length: yTicks + 1 }, (_, i) => untransform(tMin + ((tMax - tMin) * i) / yTicks));
 
   return (
-    <div>
+    <div ref={containerRef}>
       <div className="mb-2 flex items-center justify-end gap-1.5">
         <button
           type="button"
@@ -136,21 +173,20 @@ export function BoxPlot({
         viewBox={`0 0 ${width} ${height}`}
         width={width}
         height={height}
-        className="max-w-none"
-        style={{ minWidth: "100%" }}
+        className="block max-w-none"
         role="img"
         aria-label={`Box plot of ${valueLabel} by group`}
       >
         {tickValues.map((t, i) => (
           <g key={i}>
-            <line x1={margin.left} x2={width - margin.right} y1={y(t)} y2={y(t)} stroke="var(--rule)" strokeWidth={1} />
-            <text x={margin.left - 8} y={y(t)} textAnchor="end" dominantBaseline="middle" className="fill-[var(--ink-mute)]" fontSize={10} fontFamily="var(--f-mono)">
+            <line x1={leftPad} x2={leftPad + plotW} y1={y(t)} y2={y(t)} stroke="var(--rule)" strokeWidth={1} />
+            <text x={leftPad - 8} y={y(t)} textAnchor="end" dominantBaseline="middle" className="fill-[var(--ink-mute)]" fontSize={10} fontFamily="var(--f-mono)">
               {t.toFixed(1)}
             </text>
           </g>
         ))}
-        <line x1={margin.left} x2={margin.left} y1={margin.top} y2={margin.top + plotH} stroke="var(--rule-firm)" strokeWidth={1} />
-        <line x1={margin.left} x2={width - margin.right} y1={margin.top + plotH} y2={margin.top + plotH} stroke="var(--rule-firm)" strokeWidth={1} />
+        <line x1={leftPad} x2={leftPad} y1={margin.top} y2={margin.top + plotH} stroke="var(--rule-firm)" strokeWidth={1} />
+        <line x1={leftPad} x2={leftPad + plotW} y1={margin.top + plotH} y2={margin.top + plotH} stroke="var(--rule-firm)" strokeWidth={1} />
 
         <text
           transform={`translate(${14}, ${margin.top + plotH / 2}) rotate(-90)`}
@@ -164,7 +200,7 @@ export function BoxPlot({
         </text>
 
         {groups.map((g, i) => {
-          const cx = margin.left + bandW * i + bandW / 2;
+          const cx = leftPad + bandW * i + bandW / 2;
           const jitterSeed = (s: string) => {
             let h = 0;
             for (let c = 0; c < s.length; c++) h = (h * 31 + s.charCodeAt(c)) % 1000;
