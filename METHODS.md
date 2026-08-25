@@ -257,7 +257,8 @@ The tool is general-purpose; page copy naming one study implies it isn't.
 ## 7. Planned — not yet implemented
 
 ### 7.1 GDS4299 / GSE28703 probe collapse
-**Decided (2026-08-25), not yet built.** For genes with multiple probes,
+**Decided and implemented (2026-08-25).** `app/ingest/gds4299.py`.
+For genes with multiple probes,
 select the probe with the **highest mean expression** across all samples.
 
 The selection rule must be **independent of the ETP / non-ETP grouping**.
@@ -272,6 +273,52 @@ Highest-mean-expression is outcome-independent and favours probes with
 real signal over background. Alternatives considered: max variance
 (outcome-independent but noise-prone), mean of all probes (unbiased but
 diluted by poor probes).
+
+**Empirically checked before adopting** (2026-08-25), across the MYCN /
+PP2A / ETP-signature gene panel on GSE28703:
+
+- The two rules **pick the same probe for 8 of 12** multi-probe genes,
+  including MYCN.
+- MYCN has **10 probes**; the highest-mean probe (`209757_PM_s_at`,
+  mean 5.36) is unambiguous — the other nine sit at ~2.7, i.e.
+  background, with scattered p-values (0.055–0.88) consistent with
+  noise. Both rules select it.
+- Where the rules differ (MYB, PPP2R5C, PPP2R1B, KIAA1524), the
+  unbiased rule **still finds the comparison significant**
+  (p = 0.008, 0.004, <0.001, 0.003).
+
+So the unbiased rule costs essentially nothing in sensitivity here while
+removing the circularity. Worth raising with the expert since it differs
+from the earlier analysis, but it does not overturn its conclusions.
+
+**Aliasing note:** CIP2A is not on GPL13158 under that symbol — it is
+annotated as `KIAA1524`. Gene-symbol aliasing has to be handled at
+lookup or genes will silently appear absent. See §7.4.
+
+**Probe-to-gene mapping details** (carried over from the prior verified
+analysis in `Protein-Analysis/scripts/etp_analysis_optimal_probes.py`,
+which had already solved these):
+- A probe may list several symbols (`A /// B`); take the first.
+- Sentinel values `---` and `NA` are not gene symbols and must be
+  dropped, or ~10k probes map to a junk "gene".
+- Legacy symbols need mapping: `CIP2A → KIAA1524`, `PME1 → PPME1`.
+- Of 54,715 probes on GPL13158, **44,238 carry a usable gene symbol**.
+
+### 7.1a GDS4299 ETP labels — provenance
+**Decided.** ETP / non-ETP status comes from a curated label table
+(`Protein-Analysis/data/sample_labels.csv`), **not** from GEO metadata.
+
+This needs stating because GEO's own `!Sample_characteristics_ch1` for
+GSE28703 says only `"cell type: tumor cells"` for every sample — the
+series carries **no ETP annotation at all**. Grouping is impossible
+without an external label source, exactly as with TARGET (§ Liu 2017
+enrichment, `app/ingest/liu2017_etp.py`).
+
+**Verified before use:** the label table splits **12 ETP / 40 non-ETP**,
+which matches the published composition of GSE28703 (Zhang et al.,
+Nature 2012, 481:157-163; PMID 22237106) confirmed against an
+independent source. All 52 labels join cleanly to the matrix with no
+missing or extra samples.
 
 ### 7.2 Cross-dataset comparison
 **Decided (2026-08-25), not yet built.** Datasets are shown
@@ -296,7 +343,26 @@ this is worth revisiting with the domain expert.
 ### 7.3 AALL0434
 **Open — blocked on data access.** Controlled-access via dbGaP
 `phs002276`; needs a Data Use Certification and institutional sign-off.
-Nothing to build until data is in hand.
+Nothing to build until data is in hand — this is paperwork, not
+engineering, and no public mirror substitutes for it.
+
+Parked deliberately rather than chased: everything else proceeds on
+public data. Picked up if/when access is confirmed.
+
+### 7.4 Gene-symbol aliases
+**Open.** `_resolve_gene()` (`backend/app/api/main.py`) matches an exact
+symbol or feature_id only. `FeatureMetadata` already carries an
+`aliases` field, but nothing populates or searches it.
+
+This bites as soon as a second platform is added: **CIP2A** is annotated
+as **KIAA1524** on GPL13158, so a user searching "CIP2A" gets "not found"
+even though the gene is present. Older microarray annotations use
+superseded symbols routinely.
+
+Options: populate `aliases` per-dataset at ingest from the platform
+annotation, or resolve through a shared symbol-alias table (e.g. NCBI
+gene_info) at lookup. Needs a decision before the alias problem
+multiplies across platforms.
 
 ---
 
@@ -308,3 +374,4 @@ Nothing to build until data is in hand.
 | 2026-08-25 | §7.1 probe collapse → highest mean expression; §7.2 cross-dataset → side-by-side, no pooling. |
 | 2026-08-25 | §6.1 sample accounting added, prompted by expert review of the n=466 survival count. |
 | 2026-08-25 | §3.4 Cox hazard-ratio 95% CI now reported (was computed then dropped). |
+| 2026-08-25 | GDS4299/GSE28703 ingested (`app/ingest/gds4299.py`). 21,596 genes × 52 samples (12 ETP / 40 non-ETP). Probe collapse and ETP labels verified — see §7.1, §7.1a. |

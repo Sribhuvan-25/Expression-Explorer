@@ -72,4 +72,4 @@ def ensure_loaded() -> None:
     """Import every ingest module so its register() call runs. Called
     once at API startup; new ingest modules just need to be imported
     here to join the registry — no other wiring."""
-    from app.ingest import depmap, gdc_target  # noqa: F401
+    from app.ingest import depmap, gdc_target, gds4299  # noqa: F401

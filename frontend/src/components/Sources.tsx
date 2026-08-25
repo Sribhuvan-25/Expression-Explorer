@@ -29,6 +29,20 @@ const SOURCES: Source[] = [
     detail: "186 lymphoid lines",
   },
   {
+    name: "Zhang et al., Nature 2012",
+    kind: "paper",
+    identifier: "10.1038/nature10725",
+    detail: "ETP-ALL cohort (GSE28703)",
+    url: "https://doi.org/10.1038/nature10725",
+  },
+  {
+    name: "GSE28703 / GDS4299 (GEO)",
+    kind: "dataset",
+    identifier: "GSE28703",
+    detail: "52 T-ALL samples · 12 ETP / 40 non-ETP",
+    url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE28703",
+  },
+  {
     name: "GSE225559 (GEO)",
     kind: "dataset",
     identifier: "GSE225559",
