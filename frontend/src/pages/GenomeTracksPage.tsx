@@ -183,8 +183,8 @@ export function GenomeTracksPage() {
     <div className="mx-auto max-w-[1100px]">
       <PageHeader
         eyebrow="Genome Tracks"
-        title="ZMIZ1 binding and chromatin accessibility"
-        description="Raw ChIP-seq and ATAC-seq signal (GSE225559), LOUCY and THP-6 cells, hg19. These are RPM-normalized coverage tracks — no peaks are called here, this is signal for visual inspection only."
+        title="Chromatin binding and accessibility tracks"
+        description="Raw ChIP-seq and ATAC-seq signal, hg19. These are RPM-normalized coverage tracks — no peaks are called here, this is signal for visual inspection only. Source accessions are listed under Sources."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">

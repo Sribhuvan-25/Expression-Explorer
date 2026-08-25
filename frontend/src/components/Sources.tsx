@@ -29,6 +29,13 @@ const SOURCES: Source[] = [
     detail: "186 lymphoid lines",
   },
   {
+    name: "GSE225559 (GEO)",
+    kind: "dataset",
+    identifier: "GSE225559",
+    detail: "ChIP-seq / ATAC-seq bigWig tracks, LOUCY & THP-6",
+    url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE225559",
+  },
+  {
     name: "Liu et al., Nat Genet 2017",
     kind: "paper",
     identifier: "10.1038/ng.3909",
