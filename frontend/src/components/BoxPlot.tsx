@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComparePoint } from "../lib/api";
 
 const GROUP_COLORS = ["var(--cool)", "var(--hot)", "var(--accent)", "var(--warn)", "#8B6DBF", "#5C8A6B"];
-const MAX_LABEL_CHARS = 18;
+const MAX_LABEL_CHARS = 30;
 
 function quantile(sorted: number[], q: number): number {
   const pos = (sorted.length - 1) * q;
@@ -45,7 +45,24 @@ export function BoxPlot({
   // not the chart) are unaffected. log(x+1) rather than a bare log: real
   // zero values are common in this data and log(0) is undefined, but
   // log1p maps 0 -> 0 cleanly while still compressing the long tail.
-  const [logScale, setLogScale] = useState(false);
+  // Right-skew is the norm for expression data, not the exception, so the
+  // chart picks the scale that actually renders the data legibly rather
+  // than defaulting to linear and leaving the user to discover a toggle
+  // after seeing a row of flat lines. `null` means "not chosen yet, use
+  // the automatic pick"; clicking either button pins it explicitly.
+  const [scaleChoice, setScaleChoice] = useState<"linear" | "log" | null>(null);
+  const skewed = useMemo(() => {
+    const vals = points.map((p) => p.value).filter((v) => Number.isFinite(v));
+    if (vals.length < 4) return false;
+    const sorted = [...vals].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const max = sorted[sorted.length - 1];
+    // A max an order of magnitude past the median means a linear axis
+    // spends most of its range on a handful of outliers.
+    return max > 0 && max / Math.max(median, 1e-6) > 10;
+  }, [points]);
+  const logScale = scaleChoice === null ? skewed : scaleChoice === "log";
+  const setLogScale = (v: boolean) => setScaleChoice(v ? "log" : "linear");
   const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
   const untransform = (v: number) => (logScale ? Math.expm1(v) : v);
 
@@ -95,7 +112,12 @@ export function BoxPlot({
   // labels rotate once bands get narrow enough that horizontal text would
   // still be tight even at the wider width, and long group names are
   // truncated with a title tooltip for the full text.
-  const MIN_BAND_WIDTH = 60;
+  // Long group names (DepMap subtypes run to 40+ characters) need wider
+  // bands, otherwise several distinct subtypes all truncate to the same
+  // prefix -- "B-Lymphoblastic L…" appearing four times tells the reader
+  // nothing about which is which.
+  const longestLabel = groups.reduce((m, g) => Math.max(m, g.group.length), 0);
+  const MIN_BAND_WIDTH = longestLabel > 24 ? 88 : longestLabel > 14 ? 72 : 60;
   // Cap band width so a couple of groups don't stretch into absurdly wide
   // bands, but let a small number of groups claim proportionally more
   // room -- a single-group chart pinned to a narrow band reads as a
@@ -112,13 +134,20 @@ export function BoxPlot({
   const fittedBand = innerWidth / n;
   const bandW = Math.min(MAX_BAND_WIDTH, Math.max(MIN_BAND_WIDTH, fittedBand));
   const rotateLabels = bandW < ROTATE_LABEL_THRESHOLD;
-  const bottomMargin = rotateLabels ? 92 : margin.bottom;
+  // Rotated labels need vertical room proportional to how long they are,
+  // or they get clipped by the SVG's bottom edge.
+  const bottomMargin = rotateLabels
+    ? Math.min(190, 60 + Math.min(longestLabel, MAX_LABEL_CHARS) * 4.2)
+    : margin.bottom;
 
   const plotW = bandW * groups.length;
   // Grow taller when there's room, so a wide pane doesn't produce a short
   // letterbox strip; stays within a range that reads well either way.
-  const height = Math.round(Math.min(520, Math.max(340, plotW * 0.42)));
-  const plotH = height - margin.top - bottomMargin;
+  // Size the *plot area* first and add margins on top, rather than fixing
+  // total height and letting a tall label margin eat into the plot -- with
+  // long rotated labels that left the data squeezed into a short strip.
+  const plotH = Math.round(Math.min(460, Math.max(300, plotW * 0.34)));
+  const height = plotH + margin.top + bottomMargin;
   // When bands hit their cap the plot is narrower than the pane -- centre
   // it instead of leaving all the slack on one side.
   const leftPad = margin.left + Math.max(0, (innerWidth - plotW) / 2);
@@ -262,10 +291,10 @@ export function BoxPlot({
                   fontSize={10.5}
                   fontWeight={600}
                   fill="var(--ink)"
-                  transform={`rotate(-40 ${cx} ${margin.top + plotH + 12})`}
+                  transform={`rotate(-55 ${cx} ${margin.top + plotH + 12})`}
                 >
-                  <title>{g.group}</title>
-                  {truncateLabel(g.group)}
+                  <title>{`${g.group} (n=${g.values.length})`}</title>
+                  {`${truncateLabel(g.group)} (${g.values.length})`}
                 </text>
               ) : (
                 <text x={cx} y={margin.top + plotH + 18} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--ink)">
