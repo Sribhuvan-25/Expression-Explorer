@@ -8,6 +8,62 @@ const PRESETS: Record<string, string[]> = {
   "ZMIZ1-5": ["MEF2C", "BCL2", "MYB", "MYCN", "ZMIZ1"],
 };
 
+/**
+ * A compact histogram of every score in the cohort, with the range covered
+ * by the visible top-N shaded. Without it the page shows 25 numbers out of
+ * a few hundred and gives no sense of whether the top scores are a
+ * distinct population or the tail of one continuous distribution -- which
+ * is the actual question when picking candidates.
+ */
+function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number }) {
+  if (scores.length < 4) return null;
+  const min = Math.min(...scores);
+  const max = Math.max(...scores);
+  if (!(max > min)) return null;
+
+  const BINS = 36;
+  const counts = new Array(BINS).fill(0);
+  for (const s of scores) {
+    const idx = Math.min(BINS - 1, Math.floor(((s - min) / (max - min)) * BINS));
+    counts[idx] += 1;
+  }
+  const peak = Math.max(...counts);
+  // Threshold score of the last visible row -- everything at or above it is
+  // in the table.
+  const cutoff = [...scores].sort((a, b) => b - a)[shown - 1] ?? min;
+  const cutoffFrac = (cutoff - min) / (max - min);
+
+  return (
+    <div className="mb-4">
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+          Score distribution · {scores.length} samples
+        </span>
+        <span className="font-mono text-[10px] text-ink-mute">
+          shaded = top {shown} shown below
+        </span>
+      </div>
+      <div className="flex h-14 items-end gap-[1.5px] rounded-[3px] border border-rule bg-ground px-2 pt-2">
+        {counts.map((c, i) => {
+          const inTable = i / BINS >= cutoffFrac;
+          return (
+            <span
+              key={i}
+              title={`${c} sample${c === 1 ? "" : "s"}`}
+              className={`flex-1 rounded-t-[1px] ${inTable ? "bg-accent" : "bg-rule-firm"}`}
+              style={{ height: `${peak ? Math.max((c / peak) * 100, c > 0 ? 4 : 0) : 0}%` }}
+            />
+          );
+        })}
+      </div>
+      <div className="mt-1 flex justify-between font-mono text-[9.5px] text-ink-mute">
+        <span>{min.toFixed(3)}</span>
+        <span>{max.toFixed(3)}</span>
+      </div>
+    </div>
+  );
+}
+
 export function SignaturePage() {
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
@@ -37,6 +93,10 @@ export function SignaturePage() {
         .filter(([, v]) => v != null && !Number.isNaN(v))
         .sort((a, b) => b[1] - a[1])
     : [];
+  // Bars are scaled across the whole cohort, not just the visible 25, so
+  // the top-25 view doesn't imply the full range is on screen.
+  const scoreMax = rows.length ? rows[0][1] : 1;
+  const scoreMin = rows.length ? rows[rows.length - 1][1] : 0;
 
   return (
     <div className="mx-auto max-w-[900px]">
@@ -137,20 +197,38 @@ export function SignaturePage() {
             title={`Scores — ${data.genes.join(", ")}`}
             action={<span className="font-mono text-[10.5px] text-ink-mute">n = {rows.length}</span>}
           >
+            <ScoreDistribution scores={rows.map(([, v]) => v)} shown={Math.min(25, rows.length)} />
             <DataTable
               columns={[
                 { key: "rank", label: "#", align: "right" },
                 { key: "sample", label: "Sample" },
-                { key: "score", label: "Score", align: "right" },
+                { key: "bar", label: "Score" },
+                { key: "score", label: "", align: "right" },
               ]}
               rows={rows.slice(0, 25).map(([sample, score], i) => ({
                 rank: i + 1,
                 sample: <span className="font-mono">{sample}</span>,
+                // An inline bar makes the spread between ranks readable at a
+                // glance; a column of 4-decimal numbers alone does not show
+                // whether rank 1 and rank 25 differ by a little or a lot.
+                bar: (
+                  <span className="flex items-center">
+                    <span
+                      className="inline-block h-[7px] rounded-[2px] bg-accent"
+                      style={{
+                        width: `${scoreMax > scoreMin ? ((score - scoreMin) / (scoreMax - scoreMin)) * 100 : 100}%`,
+                        minWidth: "2px",
+                      }}
+                    />
+                  </span>
+                ),
                 score: score.toFixed(4),
               }))}
             />
             {rows.length > 25 && (
-              <p className="mt-2 text-[11.5px] text-ink-mute">Showing top 25 of {rows.length} samples.</p>
+              <p className="mt-2 text-[11.5px] text-ink-mute">
+                Showing top 25 of {rows.length} samples — the distribution above covers all {rows.length}.
+              </p>
             )}
           </Panel>
         )}

@@ -13,7 +13,7 @@ const SOURCES: Source[] = [
     name: "Wang et al., J Exp Med 2025",
     kind: "paper",
     identifier: "10.1084/jem.20231349",
-    detail: "seed paper",
+    detail: "gene set reference",
     url: "https://doi.org/10.1084/jem.20231349",
   },
   {

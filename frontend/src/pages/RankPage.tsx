@@ -64,7 +64,7 @@ export function RankPage() {
       <PageHeader
         eyebrow="Sample Ranking"
         title="Rank samples by gene or signature"
-        description="Every sample sorted by expression, for picking candidates — e.g. which DepMap cell lines have the highest MYCN expression, for deciding what to order."
+        description="Every sample sorted by expression, for picking candidates — which samples carry the highest expression of a gene or signature."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">

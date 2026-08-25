@@ -52,7 +52,7 @@ export function ComparePage() {
   );
 
   return (
-    <div className="mx-auto max-w-[900px]">
+    <div className="mx-auto max-w-[1100px]">
       <PageHeader
         eyebrow="Expression Compare"
         title="Gene expression across sample groups"

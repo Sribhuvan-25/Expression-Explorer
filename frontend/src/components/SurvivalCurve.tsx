@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SurvivalCurve } from "../lib/api";
 
 const CURVE_COLORS: Record<string, string> = {
@@ -16,11 +16,37 @@ export function SurvivalPlot({
 }) {
   const [hover, setHover] = useState<{ x: number; y: number; label: string; days: number; prob: number } | null>(null);
 
-  const width = 640;
-  const height = 340;
-  const margin = { top: 20, right: 24, bottom: 44, left: 52 };
-  const plotW = width - margin.left - margin.right;
-  const plotH = height - margin.top - margin.bottom;
+  // Measure the real container instead of drawing at a fixed 640x340 and
+  // letting `viewBox` + `w-full` scale it up. That combination magnifies
+  // the entire chart -- in a 1144px pane a 640px viewBox renders at 1.79x,
+  // so 10.5px type became ~19px and 2px strokes became 3.6px. The chart
+  // has to be *laid out* at the available width, not blown up to it.
+  // Read clientWidth off the element rather than the observer's
+  // contentRect: the SVG is a child of the measured div, so once the SVG
+  // is sized from the measurement, contentRect reports the SVG's own width
+  // and the chart latches at whatever it first rendered at. clientWidth
+  // reflects the width the *parent layout* grants the div, which is the
+  // number we actually want and doesn't feed back.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setContainerWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const width = Math.max(containerWidth || 720, 320);
+  const margin = { top: 20, right: 24, bottom: 46, left: 56 };
+  const plotW = Math.max(width - margin.left - margin.right, 160);
+  // Keep a readable aspect ratio rather than a fixed height: a wide pane
+  // gets a proportionally taller plot, bounded so it never becomes a
+  // letterbox strip or a tower.
+  const plotH = Math.round(Math.min(420, Math.max(240, plotW * 0.42)));
+  const height = plotH + margin.top + margin.bottom;
 
   const maxDays = useMemo(() => {
     let m = 0;
@@ -39,28 +65,61 @@ export function SurvivalPlot({
   const entries = Object.entries(curves);
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative w-full">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
+        width={width}
+        height={height}
+        className="block max-w-full"
         role="img"
         aria-label="Kaplan-Meier survival curves"
       >
         {yTicks.map((t) => (
           <g key={t}>
-            <line x1={margin.left} x2={width - margin.right} y1={y(t)} y2={y(t)} stroke="var(--rule)" strokeWidth={1} />
-            <text x={margin.left - 8} y={y(t)} textAnchor="end" dominantBaseline="middle" fontSize={10} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
+            <line
+              x1={margin.left}
+              x2={margin.left + plotW}
+              y1={y(t)}
+              y2={y(t)}
+              stroke="var(--rule)"
+              strokeWidth={1}
+            />
+            <text
+              x={margin.left - 8}
+              y={y(t)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fontSize={10}
+              fontFamily="var(--f-mono)"
+              className="fill-[var(--ink-mute)]"
+            >
               {t.toFixed(2)}
             </text>
           </g>
         ))}
         {xTicks.map((t) => (
-          <text key={t} x={x(t)} y={margin.top + plotH + 18} textAnchor="middle" fontSize={10} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
+          <text
+            key={t}
+            x={x(t)}
+            y={margin.top + plotH + 18}
+            textAnchor="middle"
+            fontSize={10}
+            fontFamily="var(--f-mono)"
+            className="fill-[var(--ink-mute)]"
+          >
             {t}
           </text>
         ))}
-        <text x={margin.left + plotW / 2} y={height - 4} textAnchor="middle" fontSize={10.5} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]" style={{ letterSpacing: "0.04em" }}>
+        <text
+          x={margin.left + plotW / 2}
+          y={height - 6}
+          textAnchor="middle"
+          fontSize={10.5}
+          fontFamily="var(--f-mono)"
+          className="fill-[var(--ink-mute)]"
+          style={{ letterSpacing: "0.04em" }}
+        >
           DAYS
         </text>
         <text
@@ -74,8 +133,20 @@ export function SurvivalPlot({
           SURVIVAL PROBABILITY
         </text>
 
-        <line x1={margin.left} x2={margin.left} y1={margin.top} y2={margin.top + plotH} stroke="var(--rule-firm)" />
-        <line x1={margin.left} x2={width - margin.right} y1={margin.top + plotH} y2={margin.top + plotH} stroke="var(--rule-firm)" />
+        <line
+          x1={margin.left}
+          x2={margin.left}
+          y1={margin.top}
+          y2={margin.top + plotH}
+          stroke="var(--rule-firm)"
+        />
+        <line
+          x1={margin.left}
+          x2={margin.left + plotW}
+          y1={margin.top + plotH}
+          y2={margin.top + plotH}
+          stroke="var(--rule-firm)"
+        />
 
         {entries.map(([label, curve], i) => {
           const color = CURVE_COLORS[label] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
@@ -99,12 +170,18 @@ export function SurvivalPlot({
                   key={idx}
                   cx={x(p.days)}
                   cy={y(p.survival_probability)}
-                  r={3}
+                  r={4}
                   fill={color}
                   opacity={0}
                   onMouseEnter={(e) => {
                     const rect = (e.target as SVGCircleElement).ownerSVGElement!.getBoundingClientRect();
-                    setHover({ x: e.clientX - rect.left, y: e.clientY - rect.top, label, days: p.days, prob: p.survival_probability });
+                    setHover({
+                      x: e.clientX - rect.left,
+                      y: e.clientY - rect.top,
+                      label,
+                      days: p.days,
+                      prob: p.survival_probability,
+                    });
                   }}
                   onMouseLeave={() => setHover(null)}
                   className="cursor-pointer"
@@ -133,7 +210,9 @@ export function SurvivalPlot({
           className="pointer-events-none absolute z-10 rounded-[3px] border border-rule bg-surface px-2.5 py-1.5 shadow-lg"
           style={{ left: hover.x + 12, top: hover.y - 10 }}
         >
-          <p className="font-mono text-[10.5px] text-ink-mute">{hover.label} &middot; day {hover.days}</p>
+          <p className="font-mono text-[10.5px] text-ink-mute">
+            {hover.label} &middot; day {hover.days}
+          </p>
           <p className="font-mono text-[12px] font-semibold text-ink">{(hover.prob * 100).toFixed(1)}%</p>
         </div>
       )}
