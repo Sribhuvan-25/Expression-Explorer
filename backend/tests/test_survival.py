@@ -8,7 +8,13 @@ import pandas as pd
 import pytest
 from lifelines.exceptions import ConvergenceError, StatError
 
-from app.analysis.survival import binarize_by_median, build_survival_frame, cox_model
+from app.analysis.survival import (
+    binarize_by_cutoff,
+    binarize_by_median,
+    build_survival_frame,
+    cox_model,
+    kaplan_meier_curves,
+)
 
 
 def _samples(n=30, with_group_columns=True):
@@ -93,3 +99,70 @@ def test_cox_model_too_few_cases_raises_value_error():
 
     with pytest.raises(ValueError, match="Too few complete cases"):
         cox_model(frame)
+
+
+def _scored_frame(n=100, seed=5):
+    samples = _samples(n, with_group_columns=False)
+    scores = pd.Series(np.random.default_rng(seed).random(n), index=samples["sample_id"])
+    return build_survival_frame(samples, scores)
+
+
+def test_binarize_by_cutoff_median_matches_binarize_by_median():
+    frame = _scored_frame()
+    assert binarize_by_cutoff(frame, method="median").equals(binarize_by_median(frame))
+
+
+def test_binarize_by_cutoff_quartile_keeps_only_top_and_bottom_quarter():
+    frame = _scored_frame(n=100)
+    group = binarize_by_cutoff(frame, method="quartile")
+
+    assert (group == "HIGH").sum() == 25
+    assert (group == "LOW").sum() == 25
+    assert group.isna().sum() == 50
+
+    # The HIGH group really is the top scores, not an arbitrary 25%.
+    high_scores = frame.loc[group == "HIGH", "signature_score"]
+    low_scores = frame.loc[group == "LOW", "signature_score"]
+    assert high_scores.min() >= low_scores.max()
+
+
+def test_binarize_by_cutoff_custom_asymmetric_percentiles():
+    frame = _scored_frame(n=100)
+    group = binarize_by_cutoff(frame, method="custom", custom_high_pct=30, custom_low_pct=10)
+
+    assert (group == "HIGH").sum() == 30
+    assert (group == "LOW").sum() == 10
+    assert group.isna().sum() == 60
+
+
+def test_binarize_by_cutoff_rejects_overlapping_percentiles():
+    frame = _scored_frame(n=50)
+    with pytest.raises(ValueError, match="exceed 100%"):
+        binarize_by_cutoff(frame, method="custom", custom_high_pct=60, custom_low_pct=60)
+
+
+def test_binarize_by_cutoff_rejects_out_of_range_percentile():
+    frame = _scored_frame(n=50)
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        binarize_by_cutoff(frame, method="custom", custom_high_pct=0, custom_low_pct=50)
+
+
+def test_binarize_by_cutoff_unknown_method_raises():
+    frame = _scored_frame(n=50)
+    with pytest.raises(ValueError, match="Unknown cutoff method"):
+        binarize_by_cutoff(frame, method="bogus")
+
+
+def test_kaplan_meier_curves_drops_excluded_middle_band():
+    """A quartile/custom cutoff's excluded middle band must not surface as
+    a spurious third curve (e.g. a 'None'/'<NA>' group) -- only HIGH/LOW
+    should ever appear, and only the kept samples should count toward n."""
+    frame = _scored_frame(n=100)
+    group = binarize_by_cutoff(frame, method="quartile")
+
+    result = kaplan_meier_curves(frame, group)
+
+    assert set(result["curves"].keys()) == {"HIGH", "LOW"}
+    assert result["curves"]["HIGH"]["n"] == 25
+    assert result["curves"]["LOW"]["n"] == 25
+    assert "logrank_p_value" in result  # still exactly 2 groups -> log-rank runs

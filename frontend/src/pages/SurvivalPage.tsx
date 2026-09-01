@@ -23,17 +23,40 @@ export function SurvivalPage() {
 
   const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5"]);
   const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5");
-  const [query, setQuery] = useState<{ datasetId: string; genes: string[] } | null>(null);
+  const [cutoffMethod, setCutoffMethod] = useState<"median" | "quartile" | "custom">("median");
+  const [cutoffHighPct, setCutoffHighPct] = useState(25);
+  const [cutoffLowPct, setCutoffLowPct] = useState(25);
+  const [query, setQuery] = useState<{
+    datasetId: string;
+    genes: string[];
+    cutoffMethod: "median" | "quartile" | "custom";
+    cutoffHighPct: number;
+    cutoffLowPct: number;
+  } | null>(null);
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["survival", query],
-    queryFn: () => api.survival(query!.datasetId, query!.genes),
+    queryFn: () =>
+      api.survival(query!.datasetId, query!.genes, [], {
+        method: query!.cutoffMethod,
+        highPct: query!.cutoffHighPct,
+        lowPct: query!.cutoffLowPct,
+      }),
     enabled: !!query,
   });
 
   const run = () => {
-    if (genes.length > 0 && datasetId) setQuery({ datasetId, genes });
+    if (genes.length > 0 && datasetId) {
+      setQuery({ datasetId, genes, cutoffMethod, cutoffHighPct, cutoffLowPct });
+    }
   };
+
+  const cutoffDescription =
+    query?.cutoffMethod === "quartile"
+      ? "top vs. bottom quartile of scores (middle 50% excluded)"
+      : query?.cutoffMethod === "custom"
+        ? `top ${query.cutoffHighPct}% vs. bottom ${query.cutoffLowPct}% of scores`
+        : "median signature score";
 
   return (
     <div className="mx-auto max-w-[1100px]">
@@ -98,6 +121,59 @@ export function SurvivalPage() {
                   setActivePreset(null);
                 }}
               />
+
+              <div className="mt-4">
+                <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                  Group cutoff
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex overflow-hidden rounded-[3px] border border-rule">
+                    {(["median", "quartile", "custom"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setCutoffMethod(m)}
+                        className={`px-3 py-1 font-mono text-[11.5px] capitalize transition-colors ${
+                          cutoffMethod === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                  {cutoffMethod === "custom" && (
+                    <div className="flex items-center gap-2 text-[12px] text-ink-soft">
+                      <span>High</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={cutoffHighPct}
+                        onChange={(e) => setCutoffHighPct(Number(e.target.value))}
+                        className="w-14 rounded-[3px] border border-rule bg-ground px-2 py-1 text-[12.5px] text-ink outline-none focus:border-accent"
+                      />
+                      <span>% · Low</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={cutoffLowPct}
+                        onChange={(e) => setCutoffLowPct(Number(e.target.value))}
+                        className="w-14 rounded-[3px] border border-rule bg-ground px-2 py-1 text-[12.5px] text-ink outline-none focus:border-accent"
+                      />
+                      <span>%</span>
+                    </div>
+                  )}
+                </div>
+                {cutoffMethod !== "median" && (
+                  <p className="mt-1.5 text-[11.5px] text-ink-mute">
+                    {cutoffMethod === "quartile"
+                      ? "Only the top and bottom 25% of samples by score are compared — the middle 50% are excluded."
+                      : `Only the top ${cutoffHighPct}% and bottom ${cutoffLowPct}% of samples by score are compared — the rest are excluded.`}
+                  </p>
+                )}
+              </div>
+
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-[12px] text-ink-mute">
                   Requires ≥10 patients with both a computable score and clinical follow-up data.
@@ -136,7 +212,7 @@ export function SurvivalPage() {
                         svgRef={chartRef}
                         filename={`survival-${data.genes.join("-")}`}
                         title={`Survival — ${data.genes.join(", ")}`}
-                        subtitle={`n = ${data.n} · LOW/HIGH split at median signature score`}
+                        subtitle={`n = ${data.n} · LOW/HIGH split by ${cutoffDescription}`}
                         statLines={[
                           `Log-rank p = ${data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}`,
                           ...(data.cox
@@ -147,6 +223,7 @@ export function SurvivalPage() {
                     </div>
                   }
                 >
+                  <p className="mb-2 text-[11.5px] text-ink-mute">Groups split by {cutoffDescription}.</p>
                   <SurvivalPlot curves={data.curves} svgRef={chartRef} />
                   {data.n_excluded > 0 && (
                     <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
@@ -179,12 +256,14 @@ export function SurvivalPage() {
                           { key: "cov", label: "Covariate" },
                           { key: "coef", label: "Coef", align: "right" },
                           { key: "hr", label: "Hazard ratio", align: "right" },
+                          { key: "ci", label: "95% CI", align: "right" },
                           { key: "p", label: "p", align: "right" },
                         ]}
                         rows={Object.entries(data.cox.coefficients).map(([name, c]) => ({
                           cov: <span className="font-mono">{name}</span>,
                           coef: c.coef.toFixed(3),
                           hr: c["exp(coef)"].toFixed(3),
+                          ci: `${c["exp(coef) lower 95%"].toFixed(3)} – ${c["exp(coef) upper 95%"].toFixed(3)}`,
                           p: c.p < 0.001 ? c.p.toExponential(2) : c.p.toFixed(4),
                         }))}
                       />

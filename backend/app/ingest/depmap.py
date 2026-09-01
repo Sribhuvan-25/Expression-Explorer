@@ -3,15 +3,28 @@ DepMap loader — cell-line RNA-seq, for the "which lines to buy" question
 (PDF p.3: MYCN/PP2A expression across cell lines).
 
 DepMap's own /portal/api/download/files endpoint is behind Cloudflare bot
-verification and cannot be scraped programmatically. The legitimate,
-scriptable distribution channel is the versioned Figshare release; we
-resolve the current release by searching Figshare's public API rather than
-hardcoding a release id, so a new quarterly release doesn't silently break
-this loader.
+verification (confirmed directly: a plain request gets a Turnstile
+challenge page, not data) and cannot be scraped programmatically. The
+legitimate, scriptable distribution channel is the versioned Figshare
+release; we resolve the current release by searching Figshare's public API
+rather than hardcoding a release id, so a new quarterly release doesn't
+silently break this loader.
+
+Known, bounded limitation (see METHODS.md 7.5): DepMap stopped publishing
+full quarterly bundles to Figshare after 24Q4 (Dec 2024) -- newer releases
+(25Q2 onward) are portal-only, behind the same bot gate. This loader can
+therefore only ever find 24Q4 on Figshare going forward, and has no way to
+detect a newer release existing elsewhere. Rather than silently serve an
+ever-staler snapshot under a "current data" claim, `_release_age_warning`
+below computes the release's age from its own title and surfaces it -- in
+the dataset's `notes` (so the UI shows it) and as a log warning past a
+threshold -- so staleness is visible instead of assumed away.
 """
 from __future__ import annotations
 
+import logging
 import re
+from datetime import date
 
 import httpx
 import pandas as pd
@@ -34,7 +47,49 @@ MODEL_FILENAME = "Model.csv"
 # before "Public"). Figshare's free-text search is relevance-ranked and not
 # exhaustive for a single query, so we page through results and keep every
 # title matching this pattern, then take the most recently published one.
-_RELEASE_TITLE = re.compile(r"^DepMap \d\dQ\d Public$")
+_RELEASE_TITLE = re.compile(r"^DepMap (\d\d)Q(\d) Public$")
+
+log = logging.getLogger(__name__)
+
+# A quarterly cadence release older than this is flagged, in both the
+# dataset's own `notes` and the app log -- verified empirically (2026-08-29)
+# that DepMap 24Q4 is the newest release matching this title on Figshare;
+# every release since (25Q1 onward) is portal-only, behind the same
+# Cloudflare bot gate the module docstring describes. Two quarters is a
+# deliberately loose threshold: Figshare lagging DepMap's own release
+# cadence by a quarter isn't unusual on its own, but anything past that is
+# worth a human looking at, not a code assumption.
+_STALE_AFTER_QUARTERS = 2
+
+
+def _release_age_warning(release_title: str, today: date | None = None) -> str | None:
+    """None if the release looks current; otherwise a human-readable note
+    on how far behind it is, for both the dataset's notes and a log line.
+
+    Parses "DepMap YYQN Public" rather than trusting Figshare's own
+    published_date, since a cached release note (read from disk, not
+    re-fetched from Figshare) only ever has the title string to go on.
+    """
+    match = _RELEASE_TITLE.match(release_title)
+    if not match:
+        return None
+    yy, q = int(match.group(1)), int(match.group(2))
+    release_quarters = yy * 4 + (q - 1)  # e.g. 24Q4 -> 24*4+3 = 99
+
+    today = today or date.today()
+    current_quarters = today.year % 100 * 4 + (today.month - 1) // 3
+
+    behind = current_quarters - release_quarters
+    if behind <= _STALE_AFTER_QUARTERS:
+        return None
+    return (
+        f"This is DepMap {yy:02d}Q{q} Public, {behind} quarters behind the current "
+        "calendar quarter. DepMap stopped publishing full releases to Figshare "
+        "after 24Q4; newer releases are portal-only and blocked by DepMap's "
+        "own bot verification (Cloudflare Turnstile) from this app's "
+        "programmatic loader -- see METHODS.md 7.5. Not a bug in this app; "
+        "a known, monitored gap in the upstream distribution channel."
+    )
 
 
 def _resolve_release_urls(query: str = "DepMap Public", max_pages: int = 5) -> tuple[dict[str, str], str]:
@@ -110,6 +165,10 @@ def load(lineage_filter: str | None = "Lymphoid", use_cache: bool = True) -> Dat
     features["aliases"] = [[] for _ in range(len(features))]
     matrix.index = features["feature_id"]
 
+    staleness = _release_age_warning(release_title)
+    if staleness:
+        log.warning("depmap dataset: %s", staleness)
+
     source = DatasetSource(
         dataset_id="depmap",
         display_name="DepMap cell line RNA-seq",
@@ -120,8 +179,10 @@ def load(lineage_filter: str | None = "Lymphoid", use_cache: bool = True) -> Dat
         gene_identifier="symbol",
         n_samples=matrix.shape[1],
         notes=(
-            f"Filtered to lineage={lineage_filter!r}. " if lineage_filter else "All lineages. "
-        ) + "Values are log2(TPM+1), matching DepMap's native scale.",
+            (f"Filtered to lineage={lineage_filter!r}. " if lineage_filter else "All lineages. ")
+            + "Values are log2(TPM+1), matching DepMap's native scale."
+            + (f" {staleness}" if staleness else "")
+        ),
     )
     return Dataset(source=source, matrix=matrix, samples=samples, features=features)
 

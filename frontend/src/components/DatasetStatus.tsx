@@ -37,6 +37,15 @@ export function DatasetStatus() {
                   {d.assay_type && ` · ${d.assay_type.replace(/_/g, "-")}`}
                   {d.supports_survival && " · survival"}
                 </p>
+                {/* Provenance caveats (e.g. a stale upstream release) are
+                    substantive enough to belong beside the dataset itself,
+                    not buried behind a per-dataset API call nothing in the
+                    UI ever made -- see METHODS.md 7.5. */}
+                {d.notes && /quarters behind/.test(d.notes) && (
+                  <p className="mt-0.5 text-[10.5px] leading-snug text-warn">
+                    {d.notes.match(/This is [^.]+\./)?.[0] ?? d.notes}
+                  </p>
+                )}
               </div>
             </div>
           ))}

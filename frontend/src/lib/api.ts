@@ -15,6 +15,22 @@ export interface DatasetSummary {
   n_samples?: number;
   assay_type?: string;
   accession?: string;
+  // Provenance caveats -- e.g. DepMap's release-staleness disclosure
+  // (METHODS.md 7.5). Was computed correctly by the backend but had no
+  // reader anywhere in the frontend until this field was added: the
+  // per-dataset /datasets/{id} endpoint carried it, but nothing in the UI
+  // ever called that endpoint, so a real, correctly-computed warning was
+  // silently invisible to every user.
+  notes?: string;
+}
+
+export interface GeneInfo {
+  symbol: string;
+  name: string | null;
+  summary: string | null;
+  aliases: string[];
+  ensembl_gene_id: string | null;
+  entrez_gene_id: string | number | null;
 }
 
 export interface DatasetSource {
@@ -59,7 +75,31 @@ export interface CompareResult {
   // etp_status for 190 of 469) otherwise silently narrows the analysis.
   n_dataset_total: number;
   n_excluded: number;
-  exclusion_reason: string;
+  // null when n_excluded is 0 -- no reason to give when nothing was
+  // excluded (previously always a string, even claiming an exclusion
+  // reason on a 100%-covered grouping column).
+  exclusion_reason: string | null;
+}
+
+export interface CompareMultiDatasetResult {
+  dataset_id: string;
+  display_name: string;
+  skipped: boolean;
+  skip_reason?: string;
+  assay_type?: string;
+  expression_unit?: string;
+  n_dataset_total?: number;
+  n_excluded?: number;
+  exclusion_reason?: string | null;
+  points?: ComparePoint[];
+  pairwise_tests?: PairwiseTest[];
+  kruskal_wallis?: { h_stat: number | null; p_value: number | null };
+}
+
+export interface CompareMultiResult {
+  gene: string;
+  group_column: string;
+  datasets: CompareMultiDatasetResult[];
 }
 
 export interface SurvivalPoint {
@@ -96,7 +136,76 @@ export interface SurvivalResult {
   // doesn't read as a different cohort.
   n_dataset_total: number;
   n_excluded: number;
-  exclusion_reason: string;
+  exclusion_reason: string | null;
+}
+
+export interface CorrelationPoint {
+  sample_id: string;
+  x: number;
+  y: number;
+}
+
+export interface CorrelationResult {
+  gene_a: string;
+  gene_b: string;
+  method: "pearson" | "spearman" | "kendall";
+  n: number;
+  coefficient: number;
+  p_value: number;
+  points: CorrelationPoint[];
+}
+
+export interface CoExpressionEntry {
+  gene: string;
+  symbol: string;
+  coefficient: number;
+}
+
+export interface CoExpressionResult {
+  gene: string;
+  method: "pearson" | "spearman";
+  direction: "positive" | "negative";
+  network: CoExpressionEntry[];
+}
+
+export interface PCAPoint {
+  sample_id: string;
+  pc1: number;
+  pc2?: number;
+  [key: `pc${number}`]: number | undefined;
+  group_columns?: Record<string, string | null>;
+}
+
+export interface PCAResult {
+  n_components: number;
+  n_samples: number;
+  genes_used: string[];
+  genes_missing: string[];
+  genes_zero_variance: string[];
+  genes_unrecognized: string[];
+  variance_explained: number[];
+  points: PCAPoint[];
+}
+
+export interface DifferentialGeneRow {
+  feature_id: string;
+  symbol: string;
+  p_value: number;
+  q_value: number;
+  median_diff: number;
+  median_a: number;
+  median_b: number;
+}
+
+export interface DifferentialResult {
+  group_column: string;
+  group_a: string;
+  group_b: string;
+  n_a: number;
+  n_b: number;
+  n_genes_tested: number;
+  top_n: number;
+  genes: DifferentialGeneRow[];
 }
 
 export interface RankRow {
@@ -170,19 +279,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listDatasets: () => request<{ datasets: DatasetSummary[] }>("/datasets"),
   datasetInfo: (datasetId: string) => request<DatasetSource>(`/datasets/${datasetId}`),
+  geneInfo: (symbol: string) => request<GeneInfo>(`/genes/${encodeURIComponent(symbol)}`),
   compare: (datasetId: string, gene: string, groupColumn: string) =>
     request<CompareResult>(
       `/datasets/${datasetId}/compare?gene=${encodeURIComponent(gene)}&group_column=${encodeURIComponent(groupColumn)}`,
+    ),
+  compareMulti: (gene: string, groupColumn: string, datasetIds: string[]) =>
+    request<CompareMultiResult>(
+      `/datasets/compare-multi?gene=${encodeURIComponent(gene)}&group_column=${encodeURIComponent(groupColumn)}&dataset_ids=${encodeURIComponent(datasetIds.join(","))}`,
     ),
   signatureScore: (datasetId: string, genes: string[], method: "auc" | "log2_mean" = "auc") =>
     request<{ genes: string[]; method: string; scores: Record<string, number> }>(
       `/datasets/${datasetId}/signature-score`,
       { method: "POST", body: JSON.stringify({ genes, method }) },
     ),
-  survival: (datasetId: string, genes: string[], covariates: string[] = []) =>
+  survival: (
+    datasetId: string,
+    genes: string[],
+    covariates: string[] = [],
+    cutoff?: { method: "median" | "quartile" | "custom"; highPct?: number; lowPct?: number },
+  ) =>
     request<SurvivalResult>(`/datasets/${datasetId}/survival`, {
       method: "POST",
-      body: JSON.stringify({ genes, covariates }),
+      body: JSON.stringify({
+        genes,
+        covariates,
+        cutoff_method: cutoff?.method ?? "median",
+        cutoff_high_pct: cutoff?.highPct ?? 50,
+        cutoff_low_pct: cutoff?.lowPct ?? 50,
+      }),
     }),
   rankByGene: (datasetId: string, gene: string) =>
     request<RankResult & { gene: string }>(`/datasets/${datasetId}/rank?gene=${encodeURIComponent(gene)}`),
@@ -191,4 +316,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ genes, method }),
     }),
+  correlation: (datasetId: string, geneA: string, geneB: string, method: "pearson" | "spearman" | "kendall" = "pearson") =>
+    request<CorrelationResult>(
+      `/datasets/${datasetId}/correlation?gene_a=${encodeURIComponent(geneA)}&gene_b=${encodeURIComponent(geneB)}&method=${method}`,
+    ),
+  coExpression: (
+    datasetId: string,
+    gene: string,
+    options?: { topN?: number; method?: "pearson" | "spearman"; direction?: "positive" | "negative" },
+  ) =>
+    request<CoExpressionResult>(
+      `/datasets/${datasetId}/co-expression?gene=${encodeURIComponent(gene)}&top_n=${options?.topN ?? 20}&method=${options?.method ?? "pearson"}&direction=${options?.direction ?? "positive"}`,
+    ),
+  pca: (datasetId: string, genes: string[], nComponents: number = 2) =>
+    request<PCAResult>(`/datasets/${datasetId}/pca`, {
+      method: "POST",
+      body: JSON.stringify({ genes, n_components: nComponents }),
+    }),
+  differential: (datasetId: string, groupColumn: string, groupA: string, groupB: string, topN: number = 50) =>
+    request<DifferentialResult>(
+      `/datasets/${datasetId}/differential?group_column=${encodeURIComponent(groupColumn)}&group_a=${encodeURIComponent(groupA)}&group_b=${encodeURIComponent(groupB)}&top_n=${topN}`,
+    ),
+  groupValues: (datasetId: string, groupColumn: string) =>
+    request<{ group_column: string; values: { value: string; n: number }[] }>(
+      `/datasets/${datasetId}/group-values?group_column=${encodeURIComponent(groupColumn)}`,
+    ),
 };

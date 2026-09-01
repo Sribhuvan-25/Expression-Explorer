@@ -10,6 +10,7 @@ const NAV_ITEMS: { type: PaneType; hint: string }[] = [
   { type: "signature", hint: "Gene set, ranked" },
   { type: "rank", hint: "Pick candidates" },
   { type: "survival", hint: "Kaplan–Meier + Cox" },
+  { type: "correlation", hint: "Gene vs gene, network, PCA" },
   { type: "genome-tracks", hint: "ChIP-seq / ATAC-seq" },
 ];
 
@@ -28,6 +29,14 @@ const NAV_ICONS: Record<PaneType, React.ReactNode> = {
   ),
   rank: <path d="M5 6h6M5 11h9M5 16h13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />,
   survival: <path d="M4 18C9 18 9 6 18 6" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" />,
+  correlation: (
+    <>
+      <circle cx="5" cy="16" r="1.7" fill="currentColor" />
+      <circle cx="10" cy="10" r="1.7" fill="currentColor" />
+      <circle cx="14" cy="13" r="1.7" fill="currentColor" />
+      <circle cx="18" cy="6" r="1.7" fill="currentColor" />
+    </>
+  ),
   "genome-tracks": (
     <>
       <rect x="3.5" y="9" width="15" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
