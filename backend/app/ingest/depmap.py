@@ -122,7 +122,11 @@ def _resolve_release_urls(query: str = "DepMap Public", max_pages: int = 5) -> t
     return files, latest["title"]
 
 
-def load(lineage_filter: str | None = "Lymphoid", use_cache: bool = True) -> Dataset:
+def load(lineage_filter: str | None = "Lymphoid", use_cache: bool = True, with_aux: bool = True) -> Dataset:
+    """`with_aux=False` skips the CRISPR and drug-sensitivity layers.
+    Those reach additional Figshare releases; a caller wanting only
+    expression (notably unit tests, which mock the expression path) must
+    be able to opt out rather than transitively depending on them."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     matrix_path = CACHE_DIR / "matrix.parquet"
     model_path = CACHE_DIR / "model.parquet"
@@ -184,7 +188,38 @@ def load(lineage_filter: str | None = "Lymphoid", use_cache: bool = True) -> Dat
             + (f" {staleness}" if staleness else "")
         ),
     )
-    return Dataset(source=source, matrix=matrix, samples=samples, features=features)
+    # Auxiliary layers are attached best-effort: a failure to fetch CRISPR
+    # or drug-sensitivity data must not take down the expression dataset
+    # that is this loader's actual job. Both return None (or raise, caught
+    # here) and the dataset simply loads without that layer -- callers
+    # discover what's present via Dataset.require_aux(), which names what
+    # IS available rather than assuming.
+    aux: dict = {}
+    if with_aux:
+        for layer_name, loader_fn in (("CRISPR", _load_crispr_layer), ("drug sensitivity", _load_drug_layer)):
+            try:
+                layer = loader_fn(use_cache=use_cache)
+                if layer is not None:
+                    aux[layer.layer] = layer
+            except Exception as exc:  # noqa: BLE001 - additive layer, never fatal
+                log.warning("depmap dataset: %s layer unavailable (%s)", layer_name, exc)
+
+    return Dataset(source=source, matrix=matrix, samples=samples, features=features, aux=aux)
+
+
+def _load_crispr_layer(use_cache: bool = True):
+    # Imported lazily inside the function: depmap_crispr imports
+    # _resolve_release_urls from this module, so a module-level import
+    # here would be circular.
+    from app.ingest.depmap_crispr import load_crispr
+
+    return load_crispr(use_cache=use_cache)
+
+
+def _load_drug_layer(use_cache: bool = True):
+    from app.ingest.depmap_prism import load_drug_sensitivity
+
+    return load_drug_sensitivity(use_cache=use_cache)
 
 
 from app.registry import DatasetDescriptor, register  # noqa: E402

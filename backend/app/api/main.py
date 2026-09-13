@@ -13,6 +13,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.analysis.aux_analysis import (
+    expression_by_mutation_status,
+    expression_vs_aux_correlation,
+    most_mutated_genes,
+)
 from app.analysis.compare import expression_by_group, kruskal_wallis, pairwise_tests
 from app.analysis.correlation import co_expression_network, gene_correlation
 from app.analysis.differential import top_differential_genes
@@ -22,7 +27,7 @@ from app.analysis.signature import auc_signature_score, log2_mean_signature_scor
 from app.analysis.survival import binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
-from app.models.contract import Dataset
+from app.models.contract import AuxLayer, Dataset
 from app.registry import ensure_loaded, get_descriptor, list_descriptors
 from app.services.gene_info import lookup_gene
 
@@ -47,7 +52,18 @@ def _get_dataset(dataset_id: str) -> Dataset:
 
 
 def _resolve_gene(ds: Dataset, gene: str) -> str:
-    """Accept either a symbol or a feature_id; return the feature_id."""
+    """Accept either a symbol or a feature_id; return the feature_id.
+
+    Whitespace and case are normalised here rather than at each call site:
+    `mutated_gene` was being `.strip().upper()`'d by its own endpoint while
+    `gene` wasn't, so `?gene=dtx1` 404'd on an API the UI happens to
+    uppercase for you. Normalising centrally makes every endpoint behave
+    the same way (caught in QA). Ensembl feature_ids are matched before
+    upper-casing since they're already canonical.
+    """
+    if gene in ds.matrix.index:
+        return gene
+    gene = gene.strip().upper()
     if gene in ds.matrix.index:
         return gene
     matches = ds.features[ds.features["symbol"] == gene]
@@ -361,6 +377,101 @@ def co_expression(
     for entry in network:
         entry["symbol"] = symbol_by_feature.get(entry["gene"], entry["gene"])
     return {"gene": gene, "method": method, "direction": direction, "network": network}
+
+
+@app.get("/datasets/{dataset_id}/aux-layers")
+def aux_layers(dataset_id: str):
+    """What auxiliary measurement layers this dataset carries, and how much
+    of the cohort each one covers. Exists so a UI can offer only the
+    analyses a given dataset can actually support, and state the coverage
+    up front rather than after a query returns a surprising n."""
+    ds = _get_dataset(dataset_id)
+    out = []
+    for layer, aux in ds.aux.items():
+        covered, total = ds.aux_sample_overlap(layer)
+        shared = [c for c in ds.matrix.columns if c in aux.matrix.columns]
+        out.append({
+            "layer": layer.value,
+            "value_label": aux.value_label,
+            "value_description": aux.value_description,
+            "source_note": aux.source_note,
+            "n_features": aux.n_features,
+            # n_features alone oversells a sparse layer -- PRISM ships 6,790
+            # compounds but only ~22% were assayed on enough of this
+            # dataset's samples to be analysable. See
+            # AuxMatrix.n_usable_features.
+            "n_usable_features": aux.n_usable_features(shared),
+            "n_samples_covered": covered,
+            "n_dataset_total": total,
+        })
+    return {"dataset_id": dataset_id, "layers": out}
+
+
+@app.get("/datasets/{dataset_id}/mutated-genes")
+def mutated_genes(dataset_id: str, top_n: int = 25):
+    """Most recurrently mutated genes in this cohort -- the entry point for
+    picking something to stratify by, since a user can't guess which genes
+    are actually mutated often enough to compare."""
+    if not (1 <= top_n <= 200):
+        raise HTTPException(422, "top_n must be between 1 and 200.")
+    ds = _get_dataset(dataset_id)
+    try:
+        return most_mutated_genes(ds, top_n=top_n)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.get("/datasets/{dataset_id}/compare-by-mutation")
+def compare_by_mutation(dataset_id: str, gene: str, mutated_gene: str):
+    """Expression of `gene`, split by whether each sample carries a
+    non-silent mutation in `mutated_gene` -- GEPIA3's "Hotspot Mutation"
+    equivalent. Deliberately a separate endpoint from /compare rather than
+    a mode flag: the grouping comes from a different measurement layer with
+    its own partial coverage, which needs its own exclusion accounting."""
+    ds = _get_dataset(dataset_id)
+    feature_id = _resolve_gene(ds, gene)
+    try:
+        result = expression_by_mutation_status(ds, feature_id, mutated_gene.strip().upper())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    result["gene"] = gene
+    return result
+
+
+@app.get("/datasets/{dataset_id}/expression-vs-aux")
+def expression_vs_aux(
+    dataset_id: str,
+    gene: str,
+    layer: Literal["crispr_gene_effect", "drug_sensitivity"],
+    aux_feature: str,
+    method: Literal["pearson", "spearman"] = "pearson",
+):
+    """Correlate a gene's expression against an auxiliary measurement on the
+    same samples -- e.g. does MYCN expression track with dependency on a
+    gene (CRISPR) or with sensitivity to a compound (PRISM drug screen)."""
+    ds = _get_dataset(dataset_id)
+    feature_id = _resolve_gene(ds, gene)
+    try:
+        result = expression_vs_aux_correlation(
+            ds, AuxLayer(layer), feature_id, aux_feature, method=method
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc).strip("'"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    result["gene"] = gene
+    result["aux_feature"] = aux_feature
+    # Compound ids ("BRD:BRD-K00104122-001-01-9") mean nothing to a reader,
+    # so resolve to the drug name where the layer carries a feature table.
+    aux = ds.require_aux(AuxLayer(layer))
+    if aux.features is not None and aux_feature in aux.features.index:
+        row = aux.features.loc[aux_feature]
+        result["aux_feature_label"] = str(row.get("symbol", aux_feature))
+        result["aux_feature_moa"] = str(row.get("moa", "")) or None
+    else:
+        result["aux_feature_label"] = aux_feature
+        result["aux_feature_moa"] = None
+    return result
 
 
 class PCARequest(BaseModel):

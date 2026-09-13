@@ -661,6 +661,161 @@ different, also-legitimate source at the very top of the list.
 
 ---
 
+## 8. Auxiliary measurement layers
+
+### 8.1 Aux layers are not separate datasets
+**Decided and implemented (2026-09-13).** CRISPR gene-effect, drug
+sensitivity, and somatic mutation status attach to an **existing**
+dataset as `AuxLayer` entries (`backend/app/models/contract.py`), not as
+new registry entries.
+
+They are the same samples, keyed by the same `sample_id`s, measured a
+second way — DepMap's CRISPR screen runs on the same cell lines as its
+expression matrix; TARGET's exomes are the same patients as its RNA-seq.
+Registering "DepMap CRISPR" beside "DepMap cell line RNA-seq" in the
+sidebar would imply two cohorts where there is one, which is exactly the
+kind of quiet misrepresentation §7.2 and §6.1 exist to prevent.
+
+`Dataset.aux` defaults to `{}`, so every pre-existing loader is
+unaffected. `require_aux()` fails with a message naming what the dataset
+*does* carry rather than a bare `KeyError`, and `aux_sample_overlap()`
+returns `(covered, total)` because **no aux layer covers a whole
+dataset** (see 8.2–8.4) and reporting that split is mandatory.
+
+**Aux loading is opt-in (`with_aux`, default True in app use, passed
+False by tests).** Each layer reaches an additional network service; the
+primary expression loader must not transitively depend on them. This was
+found the hard way — the first implementation made every existing
+`gdc_target` unit test start downloading 739 MAF files.
+
+### 8.2 TARGET-ALL-P2 somatic mutations
+**Implemented.** `backend/app/ingest/target_mutations.py`. 739
+open-access Masked Somatic Mutation MAFs from GDC → a boolean
+(gene × sample) matrix: 6,250 genes × 717 samples, 10,978 mutated
+gene-sample pairs, ~6 min cold ingest.
+
+**Coverage: 279 of 469 RNA-seq samples (59%).** Predicted from research
+before building, then reproduced exactly by the finished loader — a
+useful independent check that the barcode→submitter_id join is right.
+Every analysis over this layer reports the exclusion (§6.1).
+
+**Non-silent filter is an explicit allowlist**, not "not Silent":
+missense, nonsense, nonstop, frameshift ins/del, in-frame ins/del,
+splice-site, translation-start. Verified against a real file where 7 of
+21 calls in one aliquot were `Silent` and 2 were `3'UTR` — counting
+those as "this gene is mutated" would inflate every mutation rate with
+variants that don't change the protein.
+
+**Validated against known T-ALL biology**, which is the strongest
+evidence the parsing is correct: the top recurrently-mutated genes come
+out as NOTCH1 57%, FBXW7 21%, PHF6 14%, NRAS 10%, PTEN 10%, JAK3 6%,
+RPL10 5% — the canonical T-ALL driver profile at literature-consistent
+frequencies. Splitting DTX1 (a direct NOTCH1 target) by NOTCH1 mutation
+status gives p = 4.9e-3, while MYCN (not NOTCH1-regulated) gives
+p = 0.87.
+
+Gene-level only for now; amino-acid-level resolution is deferred (the
+loader keeps the columns that would allow it).
+
+### 8.3 DepMap CRISPR gene effect
+**Implemented.** `backend/app/ingest/depmap_crispr.py`. 17,916 genes ×
+1,178 cell lines, from `CRISPRGeneEffect.csv` in the *same* Figshare
+release as the expression matrix — deliberately the same release, since
+pulling CRISPR from a different one would silently mismatch the two
+layers' cell-line rosters. Inherits §7.5's 24Q4 staleness limitation for
+the same reason.
+
+**Coverage: 91 of 186 lymphoid lines (49%).**
+
+Chronos scale: 0 = no effect, ≈-1 = median common-essential, so **more
+negative means stronger dependency** — the opposite direction of
+intuition for an expression value, which is why `AuxMatrix` carries
+`value_label`/`value_description` rather than leaving a UI to guess.
+
+**Validated:** RPL13A (essential ribosomal protein) has median gene
+effect −1.995; A1BG (non-essential) −0.080. MYB expression correlates
+with MYB dependency at r = −0.652, p = 2.5e-12 — lines expressing more
+MYB depend on it more, a known oncogene-addiction relationship in
+leukemia.
+
+### 8.4 DepMap PRISM drug sensitivity
+**Implemented.** `backend/app/ingest/depmap_prism.py`. 6,790 compounds ×
+919 cell lines. Two things make this more involved than the CRISPR
+layer, both verified against the real files:
+
+1. **Separate Figshare release** — ships as `Repurposing Public YYQN`,
+   not inside the `DepMap YYQN Public` bundle, so it needs its own
+   title regex and release resolution. File names are matched by
+   *suffix* so a future release's renamed files still resolve.
+2. **Transposed relative to every other matrix here** — the raw matrix
+   is (compound × cell-line) with compounds as rows.
+
+The matrix index is a Broad compound id (`BRD:BRD-K05804044-001-18-5`),
+meaningless to a reader, so the compound list is joined in as the
+layer's `features` frame carrying drug name and mechanism of action
+(that id resolves to AZ-628). **Coverage: 79 of 186 lymphoid lines
+(42%).** The compound→name join was verified exhaustively in QA:
+6,789 of 6,789 correct on both name and MOA, with one id absent from the
+upstream list and correctly falling back to the raw BRD id.
+
+**Sparsity caveat — the 6,790 figure oversells this layer.** Against the
+79 covered lines, **only ~1,518 compounds (22%) were assayed on at least
+3 of them**; the other 78% return "not enough samples" on any lookup.
+Exactly one compound (AZ-628) covers all 79 — and that was the compound
+development testing happened to sample, which is precisely how this went
+unnoticed until QA picked random compounds and hit failures on 2 of 4.
+`AuxMatrix.n_usable_features()` now measures this per layer and
+`/aux-layers` reports `n_usable_features` alongside `n_features`, so the
+UI can state what is actually analysable rather than a true-but-useless
+total. CRISPR has no such problem (100% of 17,916 features usable),
+which is why this is measured per layer rather than assumed.
+
+### 8.5 Analyses over aux layers
+**Implemented.** `backend/app/analysis/aux_analysis.py`, surfaced as a
+new "Multi-omics" pane:
+
+- `expression_by_mutation_status` — expression split by mutant vs
+  wild-type (GEPIA3's "Hotspot Mutation" equivalent). Unlike gene-vs-gene
+  correlation, the same gene on both sides is a *legitimate* question
+  ("do NOTCH1-mutant samples express NOTCH1 differently?") and is
+  deliberately not blocked.
+- `most_mutated_genes` — what to even split on, since a user can't guess
+  which genes are recurrently mutated in a cohort.
+- `expression_vs_aux_correlation` — expression against a CRISPR
+  dependency or drug sensitivity on the same samples.
+
+Every one reports `n_dataset_total` / `n_excluded` / `exclusion_reason`.
+The UI disables (rather than hides) tabs whose layer a dataset lacks, and
+auto-selects a tab the dataset can actually answer.
+
+### 8.6 Exclusion reasons must distinguish *why* a sample is absent
+**Decided (2026-09-13), after QA.** `expression_vs_aux_correlation`
+reports `n_missing_layer` and `n_missing_feature` separately, not one
+merged `n_excluded`.
+
+A sample can be absent for two unrelated reasons: it has no aux layer at
+all, or it has the layer but this particular feature was never assayed on
+it. Merging them produced a UI that contradicted itself on the CRISPR
+tab's own default value — "covers 91 of 186 samples (49%)" directly above
+"173 excluded (no crispr gene effect data)", when in fact 95 lacked the
+layer and **78 had it** but weren't screened for RPL13A (which DepMap
+scores on only 349 of 1,178 lines). Blaming all 173 on a missing layer
+misattributes 78 samples, which is precisely what §6.1's transparency
+requirement exists to prevent — so a merged count wasn't a cosmetic
+shortcut, it was the failure mode in miniature.
+
+Two related QA fixes, same principle:
+- A gene present in the mutation matrix but mutated in **zero** samples
+  that also have expression data now raises rather than returning a
+  degenerate 200 with `n_mutated=0, p_value=null`. 2,701 of TARGET's
+  6,250 mutated genes are in that state.
+- `_resolve_gene()` now normalises case/whitespace centrally. One
+  endpoint was doing `.strip().upper()` on its own parameter while the
+  shared resolver wasn't, so `?gene=dtx1` 404'd on an API the UI happens
+  to uppercase for you.
+
+---
+
 ## Change log
 
 | Date | Change |
@@ -677,3 +832,6 @@ different, also-legitimate source at the very top of the list.
 | 2026-08-29 | Cheap-wins batch 2 shipped: §7.6 gene-vs-gene correlation + co-expression network, new Correlation pane. Verified against real biology (MYCN/RAG1 anti-correlation on GDS4299, MYCN/MYCNOS co-expression on TARGET) as well as unit tests; confirmed symbol-mapping works correctly on both an Ensembl-keyed and a symbol-keyed dataset. |
 | 2026-08-30 | QA pass (2 parallel agents) on §7.6. Backend logic/math fully confirmed via independent from-scratch recomputation. Found and fixed two UI bugs: results wiped on Correlation↔Co-expression tab switch (conditional-render unmount — now both tabs stay mounted, toggled via CSS); "Kendall" label clipped in the method toggle at ~700-900px pane widths (now wraps instead of clipping). |
 | 2026-08-30 | Cheap-wins batch 3 shipped (final batch): §7.7 PCA (SVD-based, no scikit-learn, cross-checked against sklearn at test time) as a third Correlation-pane tab; §7.8 genome-wide top-differential-genes (vectorised Mann-Whitney, ~15x faster than a per-gene loop, verified bit-identical first) as a second Expression Compare tab. New `GET /datasets/{id}/group-values` endpoint added to support the differential-genes UI's group picker. Both tabs applied the mount-persistence pattern from the §7.6 QA fix proactively rather than re-discovering the bug. |
+| 2026-08-30 | Final pre-ship QA (4 parallel agents, everything together). Found and fixed: `/correlation` crashed with an unhandled 500 when gene_a == gene_b (duplicate column names after transpose → scipy got a DataFrame, not a Series); `/group-values` silently returned an empty list for an unknown column instead of a 404. Everything else verified to full precision. Shipped as 8220f1d. |
+| 2026-09-13 | §8 added: three new data pipelines as auxiliary measurement layers on existing datasets (not new datasets) — TARGET somatic mutations (279/469 coverage, validated against the canonical T-ALL driver profile), DepMap CRISPR gene effect (91/186, validated against known essential/non-essential genes), DepMap PRISM drug sensitivity (79/186, separate Figshare release, transposed matrix, compound→drug-name join). New `Dataset.aux` contract, `aux_analysis.py`, four endpoints, and a Multi-omics pane. Aux loading made opt-in after it was found to make existing unit tests hit the network. |
+| 2026-09-13 | QA on §8 (2 parallel agents). Blocker check PASSED: all 739 TARGET MAFs re-downloaded from GDC independently and the mutation matrix reproduced by exact set identity (same barcodes, not just counts) across 7 genes / 717 samples; CRISPR sign convention confirmed two ways (essentials negative, 10/10 lineage oncogenes negative); all 6,789 PRISM compound joins verified against the upstream file. Found and fixed two reporting defects — §8.6 exclusion-reason conflation (visible on the CRISPR tab's default view) and the drug layer's 6,790 headline where only 22% of compounds are usable (now reported as `n_usable_features`). No computed statistic was wrong; every reference number reproduced unchanged after the fixes. |

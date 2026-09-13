@@ -8,6 +8,7 @@ from __future__ import annotations
 import fcntl
 import gzip
 import io
+import logging
 import time
 from contextlib import contextmanager
 
@@ -145,9 +146,17 @@ def _load_lock():
             fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
-def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
+def load(limit: int | None = None, use_cache: bool = True, with_aux: bool = True) -> Dataset:
     """Build the TARGET-ALL-P2 Dataset. Caches the assembled matrix to
-    Parquet so repeat runs don't re-hit the GDC API."""
+    Parquet so repeat runs don't re-hit the GDC API.
+
+    `with_aux=False` skips the somatic-mutation layer entirely. That layer
+    reaches a *second* GDC endpoint (739 MAF files), so a caller that only
+    wants expression -- notably every unit test, which mocks the
+    expression path but has no reason to mock mutation downloads too --
+    must be able to opt out rather than transitively depending on a
+    network service the primary dataset doesn't need.
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     matrix_path = CACHE_DIR / "matrix.parquet"
     clinical_path = CACHE_DIR / "clinical.parquet"
@@ -267,7 +276,23 @@ def load(limit: int | None = None, use_cache: bool = True) -> Dataset:
         n_samples=matrix.shape[1],
         notes="Open-access STAR-Counts RNA-seq, one uniform workflow.",
     )
-    return Dataset(source=source, matrix=matrix, samples=samples, features=features)
+    # Somatic mutation calls are an additive layer on these same patients
+    # (see METHODS.md 8.1/8.3) -- attached best-effort so a GDC outage
+    # degrades this to expression-only rather than taking the dataset down.
+    aux: dict = {}
+    if with_aux:
+        try:
+            from app.ingest.target_mutations import load_mutations
+
+            mutation_layer = load_mutations(use_cache=use_cache)
+            if mutation_layer is not None:
+                aux[mutation_layer.layer] = mutation_layer
+        except Exception as exc:  # noqa: BLE001 - additive layer, never fatal
+            logging.getLogger(__name__).warning(
+                "target_all_p2 dataset: mutation layer unavailable (%s)", exc
+            )
+
+    return Dataset(source=source, matrix=matrix, samples=samples, features=features, aux=aux)
 
 
 from app.registry import DatasetDescriptor, register  # noqa: E402

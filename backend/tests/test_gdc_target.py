@@ -113,7 +113,7 @@ def test_load_skips_samples_already_downloaded(tmp_path, monkeypatch):
     monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
     monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
 
-    dataset = gdc_target.load(use_cache=True)
+    dataset = gdc_target.load(use_cache=True, with_aux=False)
 
     # SAMPLE_A's file already existed -- only SAMPLE_B should be fetched.
     assert fetch_calls == ["f-b"]
@@ -159,7 +159,7 @@ def test_load_assembles_matrix_from_downloaded_samples(tmp_path, monkeypatch):
     monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
     monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
 
-    dataset = gdc_target.load(use_cache=True)
+    dataset = gdc_target.load(use_cache=True, with_aux=False)
 
     assert set(dataset.matrix.columns) == {"SAMPLE_A", "SAMPLE_B"}
     assert dataset.matrix.loc["ENSG1", "SAMPLE_A"] == 1.0
@@ -174,7 +174,7 @@ def test_load_assembles_matrix_from_downloaded_samples(tmp_path, monkeypatch):
         "list_open_rna_files",
         lambda client: (_ for _ in ()).throw(AssertionError("should not re-list files")),
     )
-    dataset2 = gdc_target.load(use_cache=True)
+    dataset2 = gdc_target.load(use_cache=True, with_aux=False)
     assert set(dataset2.matrix.columns) == {"SAMPLE_A", "SAMPLE_B"}
 
 
@@ -225,7 +225,7 @@ def test_load_survives_concurrent_calls(tmp_path, monkeypatch):
 
     def run(i):
         try:
-            results[i] = gdc_target.load(use_cache=True)
+            results[i] = gdc_target.load(use_cache=True, with_aux=False)
         except Exception as exc:  # noqa: BLE001
             errors[i] = exc
 

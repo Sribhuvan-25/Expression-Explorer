@@ -208,6 +208,71 @@ export interface DifferentialResult {
   genes: DifferentialGeneRow[];
 }
 
+// --- Auxiliary measurement layers (CRISPR / drug sensitivity / mutations)
+// These are extra measurements on an EXISTING dataset's samples, not
+// separate datasets -- same sample_ids, different thing measured.
+
+export interface AuxLayerSummary {
+  layer: "crispr_gene_effect" | "drug_sensitivity" | "mutation_status";
+  value_label: string;
+  value_description: string;
+  source_note: string;
+  n_features: number;
+  // Features with enough non-null values among the covered samples to be
+  // analysable. Far below n_features on sparse layers (PRISM: ~22%), so
+  // showing n_features alone would oversell what a user can actually do.
+  n_usable_features: number;
+  n_samples_covered: number;
+  n_dataset_total: number;
+}
+
+export interface MutatedGeneRow {
+  gene: string;
+  n_mutated: number;
+  fraction: number;
+}
+
+export interface MutatedGenesResult {
+  n_samples_with_mutation_data: number;
+  n_dataset_total: number;
+  genes: MutatedGeneRow[];
+}
+
+export interface CompareByMutationResult {
+  gene: string;
+  mutated_gene: string;
+  n_mutated: number;
+  n_wildtype: number;
+  n_dataset_total: number;
+  n_excluded: number;
+  exclusion_reason: string | null;
+  points: ComparePoint[];
+  test: { u_stat: number | null; p_value: number | null };
+}
+
+export interface ExpressionVsAuxResult {
+  gene: string;
+  aux_feature: string;
+  aux_feature_label: string;
+  aux_feature_moa: string | null;
+  layer: string;
+  value_label: string;
+  value_description: string;
+  method: "pearson" | "spearman";
+  n: number;
+  n_dataset_total: number;
+  n_excluded: number;
+  // Two distinct reasons a sample is absent: no aux layer at all, versus
+  // has the layer but this feature was never assayed on it. Reported
+  // separately because collapsing them misattributed the second group.
+  n_missing_layer: number;
+  n_missing_feature: number;
+  exclusion_reason: string | null;
+  coefficient: number;
+  p_value: number;
+  points: CorrelationPoint[];
+}
+
 export interface RankRow {
   sample_id: string;
   value: number;
@@ -340,5 +405,23 @@ export const api = {
   groupValues: (datasetId: string, groupColumn: string) =>
     request<{ group_column: string; values: { value: string; n: number }[] }>(
       `/datasets/${datasetId}/group-values?group_column=${encodeURIComponent(groupColumn)}`,
+    ),
+  auxLayers: (datasetId: string) =>
+    request<{ dataset_id: string; layers: AuxLayerSummary[] }>(`/datasets/${datasetId}/aux-layers`),
+  mutatedGenes: (datasetId: string, topN: number = 25) =>
+    request<MutatedGenesResult>(`/datasets/${datasetId}/mutated-genes?top_n=${topN}`),
+  compareByMutation: (datasetId: string, gene: string, mutatedGene: string) =>
+    request<CompareByMutationResult>(
+      `/datasets/${datasetId}/compare-by-mutation?gene=${encodeURIComponent(gene)}&mutated_gene=${encodeURIComponent(mutatedGene)}`,
+    ),
+  expressionVsAux: (
+    datasetId: string,
+    gene: string,
+    layer: "crispr_gene_effect" | "drug_sensitivity",
+    auxFeature: string,
+    method: "pearson" | "spearman" = "pearson",
+  ) =>
+    request<ExpressionVsAuxResult>(
+      `/datasets/${datasetId}/expression-vs-aux?gene=${encodeURIComponent(gene)}&layer=${layer}&aux_feature=${encodeURIComponent(auxFeature)}&method=${method}`,
     ),
 };

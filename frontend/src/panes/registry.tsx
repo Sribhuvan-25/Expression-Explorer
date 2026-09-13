@@ -2,6 +2,7 @@ import type { IDockviewPanelProps } from "dockview-react";
 import { ComparePage } from "../pages/ComparePage";
 import { CorrelationPage } from "../pages/CorrelationPage";
 import { GenomeTracksPage } from "../pages/GenomeTracksPage";
+import { MultiOmicsPage } from "../pages/MultiOmicsPage";
 import { RankPage } from "../pages/RankPage";
 import { SignaturePage } from "../pages/SignaturePage";
 import { SurvivalPage } from "../pages/SurvivalPage";
@@ -35,6 +36,7 @@ export const PANE_COMPONENTS = {
   rank: paneFrame(RankPage),
   survival: paneFrame(SurvivalPage),
   correlation: paneFrame(CorrelationPage),
+  "multi-omics": paneFrame(MultiOmicsPage),
   "genome-tracks": paneFrame(GenomeTracksPage),
 };
 
@@ -46,5 +48,6 @@ export const PANE_LABELS: Record<PaneType, string> = {
   rank: "Sample Ranking",
   survival: "Survival",
   correlation: "Correlation",
+  "multi-omics": "Multi-omics",
   "genome-tracks": "Genome Tracks",
 };
