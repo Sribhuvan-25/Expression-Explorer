@@ -14,7 +14,7 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
-from app.models.contract import AuxLayer, Dataset
+from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, Dataset
 
 
 def expression_by_mutation_status(
@@ -148,12 +148,26 @@ def expression_vs_aux_correlation(
         }
     ).dropna()
 
-    if len(paired) < 3:
+    if len(paired) < MIN_AUX_SAMPLES:
+        n_measured = int(aux.matrix.loc[aux_feature_id, shared].notna().sum())
+        label = layer.value.replace("_", " ")
+        if n_measured == 0:
+            # By far the common case for PRISM -- 5,272 of 6,790 compounds
+            # (77.6%) were never run on any of this cohort's lines. Saying
+            # "need at least 3 to correlate" frames that as a threshold the
+            # user just missed, when the real answer is that this compound
+            # was never tested here and no gene choice will change it. Say
+            # so, and point at the picker rather than leaving them to guess
+            # again (caught in QA).
+            raise ValueError(
+                f"'{aux_feature_id}' has no {label} measurements on any of this dataset's "
+                f"{len(shared)} covered samples -- it was never assayed on this cohort, so no "
+                f"correlation is possible for any gene. Pick another feature from the list."
+            )
         raise ValueError(
-            f"Only {len(paired)} samples have both expression and a value for "
-            f"'{aux_feature_id}' -- need at least 3 to correlate. "
-            f"({len(shared)} samples carry this layer at all; "
-            f"'{aux_feature_id}' was measured on {int(aux.matrix.loc[aux_feature_id, shared].notna().sum())} of them.)"
+            f"'{aux_feature_id}' was measured on only {n_measured} of this dataset's "
+            f"{len(shared)} covered samples, and {len(paired)} of those also have expression "
+            f"for this gene -- need at least {MIN_AUX_SAMPLES} paired samples to correlate."
         )
 
     stat, p_value = methods[method](paired["expression"], paired["aux"])

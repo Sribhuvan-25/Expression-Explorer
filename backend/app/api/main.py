@@ -27,7 +27,7 @@ from app.analysis.signature import auc_signature_score, log2_mean_signature_scor
 from app.analysis.survival import binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
-from app.models.contract import AuxLayer, AuxMatrix, Dataset
+from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, AuxMatrix, Dataset
 from app.registry import ensure_loaded, get_descriptor, list_descriptors
 from app.services.gene_info import lookup_gene
 
@@ -440,6 +440,94 @@ def aux_layers(dataset_id: str):
             "n_dataset_total": total,
         })
     return {"dataset_id": dataset_id, "layers": out}
+
+
+@app.get("/datasets/{dataset_id}/aux-features")
+def aux_features(
+    dataset_id: str,
+    layer: Literal["crispr_gene_effect", "drug_sensitivity", "mutation_status"],
+    q: str | None = None,
+    limit: int = 50,
+    usable_only: bool = True,
+):
+    """Searchable list of features in an aux layer that actually have data
+    on THIS dataset's samples, newest-coverage first.
+
+    Exists for the same reason `/mutated-genes` does: a user cannot guess
+    a valid value. It matters far more here -- PRISM ships 6,790 compounds
+    but 5,272 of them (77.6%) have zero measurements on the 79 covered
+    Lymphoid lines, so free-texting a compound id fails ~78% of the time,
+    and the ids are opaque Broad strings ("BRD:BRD-K05804044-001-18-5")
+    that nobody types from memory. Results carry the human drug name and
+    mechanism where the layer has a feature table, so the picker can be
+    searched by name rather than id.
+
+    `usable_only` (default) hides features with too few values to
+    correlate at all, which is the difference between a 6,790-entry list
+    that mostly 422s and a 1,518-entry list that works.
+    """
+    if not (1 <= limit <= 200):
+        raise HTTPException(422, "limit must be between 1 and 200.")
+    ds = _get_dataset(dataset_id)
+    try:
+        aux = ds.require_aux(AuxLayer(layer))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+    shared = [c for c in ds.matrix.columns if c in aux.matrix.columns]
+    if not shared:
+        return {"dataset_id": dataset_id, "layer": layer, "n_matching": 0, "features": []}
+
+    counts = aux.matrix[shared].notna().sum(axis=1)
+    if usable_only:
+        counts = counts[counts >= MIN_AUX_SAMPLES]
+
+    # Search over the readable name when the layer has one (drug names),
+    # falling back to the raw id -- searching only ids would defeat the
+    # point for exactly the layer that needs this most.
+    labels = {}
+    if aux.features is not None and "symbol" in aux.features.columns:
+        labels = dict(zip(aux.features["feature_id"], aux.features["symbol"]))
+    moas = {}
+    if aux.features is not None and "moa" in aux.features.columns:
+        moas = dict(zip(aux.features["feature_id"], aux.features["moa"]))
+    targets = {}
+    if aux.features is not None and "target" in aux.features.columns:
+        targets = dict(zip(aux.features["feature_id"], aux.features["target"]))
+
+    if q:
+        # Search name, id, mechanism AND target: a researcher looks for
+        # "MEK inhibitor" or "BRAF", not a drug's trade name, and matching
+        # only name+id returned nothing for exactly those queries.
+        needle = q.strip().casefold()
+        counts = counts[
+            [
+                needle in str(fid).casefold()
+                or needle in str(labels.get(fid, "")).casefold()
+                or needle in str(moas.get(fid, "")).casefold()
+                or needle in str(targets.get(fid, "")).casefold()
+                for fid in counts.index
+            ]
+        ]
+
+    n_matching = int(len(counts))
+    top = counts.sort_values(ascending=False).head(limit)
+
+    return {
+        "dataset_id": dataset_id,
+        "layer": layer,
+        "n_matching": n_matching,
+        "n_samples_covered": len(shared),
+        "features": [
+            {
+                "feature_id": str(fid),
+                "label": str(labels.get(fid, fid)) or str(fid),
+                "moa": (str(moas.get(fid, "")) or None),
+                "n_samples_with_value": int(n),
+            }
+            for fid, n in top.items()
+        ],
+    }
 
 
 @app.get("/datasets/{dataset_id}/mutated-genes")

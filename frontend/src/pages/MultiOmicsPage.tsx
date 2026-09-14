@@ -180,6 +180,135 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
   );
 }
 
+/**
+ * Searchable picker over the features an aux layer actually has data for
+ * on THIS dataset.
+ *
+ * Replaces a free-text box that was pre-filled with a raw Broad compound
+ * id. Two things made that unusable for the drug layer specifically:
+ * 5,272 of PRISM's 6,790 compounds (77.6%) have zero measurements on the
+ * 79 covered lines, so a typed guess failed most of the time; and the ids
+ * ("BRD:BRD-K05804044-001-18-5") are not something anyone recalls, so
+ * there was no way to make an informed guess in the first place. The list
+ * is server-filtered to features that clear the correlation's own minimum,
+ * so anything offered here will actually run.
+ *
+ * Free text is still accepted -- a user who has a specific id keeps the
+ * fast path, and the CRISPR layer (where every feature is a gene symbol
+ * and 100% are usable) loses nothing.
+ */
+function AuxFeaturePicker({
+  datasetId,
+  auxLayerKey,
+  value,
+  onChange,
+  onSubmit,
+  placeholder,
+}: {
+  datasetId: string;
+  auxLayerKey: "crispr_gene_effect" | "drug_sensitivity";
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // Debounced so typing doesn't fire a request per keystroke.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 200);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const { data, isFetching } = useQuery({
+    queryKey: ["aux-features", datasetId, auxLayerKey, debounced],
+    queryFn: () => api.auxFeatures(datasetId, auxLayerKey, debounced, 50),
+    enabled: open,
+  });
+
+  return (
+    <div ref={boxRef} className="relative">
+      <div className="flex gap-1">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+          placeholder={placeholder}
+          className="w-full min-w-0 rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-accent"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          title="Browse features with data in this dataset"
+          className="shrink-0 rounded-[3px] border border-rule bg-surface px-2 font-mono text-[11px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
+        >
+          Browse
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-[280px] w-full overflow-y-auto rounded-[3px] border border-rule-firm bg-surface shadow-lg">
+          <div className="sticky top-0 border-b border-rule bg-surface p-2">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, id, or mechanism…"
+              className="w-full rounded-[3px] border border-rule bg-ground px-2 py-1.5 text-[12px] text-ink outline-none focus:border-accent"
+            />
+            {data && (
+              <p className="mt-1.5 text-[10.5px] text-ink-mute">
+                {data.n_matching} with data on {data.n_samples_covered} covered samples
+                {data.n_matching > data.features.length && ` · showing top ${data.features.length}`}
+              </p>
+            )}
+          </div>
+          {isFetching && <p className="px-3 py-2 text-[12px] text-ink-mute">Searching…</p>}
+          {data && data.features.length === 0 && !isFetching && (
+            <p className="px-3 py-2 text-[12px] text-ink-mute">
+              Nothing with usable data matches “{search}”.
+            </p>
+          )}
+          {data?.features.map((f) => (
+            <button
+              key={f.feature_id}
+              type="button"
+              onClick={() => {
+                onChange(f.feature_id);
+                setOpen(false);
+              }}
+              className="flex w-full flex-col gap-0.5 border-b border-rule px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent-soft"
+            >
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-[12.5px] font-medium text-ink">{f.label}</span>
+                <span className="shrink-0 font-mono text-[10.5px] text-ink-mute">
+                  n={f.n_samples_with_value}
+                </span>
+              </span>
+              {f.moa && <span className="truncate text-[10.5px] text-ink-mute">{f.moa}</span>}
+              {f.label !== f.feature_id && (
+                <span className="truncate font-mono text-[10px] text-ink-mute">{f.feature_id}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuxCorrelationTab({
   datasetId,
   layer,
@@ -235,12 +364,13 @@ function AuxCorrelationTab({
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
               {featureLabel}
             </label>
-            <input
+            <AuxFeaturePicker
+              datasetId={datasetId}
+              auxLayerKey={auxLayerKey}
               value={auxFeature}
-              onChange={(e) => setAuxFeature(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && run()}
+              onChange={setAuxFeature}
+              onSubmit={run}
               placeholder={featurePlaceholder}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-accent"
             />
           </div>
           <div className="min-w-[14ch]">
@@ -465,8 +595,14 @@ export function MultiOmicsPage() {
             datasetId={datasetId}
             layer={activeLayer}
             auxLayerKey="drug_sensitivity"
-            featurePlaceholder="BRD:BRD-K00104122-001-01-9"
-            featureLabel="Compound ID"
+            // Defaults to the single best-covered compound of the 6,790
+            // (AZ-628, measured on all 79 covered lines). The previous
+            // default was measured on 72, which worked but taught nothing
+            // about how sparse the layer is -- and most neighbours of it
+            // fail outright. "Browse" is the real answer here; this is
+            // just a landing value that always runs.
+            featurePlaceholder="BRD:BRD-K05804044-001-18-5"
+            featureLabel="Compound"
           />
         )}
       </div>

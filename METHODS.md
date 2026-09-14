@@ -818,6 +818,31 @@ UI can state what is actually analysable rather than a true-but-useless
 total. CRISPR has no such problem (100% of 17,916 features usable),
 which is why this is measured per layer rather than assumed.
 
+**Follow-through (2026-09-13).** Reporting the number was necessary but
+not sufficient — a user still had to *find* a usable compound, from a
+free-text box pre-filled with a raw Broad id. Measured against the cached
+matrix: 5,272 of 6,790 compounds (77.6%) have **zero** values on the 79
+covered lines, so a typed guess failed most of the time, and the ids are
+not something anyone recalls. Two changes close this:
+
+- **`GET /datasets/{id}/aux-features`** — a searchable list of features
+  that actually have data on *this* dataset, coverage-sorted, carrying
+  drug name and MOA. Searches name, id, mechanism **and** target, because
+  a researcher looks for "BRAF" or "MTOR inhibitor", not a trade name;
+  matching name+id alone returned nothing for exactly those queries. The
+  `usable_only` default hides features below the correlation's own
+  minimum, which is the difference between a 6,790-entry list that mostly
+  fails and a 1,518-entry list that works.
+- **`MIN_AUX_SAMPLES`** is now defined once in `contract.py` and shared by
+  the correlation, the usable-feature count, and the picker. These three
+  previously each hardcoded `3`; a picker offering features the
+  correlation would then reject is worse than no picker.
+
+The zero-coverage error was also reworded. "Need at least 3 to correlate"
+frames a never-assayed compound as a threshold the user narrowly missed;
+it now says the compound was never assayed on this cohort and that no
+gene choice will change it — true for 77.6% of the layer.
+
 ### 8.5 Analyses over aux layers
 **Implemented.** `backend/app/analysis/aux_analysis.py`, surfaced as a
 new "Multi-omics" pane:
@@ -972,3 +997,4 @@ returning a wrong value.
 | 2026-09-13 | Testing-process note: the canonical backend port is **8420** (`vite.config.ts`, `README.md`, `docker-compose.yml`, `backend/Dockerfile` all agree). Starting uvicorn on any other port makes every frontend call 502 and makes every pane render empty — which looks like a catastrophic app failure and wasted most of one QA agent's run. Start the backend on 8420. |
 | 2026-09-13 | §3.1a added after QA found quartile/custom survival arms silently violating their own definition when scores tie at a cutoff (MEF2C LOW n=217 of 466, captioned as a bottom quartile). Exposed as a user-chosen `tie_policy` with a reported `tie_note` rather than an internal default, at the user's direction: the domain expert should be able to see what happened and change it, since no policy is unconditionally correct (`exclude` empties an arm for the very genes that trigger it). §8.8 extended — `alias` has the same list-or-string polymorphism as `ensembl`; LYL1 (single alias "bHLHa18", and a member of this app's own ETP-TF5 preset) returned a bare string against a `list[str]` contract and white-screened the entire workspace via `.join` on a string. Fixed in the API, made structurally impossible in `GeneAnnotation`, and the poisoned LYL1 cache entry cleared. Multi-omics tab a11y: disabled tabs shared one accessible name ("Not available for this dataset") so a screen reader couldn't tell which layer was missing — now names the layer; disabled tabs no longer keep the active tint. 115 tests pass. |
 | 2026-09-13 | Non-blocking QA findings cleared: §5.7 Expression Compare PNG export now carries the gene in filename and in-image title (two genes previously overwrote each other as `<dataset>-by-group.png`, with the gene nowhere in the image); PCA export title no longer a bare "PCA". §5.6 Signature Score histogram bins adapt (Freedman–Diaconis with a sqrt(n) floor, clamped 6–36) instead of a fixed 36 — GDS4299 goes from 39% empty bins to 0% while TARGET keeps its resolution at 22 bins. §7.2 `ExpressionUnit.LOG2_TPM` added so DepMap (RNA-seq log2 TPM) stops sharing the microarray "log2 intensity" label with GDS4299. Display/metadata only — no computed statistic changes. 115 tests pass, tsc clean, build clean. |
+| 2026-09-13 | §8.4 follow-through on PRISM sparsity: new `GET /datasets/{id}/aux-features` searchable picker over features that actually have data on the selected dataset (searches name/id/MOA/target), replacing a free-text box pre-filled with a raw Broad id — 77.6% of compounds have zero measurements on the covered lines, so typed guesses mostly failed. `MIN_AUX_SAMPLES` centralised in `contract.py` so the picker, the usable-feature count, and the correlation cannot disagree. Zero-coverage error now says the compound was never assayed on this cohort rather than "need at least 3 to correlate". Drug tab default moved to AZ-628 (the one compound covering all 79 lines). 118 tests pass. |

@@ -71,6 +71,14 @@ class FeatureMetadata(BaseModel):
     aliases: list[str] = Field(default_factory=list)
 
 
+# Minimum paired samples for an aux correlation to mean anything. Defined
+# once because three things must agree on it: the correlation itself, the
+# usable-feature count shown in the UI, and the feature picker -- a picker
+# offering features the correlation would then reject is worse than no
+# picker at all.
+MIN_AUX_SAMPLES = 3
+
+
 class AuxLayer(str, Enum):
     """Non-expression measurements attached to an existing dataset's samples.
 
@@ -127,7 +135,7 @@ class AuxMatrix:
     def n_samples(self) -> int:
         return int(self.matrix.shape[1])
 
-    def n_usable_features(self, sample_ids: list[str], min_samples: int = 3) -> int:
+    def n_usable_features(self, sample_ids: list[str], min_samples: int = MIN_AUX_SAMPLES) -> int:
         """How many features have enough non-null values among `sample_ids`
         to actually be analysed.
 

@@ -241,8 +241,16 @@ def test_expression_vs_aux_too_few_samples_error_distinguishes_the_causes():
     )
     ds = _dataset(expression, {AuxLayer.CRISPR_GENE_EFFECT: _numeric_layer(effects)})
 
-    with pytest.raises(ValueError, match="carry this layer at all"):
+    with pytest.raises(ValueError) as exc:
         expression_vs_aux_correlation(ds, AuxLayer.CRISPR_GENE_EFFECT, "MYCN", "SPARSE")
+
+    # Wording changed when the zero-coverage case was split out, but the
+    # requirement is unchanged: both denominators must be visible, so a
+    # user can tell "this dataset barely carries the layer" from "this
+    # feature specifically was barely screened".
+    msg = str(exc.value)
+    assert "measured on only 1" in msg     # this feature, on this cohort
+    assert "8 covered samples" in msg      # what the layer covers at all
 
 
 def test_expression_by_mutation_status_rejects_gene_mutated_only_outside_the_cohort():
@@ -342,3 +350,63 @@ def test_resolve_aux_feature_unknown_raises_404():
     with pytest.raises(HTTPException) as exc:
         _resolve_aux_feature(layer, "ZZZNOPE")
     assert exc.value.status_code == 404
+
+
+def test_zero_coverage_feature_says_it_was_never_assayed():
+    """5,272 of PRISM's 6,790 compounds (77.6%) have zero measurements on
+    DepMap's covered lymphoid lines. Reporting that as "need at least 3 to
+    correlate" frames it as a threshold the user narrowly missed, when the
+    truth is the compound was never run on this cohort and no gene choice
+    will change it."""
+    expression = pd.DataFrame({f"S{i}": [float(i)] for i in range(10)}, index=["MYCN"])
+    effects = pd.DataFrame({f"S{i}": [np.nan] for i in range(6)}, index=["NEVER_RUN"])
+    ds = _dataset(expression, {AuxLayer.DRUG_SENSITIVITY: _numeric_layer(effects)})
+
+    with pytest.raises(ValueError) as exc:
+        expression_vs_aux_correlation(ds, AuxLayer.DRUG_SENSITIVITY, "MYCN", "NEVER_RUN")
+
+    msg = str(exc.value)
+    assert "never assayed on this cohort" in msg
+    assert "no correlation is possible for any gene" in msg
+    # Must NOT frame a never-measured compound as a near-miss on a threshold.
+    assert "need at least" not in msg
+
+
+def test_partial_coverage_feature_reports_measured_count():
+    """Distinct from the zero case: the compound WAS run here, just not on
+    enough lines. The user should see how many, so they can tell a sparse
+    compound from an unusable one."""
+    expression = pd.DataFrame({f"S{i}": [float(i)] for i in range(10)}, index=["MYCN"])
+    effects = pd.DataFrame(
+        {f"S{i}": [1.0 if i < 2 else np.nan] for i in range(6)}, index=["SPARSE"]
+    )
+    ds = _dataset(expression, {AuxLayer.DRUG_SENSITIVITY: _numeric_layer(effects)})
+
+    with pytest.raises(ValueError) as exc:
+        expression_vs_aux_correlation(ds, AuxLayer.DRUG_SENSITIVITY, "MYCN", "SPARSE")
+
+    msg = str(exc.value)
+    assert "measured on only 2" in msg
+    assert "need at least 3 paired samples" in msg
+    assert "never assayed" not in msg
+
+
+def test_min_aux_samples_is_shared_by_correlation_and_usable_count():
+    """The picker offers features that clear `n_usable_features`, and the
+    correlation then accepts or rejects them. If those two disagreed, the
+    UI would list features that immediately fail -- worse than no list."""
+    from app.models.contract import MIN_AUX_SAMPLES
+
+    expression = pd.DataFrame({f"S{i}": [float(i)] for i in range(10)}, index=["MYCN"])
+    # Exactly at the threshold: must be counted usable AND must correlate.
+    effects = pd.DataFrame(
+        {f"S{i}": [float(i) if i < MIN_AUX_SAMPLES else np.nan] for i in range(6)},
+        index=["EXACTLY_MIN"],
+    )
+    layer = _numeric_layer(effects)
+    ds = _dataset(expression, {AuxLayer.DRUG_SENSITIVITY: layer})
+    shared = [c for c in ds.matrix.columns if c in layer.matrix.columns]
+
+    assert layer.n_usable_features(shared) == 1
+    result = expression_vs_aux_correlation(ds, AuxLayer.DRUG_SENSITIVITY, "MYCN", "EXACTLY_MIN")
+    assert result["n"] == MIN_AUX_SAMPLES

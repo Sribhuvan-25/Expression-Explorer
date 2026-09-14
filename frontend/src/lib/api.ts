@@ -112,6 +112,21 @@ export interface SurvivalCurve {
   points: SurvivalPoint[];
 }
 
+export interface AuxFeature {
+  feature_id: string;
+  label: string;
+  moa: string | null;
+  n_samples_with_value: number;
+}
+
+export interface AuxFeatureList {
+  dataset_id: string;
+  layer: string;
+  n_matching: number;
+  n_samples_covered: number;
+  features: AuxFeature[];
+}
+
 export type TiePolicy = "trim" | "exclude" | "inclusive";
 
 export interface SurvivalResult {
@@ -440,5 +455,16 @@ export const api = {
   ) =>
     request<ExpressionVsAuxResult>(
       `/datasets/${datasetId}/expression-vs-aux?gene=${encodeURIComponent(gene)}&layer=${layer}&aux_feature=${encodeURIComponent(auxFeature)}&method=${method}`,
+    ),
+  auxFeatures: (
+    datasetId: string,
+    layer: "crispr_gene_effect" | "drug_sensitivity",
+    q = "",
+    limit = 50,
+  ) =>
+    request<AuxFeatureList>(
+      `/datasets/${datasetId}/aux-features?layer=${layer}&limit=${limit}${
+        q ? `&q=${encodeURIComponent(q)}` : ""
+      }`,
     ),
 };
