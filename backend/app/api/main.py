@@ -27,7 +27,7 @@ from app.analysis.signature import auc_signature_score, log2_mean_signature_scor
 from app.analysis.survival import binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
-from app.models.contract import AuxLayer, Dataset
+from app.models.contract import AuxLayer, AuxMatrix, Dataset
 from app.registry import ensure_loaded, get_descriptor, list_descriptors
 from app.services.gene_info import lookup_gene
 
@@ -70,6 +70,41 @@ def _resolve_gene(ds: Dataset, gene: str) -> str:
     if matches.empty:
         raise HTTPException(404, f"Gene '{gene}' not found in dataset.")
     return matches["feature_id"].iloc[0]
+
+
+def _resolve_aux_feature(aux: AuxMatrix, feature: str) -> str:
+    """Same normalisation contract as `_resolve_gene`, for an aux layer's
+    own row labels.
+
+    Kept separate rather than folded into `_resolve_gene` because an aux
+    index is not always a gene symbol: the drug layer is keyed by Broad
+    compound id ("BRD:BRD-K00104122-001-01-9"), so the blind `.upper()`
+    that's right for symbols is not safe here. Exact match wins first, and
+    the case-insensitive pass is a fallback that only resolves when it is
+    unambiguous.
+
+    Without this, one pane disagreed with itself -- `?gene=myb` resolved
+    but `?aux_feature=myb` 404'd with "myb not found in the
+    crispr_gene_effect layer", which reads as a coverage claim about the
+    data rather than a case mismatch, and could talk a user out of a
+    perfectly valid analysis (caught in QA).
+    """
+    if feature in aux.matrix.index:
+        return feature
+    stripped = feature.strip()
+    if stripped in aux.matrix.index:
+        return stripped
+    folded = stripped.casefold()
+    hits = [str(label) for label in aux.matrix.index if str(label).casefold() == folded]
+    if len(hits) == 1:
+        return hits[0]
+    if len(hits) > 1:
+        raise HTTPException(
+            422,
+            f"'{feature}' matches {len(hits)} features in this layer "
+            f"({', '.join(sorted(hits)[:5])}) -- use the exact identifier.",
+        )
+    raise HTTPException(404, f"'{feature}' not found in this layer.")
 
 
 @app.get("/health")
@@ -451,6 +486,11 @@ def expression_vs_aux(
     gene (CRISPR) or with sensitivity to a compound (PRISM drug screen)."""
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
+    try:
+        aux_layer = ds.require_aux(AuxLayer(layer))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    aux_feature = _resolve_aux_feature(aux_layer, aux_feature)
     try:
         result = expression_vs_aux_correlation(
             ds, AuxLayer(layer), feature_id, aux_feature, method=method

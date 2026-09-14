@@ -89,12 +89,35 @@ def lookup_gene(symbol: str) -> dict | None:
     return result or None
 
 
+def _ensembl_gene_id(hit: dict) -> str | None:
+    """mygene.info returns `ensembl` as a dict for most genes, but as a
+    LIST of dicts when a symbol maps to several Ensembl genes -- ZAP70 is
+    one, which crashed this endpoint with
+    `AttributeError: 'list' object has no attribute 'get'` (caught in QA
+    by watching the server log, not the UI: the pane just showed no
+    annotation, so nothing looked wrong from the browser).
+
+    Where there are several, take the first stable `gene` id rather than
+    inventing a merge -- callers want one id to link out with, and the
+    alternatives here are transcript-level variants of the same locus.
+    """
+    ensembl = hit.get("ensembl")
+    if isinstance(ensembl, list):
+        for entry in ensembl:
+            if isinstance(entry, dict) and entry.get("gene"):
+                return entry["gene"]
+        return None
+    if isinstance(ensembl, dict):
+        return ensembl.get("gene")
+    return None
+
+
 def _shape(hit: dict) -> dict:
     return {
         "symbol": hit.get("symbol"),
         "name": hit.get("name"),
         "summary": hit.get("summary"),
         "aliases": hit.get("alias") or [],
-        "ensembl_gene_id": (hit.get("ensembl") or {}).get("gene"),
+        "ensembl_gene_id": _ensembl_gene_id(hit),
         "entrez_gene_id": hit.get("entrezgene"),
     }

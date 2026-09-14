@@ -814,6 +814,49 @@ Two related QA fixes, same principle:
   shared resolver wasn't, so `?gene=dtx1` 404'd on an API the UI happens
   to uppercase for you.
 
+### 8.7 Aux feature ids normalise like gene symbols — but not by upper-casing
+**Decided (2026-09-13), after QA.** `_resolve_aux_feature()` mirrors
+`_resolve_gene()`'s normalisation contract for an aux layer's own row
+labels, but resolves by *exact match first, case-folded fallback second*
+rather than by `.upper()`.
+
+§8.6 fixed case handling for `gene` and missed `aux_feature` sitting in
+the same endpoint, so one pane disagreed with itself: `?gene=myb`
+resolved while `?aux_feature=myb` returned 404 *"myb not found in the
+crispr_gene_effect layer"*. That phrasing is the real damage — it reads
+as a claim about **data coverage**, so a user could reasonably conclude
+MYB was never screened and abandon a valid analysis, when the true answer
+is r=-0.65, p=2.5e-12 across 91 lines.
+
+Upper-casing (the rule that is correct for gene symbols) is **not** safe
+here: the drug layer is keyed by Broad compound id
+(`BRD:BRD-A00047421-001-01-9`), not symbol. Hence exact-match-first, and
+an explicit 422 rather than an arbitrary pick if a layer ever carried two
+labels differing only in case. Verified zero case-collisions across all
+three layers today (17,916 CRISPR + 6,250 mutation + 6,790 drug
+features), so the fallback is unambiguous wherever it currently applies.
+
+### 8.8 Gene annotation tolerates mygene.info's polymorphic `ensembl` field
+**Decided (2026-09-13), after QA.** `GET /genes/{symbol}` crashed with a
+500 (`AttributeError: 'list' object has no attribute 'get'`) for any
+symbol mapping to multiple Ensembl genes.
+
+mygene.info returns `ensembl` as a dict for most genes but as a **list of
+dicts** when a symbol has several Ensembl mappings. Only 1 of 30 surveyed
+T-ALL genes (ZAP70) has that shape — which is exactly why sampling missed
+it — but ZAP70 is a core T-cell-receptor signalling gene a T-ALL
+researcher would plausibly look up. Where several exist we take the first
+stable `gene` id rather than inventing a merge: callers want one id to
+link out with, and the alternatives are transcript-level variants of the
+same locus.
+
+Found by tailing the server log during the UI sweep, **not** from the
+browser: the annotation panel degraded silently, so nothing looked wrong
+on screen. Worth recording as a testing lesson — a UI-only pass cannot
+see a 500 that the frontend swallows. The shaper now also degrades to
+`None` for absent/empty/scalar shapes instead of raising or silently
+returning a wrong value.
+
 ---
 
 ## Change log
@@ -835,3 +878,5 @@ Two related QA fixes, same principle:
 | 2026-08-30 | Final pre-ship QA (4 parallel agents, everything together). Found and fixed: `/correlation` crashed with an unhandled 500 when gene_a == gene_b (duplicate column names after transpose → scipy got a DataFrame, not a Series); `/group-values` silently returned an empty list for an unknown column instead of a 404. Everything else verified to full precision. Shipped as 8220f1d. |
 | 2026-09-13 | §8 added: three new data pipelines as auxiliary measurement layers on existing datasets (not new datasets) — TARGET somatic mutations (279/469 coverage, validated against the canonical T-ALL driver profile), DepMap CRISPR gene effect (91/186, validated against known essential/non-essential genes), DepMap PRISM drug sensitivity (79/186, separate Figshare release, transposed matrix, compound→drug-name join). New `Dataset.aux` contract, `aux_analysis.py`, four endpoints, and a Multi-omics pane. Aux loading made opt-in after it was found to make existing unit tests hit the network. |
 | 2026-09-13 | QA on §8 (2 parallel agents). Blocker check PASSED: all 739 TARGET MAFs re-downloaded from GDC independently and the mutation matrix reproduced by exact set identity (same barcodes, not just counts) across 7 genes / 717 samples; CRISPR sign convention confirmed two ways (essentials negative, 10/10 lineage oncogenes negative); all 6,789 PRISM compound joins verified against the upstream file. Found and fixed two reporting defects — §8.6 exclusion-reason conflation (visible on the CRISPR tab's default view) and the drug layer's 6,790 headline where only 22% of compounds are usable (now reported as `n_usable_features`). No computed statistic was wrong; every reference number reproduced unchanged after the fixes. |
+| 2026-09-13 | E2E UI QA pass (4 parallel agents driving a real browser, Playwright MCP). Found and fixed: §8.7 `aux_feature` was case-sensitive while `gene` in the same endpoint was not, with an error that misread as a data-coverage claim; §8.8 `/genes/{symbol}` 500'd on mygene.info's list-shaped `ensembl` field (ZAP70). Six regression tests added (109 pass). Independently re-verified and found CORRECT, no change needed: DTX1/NOTCH1 biology direction (median 18.86 mutant vs 9.69 WT, p=4.9e-3), CRISPR sign convention (MYB r=-0.652, p=2.5e-12), §8.6 split exclusion reasons (95+78=173 exact), §3.1 quartile wording (25%/25%, 469=335+134), §3.4 Cox CI rendered with HR inside its own CI, §7.2 no cross-metric pooling (tpm and log2_intensity returned side by side, no pooled field). |
+| 2026-09-13 | Testing-process note: the canonical backend port is **8420** (`vite.config.ts`, `README.md`, `docker-compose.yml`, `backend/Dockerfile` all agree). Starting uvicorn on any other port makes every frontend call 502 and makes every pane render empty — which looks like a catastrophic app failure and wasted most of one QA agent's run. Start the backend on 8420. |

@@ -7,3 +7,6 @@ data/cache/
 node_modules/
 .env
 .DS_Store
+
+# Local dev tooling (machine-specific paths)
+.mcp.json

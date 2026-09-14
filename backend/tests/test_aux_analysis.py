@@ -284,3 +284,61 @@ def test_n_usable_features_counts_only_adequately_assayed_features():
     assert layer.n_usable_features(["S1", "S2", "S3"], min_samples=3) == 1
     assert layer.n_usable_features(["S1", "S2", "S3"], min_samples=2) == 2
     assert layer.n_usable_features([], min_samples=3) == 0
+
+
+def _aux_layer(index: list[str], layer: AuxLayer = AuxLayer.CRISPR_GENE_EFFECT) -> AuxMatrix:
+    frame = pd.DataFrame(
+        {"S1": [1.0] * len(index), "S2": [2.0] * len(index), "S3": [3.0] * len(index)},
+        index=index,
+    )
+    return AuxMatrix(
+        layer=layer, matrix=frame, value_label="x", value_description="x", source_note="x"
+    )
+
+
+def test_resolve_aux_feature_normalises_case_and_whitespace():
+    """`?gene=myb` resolved while `?aux_feature=myb` 404'd, so one pane
+    disagreed with itself about whether input was case-sensitive. Worse,
+    the error read as a coverage claim ("not found in the layer"), which
+    could talk a user out of a valid analysis."""
+    from app.api.main import _resolve_aux_feature
+
+    layer = _aux_layer(["MYB", "RPL13A"])
+    for probe in ("MYB", "myb", "  myb  ", "MyB"):
+        assert _resolve_aux_feature(layer, probe) == "MYB"
+
+
+def test_resolve_aux_feature_preserves_exact_match_over_folding():
+    """Drug compounds are keyed by Broad id, not symbol, so the exact
+    identifier must win before any case folding is attempted."""
+    from app.api.main import _resolve_aux_feature
+
+    compound = "BRD:BRD-A00047421-001-01-7"
+    layer = _aux_layer([compound], layer=AuxLayer.DRUG_SENSITIVITY)
+    assert _resolve_aux_feature(layer, compound) == compound
+    assert _resolve_aux_feature(layer, compound.lower()) == compound
+
+
+def test_resolve_aux_feature_refuses_ambiguous_fold():
+    """If a layer ever carries two labels differing only by case, guessing
+    silently would return an arbitrary one -- say so instead."""
+    from fastapi import HTTPException
+
+    from app.api.main import _resolve_aux_feature
+
+    layer = _aux_layer(["ABC", "abc"])
+    assert _resolve_aux_feature(layer, "ABC") == "ABC"  # exact still wins
+    with pytest.raises(HTTPException) as exc:
+        _resolve_aux_feature(layer, "AbC")
+    assert exc.value.status_code == 422
+
+
+def test_resolve_aux_feature_unknown_raises_404():
+    from fastapi import HTTPException
+
+    from app.api.main import _resolve_aux_feature
+
+    layer = _aux_layer(["MYB"])
+    with pytest.raises(HTTPException) as exc:
+        _resolve_aux_feature(layer, "ZZZNOPE")
+    assert exc.value.status_code == 404
