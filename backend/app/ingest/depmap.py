@@ -179,7 +179,7 @@ def load(lineage_filter: str | None = "Lymphoid", use_cache: bool = True, with_a
         accession=release_title,
         repository="DepMap (via Figshare)",
         assay_type=AssayType.RNA_SEQ,
-        expression_unit=ExpressionUnit.LOG2_INTENSITY,  # log2(TPM+1), not raw TPM
+        expression_unit=ExpressionUnit.LOG2_TPM,  # log2(TPM+1), not raw TPM
         gene_identifier="symbol",
         n_samples=matrix.shape[1],
         notes=(

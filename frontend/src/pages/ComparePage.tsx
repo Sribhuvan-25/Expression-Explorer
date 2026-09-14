@@ -19,7 +19,13 @@ function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
   return Array.from(seen);
 }
 
-function DatasetPanel({ result }: { result: CompareMultiDatasetResult }) {
+// `gene` is passed down rather than read off `result`: /compare-multi
+// returns it once at the top level, not per dataset. It has to reach the
+// export, because without it every dataset's PNG was written to the same
+// "<dataset>-by-group.png" and the second gene silently overwrote the
+// first -- with the gene appearing nowhere inside the image either, so a
+// saved figure couldn't be identified after the fact (caught in QA).
+function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResult; gene: string }) {
   // One ref per panel, not a ref shared across every dataset's chart --
   // each DatasetPanel mounts its own BoxPlot, and a shared ref would just
   // get overwritten by whichever panel mounts last, silently breaking
@@ -58,8 +64,8 @@ function DatasetPanel({ result }: { result: CompareMultiDatasetResult }) {
           </span>
           <ExportButton
             svgRef={chartRef}
-            filename={`${result.dataset_id}-by-group`}
-            title={result.display_name}
+            filename={`${gene}-${result.dataset_id}-by-group`}
+            title={`${gene} — ${result.display_name}`}
             subtitle={`n = ${filteredPoints.length} · Mann–Whitney with FDR correction`}
             statLines={[
               `Kruskal-Wallis p = ${
@@ -308,7 +314,7 @@ function SingleGeneCompareTab() {
                 />
               )}
               {shownResults.map((r) => (
-                <DatasetPanel key={r.dataset_id} result={r} />
+                <DatasetPanel key={r.dataset_id} result={r} gene={data.gene} />
               ))}
             </div>
           </>

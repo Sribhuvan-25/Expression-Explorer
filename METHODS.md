@@ -265,6 +265,40 @@ active.
 Filtering the chart is a display choice; silently recomputing p-values
 to match would let a user change significance by hiding groups.
 
+### 5.6 Histogram bin count adapts to cohort size
+**Decided (2026-09-13), after QA.** The Signature Score distribution uses
+Freedman–Diaconis bins with a `sqrt(n)` floor, clamped to [6, 36], rather
+than a fixed 36. `frontend/src/pages/SignaturePage.tsx`
+
+A fixed 36 bins left **39% of bins empty** on the 52-sample GDS4299
+cohort — a gap-toothed comb of 1–2 sample bars, which cannot answer the
+question the histogram exists to answer (whether the top scores are a
+distinct population or the tail of one continuous distribution).
+
+FD rather than Sturges because it keys off the IQR, so it stays sane on
+the zero-inflated score distributions this app produces (§3.1a). The
+`sqrt(n)` floor exists because FD alone is very conservative on these
+tightly-clustered scores — it gave 9 bins for the 469-sample TARGET
+cohort, which rendered perfectly well at 36, and coarsening a working
+view is its own regression. Measured on real signature scores:
+
+| dataset | n | bins | empty bins | was (fixed 36) |
+|---|---|---|---|---|
+| GDS4299 | 52 | 8 | **0%** | 39% |
+| DepMap | 186 | 14 | 7% | — |
+| TARGET | 469 | 22 | 5% | 6% |
+
+### 5.7 Exported figures must identify their subject
+**Decided (2026-09-13), after QA.** Every PNG export puts the analysed
+gene (or gene set) in both the filename and the in-image title.
+
+Expression Compare wrote every figure to `<dataset>-by-group.png` with
+the dataset name as the only title, so exporting two genes silently
+**overwrote the first file**, and the gene appeared nowhere inside the
+image — a saved figure could not be identified after the fact, which
+makes it useless as a record. Every other export site already named its
+subject; this one and the PCA title (a bare "PCA") were the exceptions.
+
 ---
 
 ## 6. Reporting and transparency
@@ -361,6 +395,18 @@ existing single-dataset `expression_by_group` independently per dataset
 and returns one block per dataset — points, pairwise tests, Kruskal-Wallis,
 assay type, expression unit, sample-exclusion accounting — with no shared
 axis or merged statistic anywhere in the response.
+
+**Unit labels must be distinguishable (2026-09-13, after QA.)** The
+`ExpressionUnit` enum had no `log2_tpm`, so DepMap — RNA-seq, log2(TPM+1)
+— was labelled `LOG2_INTENSITY`, the *microarray* unit. The UI then
+displayed the identical string "log2 intensity" for DepMap and for
+GDS4299 (genuinely microarray), which undercut the never-pool guarantee
+printed right beside it: two units that are not comparable read as the
+same unit. Added `ExpressionUnit.LOG2_TPM`; DepMap now reads
+`rna-seq · log2 tpm` against GDS4299's `microarray · log2 intensity`.
+Nothing branches on the value (it is display-only), so this changes no
+computed number — but a reader can no longer mistake the two for one
+scale.
 
 TARGET is RNA-seq TPM; GDS4299 is Affymetrix log2 intensity. Different
 scales, dynamic ranges, and zero-behaviour — pooling raw values across
@@ -925,3 +971,4 @@ returning a wrong value.
 | 2026-09-13 | E2E UI QA pass (4 parallel agents driving a real browser, Playwright MCP). Found and fixed: §8.7 `aux_feature` was case-sensitive while `gene` in the same endpoint was not, with an error that misread as a data-coverage claim; §8.8 `/genes/{symbol}` 500'd on mygene.info's list-shaped `ensembl` field (ZAP70). Six regression tests added (109 pass). Independently re-verified and found CORRECT, no change needed: DTX1/NOTCH1 biology direction (median 18.86 mutant vs 9.69 WT, p=4.9e-3), CRISPR sign convention (MYB r=-0.652, p=2.5e-12), §8.6 split exclusion reasons (95+78=173 exact), §3.1 quartile wording (25%/25%, 469=335+134), §3.4 Cox CI rendered with HR inside its own CI, §7.2 no cross-metric pooling (tpm and log2_intensity returned side by side, no pooled field). |
 | 2026-09-13 | Testing-process note: the canonical backend port is **8420** (`vite.config.ts`, `README.md`, `docker-compose.yml`, `backend/Dockerfile` all agree). Starting uvicorn on any other port makes every frontend call 502 and makes every pane render empty — which looks like a catastrophic app failure and wasted most of one QA agent's run. Start the backend on 8420. |
 | 2026-09-13 | §3.1a added after QA found quartile/custom survival arms silently violating their own definition when scores tie at a cutoff (MEF2C LOW n=217 of 466, captioned as a bottom quartile). Exposed as a user-chosen `tie_policy` with a reported `tie_note` rather than an internal default, at the user's direction: the domain expert should be able to see what happened and change it, since no policy is unconditionally correct (`exclude` empties an arm for the very genes that trigger it). §8.8 extended — `alias` has the same list-or-string polymorphism as `ensembl`; LYL1 (single alias "bHLHa18", and a member of this app's own ETP-TF5 preset) returned a bare string against a `list[str]` contract and white-screened the entire workspace via `.join` on a string. Fixed in the API, made structurally impossible in `GeneAnnotation`, and the poisoned LYL1 cache entry cleared. Multi-omics tab a11y: disabled tabs shared one accessible name ("Not available for this dataset") so a screen reader couldn't tell which layer was missing — now names the layer; disabled tabs no longer keep the active tint. 115 tests pass. |
+| 2026-09-13 | Non-blocking QA findings cleared: §5.7 Expression Compare PNG export now carries the gene in filename and in-image title (two genes previously overwrote each other as `<dataset>-by-group.png`, with the gene nowhere in the image); PCA export title no longer a bare "PCA". §5.6 Signature Score histogram bins adapt (Freedman–Diaconis with a sqrt(n) floor, clamped 6–36) instead of a fixed 36 — GDS4299 goes from 39% empty bins to 0% while TARGET keeps its resolution at 22 bins. §7.2 `ExpressionUnit.LOG2_TPM` added so DepMap (RNA-seq log2 TPM) stops sharing the microarray "log2 intensity" label with GDS4299. Display/metadata only — no computed statistic changes. 115 tests pass, tsc clean, build clean. |

@@ -23,6 +23,15 @@ class ExpressionUnit(str, Enum):
     TPM = "tpm"
     FPKM = "fpkm"
     COUNTS = "counts"
+    # log2(TPM+1) -- a transformed RNA-seq unit. Distinct from
+    # LOG2_INTENSITY, which is a MICROARRAY unit: the two are not on a
+    # comparable scale and do not come from comparable assays. DepMap was
+    # previously labelled LOG2_INTENSITY for want of this value, so the UI
+    # showed the same "log2 intensity" string for DepMap (RNA-seq) and
+    # GDS4299 (microarray) -- which undercut the "never pooled across
+    # assay types or units" guarantee shown right beside it, since two
+    # genuinely different units read as identical (caught in QA).
+    LOG2_TPM = "log2_tpm"
     LOG2_INTENSITY = "log2_intensity"
     DELTA_CT = "delta_ct"
 

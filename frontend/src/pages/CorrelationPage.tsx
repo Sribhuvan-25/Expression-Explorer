@@ -425,7 +425,9 @@ function PCATab({ datasetId }: { datasetId: string }) {
               <ExportButton
                 svgRef={chartRef}
                 filename={`pca-${data.genes_used.join("-")}`}
-                title="PCA"
+                title={`PCA — ${data.genes_used.slice(0, 4).join(", ")}${
+                  data.genes_used.length > 4 ? ` +${data.genes_used.length - 4} more` : ""
+                }`}
                 subtitle={`n = ${data.n_samples} · ${data.genes_used.length} genes`}
                 statLines={[
                   `PC1 variance explained = ${(data.variance_explained[0] * 100).toFixed(1)}%`,
