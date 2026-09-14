@@ -25,7 +25,10 @@ function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
 // "<dataset>-by-group.png" and the second gene silently overwrote the
 // first -- with the gene appearing nowhere inside the image either, so a
 // saved figure couldn't be identified after the fact (caught in QA).
-function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResult; gene: string }) {
+// Exported for tests: the export-identity contract (METHODS.md 5.7) lives
+// in what this passes to ExportButton, not in ExportButton itself, so it
+// has to be asserted here or a regression goes unnoticed.
+export function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResult; gene: string }) {
   // One ref per panel, not a ref shared across every dataset's chart --
   // each DatasetPanel mounts its own BoxPlot, and a shared ref would just
   // get overwritten by whichever panel mounts last, silently breaking

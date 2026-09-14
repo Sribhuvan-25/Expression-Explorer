@@ -1,0 +1,532 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for lib/exportFigure.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">lib</a> exportFigure.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/101</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/40</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/8</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/93</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+ * Publication-ready PNG export for the hand-built SVG charts. Both
+ * BoxPlot and SurvivalCurve style themselves with var(--token) CSS custom
+ * properties (via style="stroke:var(--rule)" and Tailwind's fill-[var(--x)]
+ * classes), which only resolve inside the live DOM — a cloned/serialized
+ * SVG rasterized off-screen has no access to those variables and would
+ * render with black/broken paint. So this walks the *live* SVG and its
+ * clone in lockstep, reading each live element's resolved fill/stroke/color
+ * via getComputedStyle and writing the literal value onto the clone.
+ */
+&nbsp;
+interface ExportOptions {
+  title: string;
+  subtitle?: string;
+  statLines: string[];
+  scale?: number;
+}
+&nbsp;
+function <span class="fstat-no" title="function not covered" >inlineComputedPaint(l</span>iveRoot: SVGSVGElement, clonedRoot: SVGSVGElement): void {
+  const <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >walk = (l</span>ive: Element, cloned: Element) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    if (live instanceof SVGElement) {</span>
+      const computed = <span class="cstat-no" title="statement not covered" >getComputedStyle(live);</span>
+      // Always write the resolved value, regardless of whether it came
+      // from an inline attribute, an inline style, or (as with Tailwind's
+      // fill-[var(--x)] arbitrary-value classes) a stylesheet rule with no
+      // matching attribute at all — the clone has none of those sources
+      // once it's serialized outside the live document, so every relevant
+      // property has to be captured as a literal here.
+      const fill = <span class="cstat-no" title="statement not covered" >computed.fill;</span>
+<span class="cstat-no" title="statement not covered" >      if (fill &amp;&amp; fill !== "none") <span class="cstat-no" title="statement not covered" >cloned.setAttribute("fill", fill);</span></span>
+      const stroke = <span class="cstat-no" title="statement not covered" >computed.stroke;</span>
+<span class="cstat-no" title="statement not covered" >      if (stroke &amp;&amp; stroke !== "none") <span class="cstat-no" title="statement not covered" >cloned.setAttribute("stroke", stroke);</span></span>
+<span class="cstat-no" title="statement not covered" >      if (live instanceof SVGTextElement) {</span>
+<span class="cstat-no" title="statement not covered" >        (cloned as SVGTextElement).setAttribute("font-family", computed.fontFamily);</span>
+      }
+    }
+    const liveChildren = <span class="cstat-no" title="statement not covered" >Array.from(live.children);</span>
+    const clonedChildren = <span class="cstat-no" title="statement not covered" >Array.from(cloned.children);</span>
+<span class="cstat-no" title="statement not covered" >    liveChildren.<span class="fstat-no" title="function not covered" >forEach((c</span>hild, i) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >      if (clonedChildren[i]) <span class="cstat-no" title="statement not covered" >walk(child, clonedChildren[i]);</span></span>
+    });
+  };
+<span class="cstat-no" title="statement not covered" >  walk(liveRoot, clonedRoot);</span>
+}
+&nbsp;
+export async function <span class="fstat-no" title="function not covered" >exportSvgAsPng(s</span>vgEl: SVGSVGElement, filename: string, options: ExportOptions): Promise&lt;void&gt; {
+  const scale = <span class="cstat-no" title="statement not covered" >options.scale ?? 2;</span>
+  const viewBox = <span class="cstat-no" title="statement not covered" >svgEl.viewBox.baseVal;</span>
+  const chartWidth = <span class="cstat-no" title="statement not covered" >viewBox.width || svgEl.clientWidth;</span>
+  const chartHeight = <span class="cstat-no" title="statement not covered" >viewBox.height || svgEl.clientHeight;</span>
+&nbsp;
+  const clone = <span class="cstat-no" title="statement not covered" >svgEl.cloneNode(true) as SVGSVGElement;</span>
+<span class="cstat-no" title="statement not covered" >  inlineComputedPaint(svgEl, clone);</span>
+<span class="cstat-no" title="statement not covered" >  clone.setAttribute("width", String(chartWidth));</span>
+<span class="cstat-no" title="statement not covered" >  clone.setAttribute("height", String(chartHeight));</span>
+  // Hover tooltips render as sibling HTML, not inside the SVG, but strip
+  // any stray zero-opacity hover-target circles' event handlers moot since
+  // this is a static clone — no cleanup needed there.
+&nbsp;
+  const bodyStyle = <span class="cstat-no" title="statement not covered" >getComputedStyle(document.body);</span>
+  const surfaceColor = <span class="cstat-no" title="statement not covered" >bodyStyle.getPropertyValue("--surface").trim() || "#ffffff";</span>
+  const inkColor = <span class="cstat-no" title="statement not covered" >bodyStyle.getPropertyValue("--ink").trim() || "#131A22";</span>
+  const inkMuteColor = <span class="cstat-no" title="statement not covered" >bodyStyle.getPropertyValue("--ink-mute").trim() || "#5C6B79";</span>
+  const ruleColor = <span class="cstat-no" title="statement not covered" >bodyStyle.getPropertyValue("--rule").trim() || "#DCE2E8";</span>
+  const <span class="cstat-no" title="statement not covered" >fontFamily = (bodyStyle.getPropertyValue("--f-body").trim() || "sans-serif").replace(/"/g, "");</span>
+  const <span class="cstat-no" title="statement not covered" >monoFamily = (bodyStyle.getPropertyValue("--f-mono").trim() || "monospace").replace(/"/g, "");</span>
+&nbsp;
+  const headerH = <span class="cstat-no" title="statement not covered" >68;</span>
+  const statsH = <span class="cstat-no" title="statement not covered" >20 + options.statLines.length * 18 + 12;</span>
+  const footerH = <span class="cstat-no" title="statement not covered" >28;</span>
+  const padding = <span class="cstat-no" title="statement not covered" >24;</span>
+  const totalW = <span class="cstat-no" title="statement not covered" >chartWidth + padding * 2;</span>
+  const totalH = <span class="cstat-no" title="statement not covered" >headerH + chartHeight + statsH + footerH + padding * 2;</span>
+&nbsp;
+  const canvas = <span class="cstat-no" title="statement not covered" >document.createElement("canvas");</span>
+<span class="cstat-no" title="statement not covered" >  canvas.width = totalW * scale;</span>
+<span class="cstat-no" title="statement not covered" >  canvas.height = totalH * scale;</span>
+  const ctx = <span class="cstat-no" title="statement not covered" >canvas.getContext("2d");</span>
+<span class="cstat-no" title="statement not covered" >  if (!ctx) <span class="cstat-no" title="statement not covered" >throw new Error("Canvas 2D context unavailable");</span></span>
+<span class="cstat-no" title="statement not covered" >  ctx.scale(scale, scale);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  ctx.fillStyle = surfaceColor;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.fillRect(0, 0, totalW, totalH);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  ctx.fillStyle = inkColor;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.font = `700 17px ${fontFamily}`;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.fillText(options.title, padding, padding + 22);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  if (options.subtitle) {</span>
+<span class="cstat-no" title="statement not covered" >    ctx.fillStyle = inkMuteColor;</span>
+<span class="cstat-no" title="statement not covered" >    ctx.font = `400 11px ${fontFamily}`;</span>
+<span class="cstat-no" title="statement not covered" >    ctx.fillText(options.subtitle, padding, padding + 40);</span>
+  }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  ctx.strokeStyle = ruleColor;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.lineWidth = 1;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.beginPath();</span>
+<span class="cstat-no" title="statement not covered" >  ctx.moveTo(padding, headerH + padding - 8);</span>
+<span class="cstat-no" title="statement not covered" >  ctx.lineTo(totalW - padding, headerH + padding - 8);</span>
+<span class="cstat-no" title="statement not covered" >  ctx.stroke();</span>
+&nbsp;
+  const svgString = <span class="cstat-no" title="statement not covered" >new XMLSerializer().serializeToString(clone);</span>
+  const svgBlob = <span class="cstat-no" title="statement not covered" >new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });</span>
+  const svgUrl = <span class="cstat-no" title="statement not covered" >URL.createObjectURL(svgBlob);</span>
+&nbsp;
+  const img = <span class="cstat-no" title="statement not covered" >new Image();</span>
+<span class="cstat-no" title="statement not covered" >  img.width = chartWidth;</span>
+<span class="cstat-no" title="statement not covered" >  img.height = chartHeight;</span>
+<span class="cstat-no" title="statement not covered" >  try {</span>
+<span class="cstat-no" title="statement not covered" >    await new <span class="fstat-no" title="function not covered" >Promise&lt;void&gt;((r</span>esolve, reject) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >      img.<span class="fstat-no" title="function not covered" >onload = () =&gt; <span class="cstat-no" title="statement not covered" >r</span>esolve();</span></span>
+<span class="cstat-no" title="statement not covered" >      img.<span class="fstat-no" title="function not covered" >onerror = () =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(new Error("Failed to rasterize chart SVG"));</span></span>
+<span class="cstat-no" title="statement not covered" >      img.src = svgUrl;</span>
+    });
+<span class="cstat-no" title="statement not covered" >    ctx.drawImage(img, padding, headerH + padding, chartWidth, chartHeight);</span>
+  } finally {
+<span class="cstat-no" title="statement not covered" >    URL.revokeObjectURL(svgUrl);</span>
+  }
+&nbsp;
+  let statsY = <span class="cstat-no" title="statement not covered" >headerH + chartHeight + padding + 20;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.fillStyle = inkColor;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.font = `600 11px ${monoFamily}`;</span>
+<span class="cstat-no" title="statement not covered" >  for (const line of options.statLines) {</span>
+<span class="cstat-no" title="statement not covered" >    ctx.fillText(line, padding, statsY);</span>
+<span class="cstat-no" title="statement not covered" >    statsY += 18;</span>
+  }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  ctx.strokeStyle = ruleColor;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.beginPath();</span>
+<span class="cstat-no" title="statement not covered" >  ctx.moveTo(padding, totalH - footerH);</span>
+<span class="cstat-no" title="statement not covered" >  ctx.lineTo(totalW - padding, totalH - footerH);</span>
+<span class="cstat-no" title="statement not covered" >  ctx.stroke();</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  ctx.fillStyle = inkMuteColor;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.font = `400 9px ${monoFamily}`;</span>
+<span class="cstat-no" title="statement not covered" >  ctx.fillText("Expression Explorer · exported " + new Date().toISOString().slice(0, 10), padding, totalH - 10);</span>
+&nbsp;
+  const pngBlob = <span class="cstat-no" title="statement not covered" >await new <span class="fstat-no" title="function not covered" >Promise&lt;Blob | null&gt;((r</span>esolve) =&gt; <span class="cstat-no" title="statement not covered" >canvas.toBlob(resolve, "image/png"))</span>;</span>
+<span class="cstat-no" title="statement not covered" >  if (!pngBlob) <span class="cstat-no" title="statement not covered" >throw new Error("Failed to encode PNG");</span></span>
+&nbsp;
+  const downloadUrl = <span class="cstat-no" title="statement not covered" >URL.createObjectURL(pngBlob);</span>
+  const a = <span class="cstat-no" title="statement not covered" >document.createElement("a");</span>
+<span class="cstat-no" title="statement not covered" >  a.href = downloadUrl;</span>
+<span class="cstat-no" title="statement not covered" >  a.download = filename.endsWith(".png") ? filename : `${filename}.png`;</span>
+<span class="cstat-no" title="statement not covered" >  document.body.appendChild(a);</span>
+<span class="cstat-no" title="statement not covered" >  a.click();</span>
+<span class="cstat-no" title="statement not covered" >  a.remove();</span>
+<span class="cstat-no" title="statement not covered" >  URL.revokeObjectURL(downloadUrl);</span>
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-14T03:16:45.010Z
+            </div>
+        <script src="../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../sorter.js"></script>
+        <script src="../block-navigation.js"></script>
+    </body>
+</html>
+    

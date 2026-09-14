@@ -9,6 +9,42 @@ const PRESETS: Record<string, string[]> = {
 };
 
 /**
+ * How many histogram bins for `scores`.
+ *
+ * Adaptive rather than a fixed 36: a fixed count left 39% of bins empty
+ * on the 52-sample GDS4299 cohort -- a gap-toothed comb of 1-2 sample
+ * bars, which cannot answer the question the histogram exists to answer
+ * (whether the top scores are a distinct population or the tail of one
+ * continuous distribution).
+ *
+ * Freedman-Diaconis rather than Sturges because it keys off the IQR, so
+ * it survives the zero-inflated distributions this app produces (a single
+ * gene scores exactly 0 for every sample below the rank cut -- see
+ * METHODS.md 3.1a); it degenerates when the IQR is 0, so Sturges is the
+ * fallback there.
+ *
+ * The sqrt(n) floor matters: FD alone gave 9 bins for the 469-sample
+ * TARGET cohort, which rendered perfectly well at 36, and coarsening a
+ * view that already worked is its own regression.
+ *
+ * Exported for tests -- this is the rule that decides whether the chart
+ * is readable, so it is worth pinning against real cohort sizes.
+ */
+export function histogramBinCount(scores: number[]): number {
+  const min = Math.min(...scores);
+  const max = Math.max(...scores);
+  const sorted = [...scores].sort((a, b) => a - b);
+  const quantile = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  const iqr = quantile(0.75) - quantile(0.25);
+  const sturges = Math.ceil(Math.log2(scores.length) + 1);
+  const floor = Math.max(6, Math.min(36, Math.ceil(Math.sqrt(scores.length))));
+  if (!(iqr > 0)) return Math.max(floor, Math.min(36, sturges));
+  const width = (2 * iqr) / Math.cbrt(scores.length);
+  const fd = Math.ceil((max - min) / width);
+  return Math.max(floor, Math.min(36, Number.isFinite(fd) && fd > 0 ? fd : sturges));
+}
+
+/**
  * A compact histogram of every score in the cohort, with the range covered
  * by the visible top-N shaded. Without it the page shows 25 numbers out of
  * a few hundred and gives no sense of whether the top scores are a
@@ -21,33 +57,7 @@ function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number 
   const max = Math.max(...scores);
   if (!(max > min)) return null;
 
-  // Bin count adapts to the sample size rather than being fixed at 36.
-  // A fixed 36 left 42% of bins empty on the 52-sample GDS4299 cohort --
-  // a gap-toothed comb of 1-2 sample bars, which cannot answer the
-  // question this histogram exists to answer (whether the top scores are
-  // a distinct population or the tail of one continuous distribution).
-  // Freedman-Diaconis rather than Sturges because it keys off the IQR, so
-  // it stays sane on the zero-inflated distributions this app produces
-  // (a single gene scores exactly 0 for every sample below the rank cut
-  // -- see METHODS.md 3.1a); it degenerates when IQR is 0, so fall back
-  // to Sturges there. Clamped to a legible range at both ends.
-  const BINS = (() => {
-    const sorted = [...scores].sort((a, b) => a - b);
-    const quantile = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
-    const iqr = quantile(0.75) - quantile(0.25);
-    const sturges = Math.ceil(Math.log2(scores.length) + 1);
-    // Never fewer bins than roughly sqrt(n): on these tightly-clustered
-    // score distributions FD alone is very conservative (9 bins for the
-    // 469-sample TARGET cohort, which rendered perfectly well at 36), and
-    // coarsening a view that already worked is its own regression. The
-    // floor lets the big cohort keep its resolution while the small one
-    // still collapses to something without gaps.
-    const floor = Math.max(6, Math.min(36, Math.ceil(Math.sqrt(scores.length))));
-    if (!(iqr > 0)) return Math.max(floor, Math.min(36, sturges));
-    const width = (2 * iqr) / Math.cbrt(scores.length);
-    const fd = Math.ceil((max - min) / width);
-    return Math.max(floor, Math.min(36, Number.isFinite(fd) && fd > 0 ? fd : sturges));
-  })();
+  const BINS = histogramBinCount(scores);
 
   const counts = new Array(BINS).fill(0);
   for (const s of scores) {

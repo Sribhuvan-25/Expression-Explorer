@@ -1008,10 +1008,39 @@ cleanly.
   Their parsing logic is covered by `test_aux_ingest.py` against
   fixtures; the download paths are exercised by actually running them,
   which is how the mutation matrix was validated (§8.2).
-- **No frontend test suite.** UI behaviour is currently verified by
-  browser-driving QA passes rather than unit tests. This is a real gap —
-  the LYL1 white-screen (§8.8) would have been caught by a component
-  test — and is the obvious next investment if UI regressions recur.
+- **Most of the frontend.** See §9.3 — there is now a component suite,
+  but it is deliberately narrow (~30% of statements). Page scaffolding,
+  dockview wiring, and chart rendering are still verified by
+  browser-driving QA rather than unit tests.
+
+### 9.3 The frontend suite targets shipped defects, not a coverage number
+**Decided (2026-09-13).** Vitest + Testing Library, run with
+`npm test` in `frontend/`. Every test corresponds to a bug that actually
+reached the app, rather than to a coverage target:
+
+- **`GeneAnnotation`** — the LYL1 white-screen (§8.8). Covers the bare
+  string alias, normal lists, empty lists, four malformed shapes, and the
+  fail-quiet path.
+- **`histogramBinCount`** — the bin rule (§5.6), pinned against the real
+  cohort sizes (52 / 186 / 469) and the zero-inflated shape of §3.1a.
+  Extracted from an inline IIFE to make it testable, which also made it
+  self-documenting.
+- **`DatasetPanel`** — export identity (§5.7).
+
+**Each test was validated by reintroducing its bug and confirming the
+suite fails.** That check earned its keep immediately: the export tests
+were *first* written against `ExportButton` alone, passed, and then
+**failed to notice** when the real fix was reverted — because they only
+proved the button forwards its props, while the actual defect was the
+call site not passing the gene. Rewriting them against `DatasetPanel`
+made them fail correctly. A test that cannot fail is worse than no test,
+since it reads as coverage.
+
+Coverage is ~30% of frontend statements and that is the intended shape:
+the components that carried real defects are covered; the rest is page
+scaffolding and chart rendering, where a browser QA pass finds more than
+a jsdom assertion would. jsdom needs `ResizeObserver` and a non-zero
+`clientWidth` stubbed (`src/test/setup.ts`) or any chart render throws.
 
 ---
 
@@ -1040,3 +1069,4 @@ cleanly.
 | 2026-09-13 | Non-blocking QA findings cleared: §5.7 Expression Compare PNG export now carries the gene in filename and in-image title (two genes previously overwrote each other as `<dataset>-by-group.png`, with the gene nowhere in the image); PCA export title no longer a bare "PCA". §5.6 Signature Score histogram bins adapt (Freedman–Diaconis with a sqrt(n) floor, clamped 6–36) instead of a fixed 36 — GDS4299 goes from 39% empty bins to 0% while TARGET keeps its resolution at 22 bins. §7.2 `ExpressionUnit.LOG2_TPM` added so DepMap (RNA-seq log2 TPM) stops sharing the microarray "log2 intensity" label with GDS4299. Display/metadata only — no computed statistic changes. 115 tests pass, tsc clean, build clean. |
 | 2026-09-13 | §8.4 follow-through on PRISM sparsity: new `GET /datasets/{id}/aux-features` searchable picker over features that actually have data on the selected dataset (searches name/id/MOA/target), replacing a free-text box pre-filled with a raw Broad id — 77.6% of compounds have zero measurements on the covered lines, so typed guesses mostly failed. `MIN_AUX_SAMPLES` centralised in `contract.py` so the picker, the usable-feature count, and the correlation cannot disagree. Zero-coverage error now says the compound was never assayed on this cohort rather than "need at least 3 to correlate". Drug tab default moved to AZ-628 (the one compound covering all 79 lines). 118 tests pass. |
 | 2026-09-13 | §9 added. HTTP-level test suite for the API surface (`tests/test_api.py`, 24 tests against a synthetic in-registry dataset — no network). `app/api/main.py` coverage 26% → 74%; suite 118 → 142 tests. Motivated by the observation that every API bug found in this session's QA was an HTTP-shape bug invisible to the existing function-level tests. Suite validated by reintroducing two real bugs (case-sensitive aux_feature; compare-multi shadowed by the dynamic route) and confirming it fails on both. Documented the remaining deliberate gaps: ingest download paths, and the absence of any frontend test suite. |
+| 2026-09-13 | §9.3 added: frontend test suite (Vitest + Testing Library, 21 tests, `npm test` in `frontend/`) — the last layer with zero automated coverage. Scoped to defects that actually shipped: the LYL1 white-screen (§8.8), the histogram bin rule (§5.6), and export identity (§5.7). Each validated by reintroducing its bug; the export tests initially passed while failing to catch a reverted fix, because they exercised `ExportButton` rather than the call site that carried the defect — rewritten against `DatasetPanel`. `histogramBinCount` extracted from an inline IIFE and exported to make it testable. Coverage ~30% by intent, not by omission. |
