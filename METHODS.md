@@ -974,6 +974,47 @@ returning a wrong value.
 
 ---
 
+## 9. Testing
+
+### 9.1 The API surface is tested at the HTTP layer
+**Decided (2026-09-13).** `backend/tests/test_api.py` drives the app
+through FastAPI's `TestClient` against a synthetic dataset registered
+into the registry — no network, no real cohort load.
+
+The rest of the suite tests analysis functions directly, which is the
+right level for the statistics but left `app/api/main.py` at **26%
+coverage** across 20 endpoints. That gap was not theoretical: *every*
+bug found in that file during this session's QA — a case-sensitive
+`aux_feature` beside a case-insensitive `gene`, a 500 on mygene.info's
+list-shaped `ensembl`, `/group-values` returning an empty list instead
+of a 404, `/correlation` crashing on identical genes — was an HTTP-shape
+bug where the underlying analysis function was correct and the endpoint
+around it was not. Testing one layer down could not have caught any of
+them, and in fact did not: all were found by a human or an agent
+clicking the UI.
+
+Coverage of `app/api/main.py` went 26% → **74%**.
+
+The tests were validated by reintroducing two of the real bugs and
+confirming the suite fails — a test that passes without being able to
+fail is worse than no test, because it reads as coverage. Reinstating
+the case-sensitivity bug failed exactly the two case-variant cases;
+reordering `/datasets/compare-multi` below the dynamic
+`/datasets/{dataset_id}` route failed the shadowing test. Both restored
+cleanly.
+
+### 9.2 What is deliberately not covered
+- **Ingest loaders** (33–67%) hit the network and download large files.
+  Their parsing logic is covered by `test_aux_ingest.py` against
+  fixtures; the download paths are exercised by actually running them,
+  which is how the mutation matrix was validated (§8.2).
+- **No frontend test suite.** UI behaviour is currently verified by
+  browser-driving QA passes rather than unit tests. This is a real gap —
+  the LYL1 white-screen (§8.8) would have been caught by a component
+  test — and is the obvious next investment if UI regressions recur.
+
+---
+
 ## Change log
 
 | Date | Change |
@@ -998,3 +1039,4 @@ returning a wrong value.
 | 2026-09-13 | §3.1a added after QA found quartile/custom survival arms silently violating their own definition when scores tie at a cutoff (MEF2C LOW n=217 of 466, captioned as a bottom quartile). Exposed as a user-chosen `tie_policy` with a reported `tie_note` rather than an internal default, at the user's direction: the domain expert should be able to see what happened and change it, since no policy is unconditionally correct (`exclude` empties an arm for the very genes that trigger it). §8.8 extended — `alias` has the same list-or-string polymorphism as `ensembl`; LYL1 (single alias "bHLHa18", and a member of this app's own ETP-TF5 preset) returned a bare string against a `list[str]` contract and white-screened the entire workspace via `.join` on a string. Fixed in the API, made structurally impossible in `GeneAnnotation`, and the poisoned LYL1 cache entry cleared. Multi-omics tab a11y: disabled tabs shared one accessible name ("Not available for this dataset") so a screen reader couldn't tell which layer was missing — now names the layer; disabled tabs no longer keep the active tint. 115 tests pass. |
 | 2026-09-13 | Non-blocking QA findings cleared: §5.7 Expression Compare PNG export now carries the gene in filename and in-image title (two genes previously overwrote each other as `<dataset>-by-group.png`, with the gene nowhere in the image); PCA export title no longer a bare "PCA". §5.6 Signature Score histogram bins adapt (Freedman–Diaconis with a sqrt(n) floor, clamped 6–36) instead of a fixed 36 — GDS4299 goes from 39% empty bins to 0% while TARGET keeps its resolution at 22 bins. §7.2 `ExpressionUnit.LOG2_TPM` added so DepMap (RNA-seq log2 TPM) stops sharing the microarray "log2 intensity" label with GDS4299. Display/metadata only — no computed statistic changes. 115 tests pass, tsc clean, build clean. |
 | 2026-09-13 | §8.4 follow-through on PRISM sparsity: new `GET /datasets/{id}/aux-features` searchable picker over features that actually have data on the selected dataset (searches name/id/MOA/target), replacing a free-text box pre-filled with a raw Broad id — 77.6% of compounds have zero measurements on the covered lines, so typed guesses mostly failed. `MIN_AUX_SAMPLES` centralised in `contract.py` so the picker, the usable-feature count, and the correlation cannot disagree. Zero-coverage error now says the compound was never assayed on this cohort rather than "need at least 3 to correlate". Drug tab default moved to AZ-628 (the one compound covering all 79 lines). 118 tests pass. |
+| 2026-09-13 | §9 added. HTTP-level test suite for the API surface (`tests/test_api.py`, 24 tests against a synthetic in-registry dataset — no network). `app/api/main.py` coverage 26% → 74%; suite 118 → 142 tests. Motivated by the observation that every API bug found in this session's QA was an HTTP-shape bug invisible to the existing function-level tests. Suite validated by reintroducing two real bugs (case-sensitive aux_feature; compare-multi shadowed by the dynamic route) and confirming it fails on both. Documented the remaining deliberate gaps: ingest download paths, and the absence of any frontend test suite. |
