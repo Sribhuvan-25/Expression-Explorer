@@ -29,6 +29,19 @@ export function GeneAnnotation({ gene }: { gene: string }) {
     return null;
   }
 
+  // Belt-and-braces against the upstream field being a bare string rather
+  // than a list (mygene.info does this for a gene with exactly one alias,
+  // e.g. LYL1 -> "bHLHa18"). The API normalises this now, but a string
+  // passes `.length > 0` and then throws on `.join`, and this component
+  // sits inside every results page with no error boundary above it -- so
+  // the failure mode was a white screen for the whole workspace, not a
+  // missing annotation line. Cheap to make that structurally impossible.
+  const aliases = Array.isArray(data.aliases)
+    ? data.aliases
+    : typeof data.aliases === "string"
+      ? [data.aliases]
+      : [];
+
   return (
     <details className="group rounded-[3px] border border-rule bg-surface" open>
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
@@ -40,10 +53,10 @@ export function GeneAnnotation({ gene }: { gene: string }) {
       </summary>
       <div className="flex flex-col gap-2 border-t border-rule px-3 py-2.5">
         {data.summary && <p className="text-[12px] leading-relaxed text-ink-soft">{data.summary}</p>}
-        {data.aliases.length > 0 && (
+        {aliases.length > 0 && (
           <p className="text-[11px] text-ink-mute">
             <span className="font-mono uppercase tracking-wider text-ink-mute">Aliases</span>{" "}
-            {data.aliases.join(", ")}
+            {aliases.join(", ")}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10.5px] text-ink-mute">

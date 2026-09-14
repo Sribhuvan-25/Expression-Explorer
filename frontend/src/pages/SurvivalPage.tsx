@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, type TiePolicy } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
 import { SurvivalPlot } from "../components/SurvivalCurve";
 import { ExportButton } from "../components/ExportButton";
@@ -26,12 +26,14 @@ export function SurvivalPage() {
   const [cutoffMethod, setCutoffMethod] = useState<"median" | "quartile" | "custom">("median");
   const [cutoffHighPct, setCutoffHighPct] = useState(25);
   const [cutoffLowPct, setCutoffLowPct] = useState(25);
+  const [tiePolicy, setTiePolicy] = useState<TiePolicy>("trim");
   const [query, setQuery] = useState<{
     datasetId: string;
     genes: string[];
     cutoffMethod: "median" | "quartile" | "custom";
     cutoffHighPct: number;
     cutoffLowPct: number;
+    tiePolicy: TiePolicy;
   } | null>(null);
 
   const { data, isFetching, error } = useQuery({
@@ -41,19 +43,26 @@ export function SurvivalPage() {
         method: query!.cutoffMethod,
         highPct: query!.cutoffHighPct,
         lowPct: query!.cutoffLowPct,
+        tiePolicy: query!.tiePolicy,
       }),
     enabled: !!query,
   });
 
   const run = () => {
     if (genes.length > 0 && datasetId) {
-      setQuery({ datasetId, genes, cutoffMethod, cutoffHighPct, cutoffLowPct });
+      setQuery({ datasetId, genes, cutoffMethod, cutoffHighPct, cutoffLowPct, tiePolicy });
     }
   };
 
+  // Hedged deliberately when scores tie at a cutoff: the old wording
+  // asserted "middle 50% excluded" even when the tie policy had made the
+  // arms something else entirely, so the caption contradicted the arm
+  // sizes printed right beside it.
   const cutoffDescription =
     query?.cutoffMethod === "quartile"
-      ? "top vs. bottom quartile of scores (middle 50% excluded)"
+      ? data?.tie_note
+        ? "top vs. bottom quartile of scores, adjusted for tied scores at the cutoff"
+        : "top vs. bottom quartile of scores (middle 50% excluded)"
       : query?.cutoffMethod === "custom"
         ? `top ${query.cutoffHighPct}% vs. bottom ${query.cutoffLowPct}% of scores`
         : "median signature score";
@@ -166,9 +175,45 @@ export function SurvivalPage() {
                   )}
                 </div>
                 {cutoffMethod !== "median" && (
+                  <div className="mt-3">
+                    <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                      Tied scores at the cutoff
+                    </label>
+                    <div className="flex overflow-hidden rounded-[3px] border border-rule">
+                      {(
+                        [
+                          ["trim", "Trim to size"],
+                          ["exclude", "Exclude tied"],
+                          ["inclusive", "Keep all tied"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setTiePolicy(value)}
+                          className={`px-3 py-1 font-mono text-[11.5px] transition-colors ${
+                            tiePolicy === value
+                              ? "bg-accent-soft text-accent-ink"
+                              : "text-ink-mute hover:text-ink-soft"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-[11.5px] text-ink-mute">
+                      {tiePolicy === "trim"
+                        ? "Arms keep the requested size; surplus samples sharing the exact cutoff score are dropped in a fixed order."
+                        : tiePolicy === "exclude"
+                          ? "Every sample sharing the exact cutoff score is dropped from both arms — never splits equal scores, but can empty an arm."
+                          : "Every sample sharing the exact cutoff score joins the arm, so an arm may be far larger than the requested percentile."}
+                    </p>
+                  </div>
+                )}
+                {cutoffMethod !== "median" && (
                   <p className="mt-1.5 text-[11.5px] text-ink-mute">
                     {cutoffMethod === "quartile"
-                      ? "Only the top and bottom 25% of samples by score are compared — the middle 50% are excluded."
+                      ? "Only the top and bottom 25% of samples by score are compared — the middle 50% are excluded, plus any adjustment for tied scores above."
                       : `Only the top ${cutoffHighPct}% and bottom ${cutoffLowPct}% of samples by score are compared — the rest are excluded.`}
                   </p>
                 )}
@@ -224,6 +269,21 @@ export function SurvivalPage() {
                   }
                 >
                   <p className="mb-2 text-[11.5px] text-ink-mute">Groups split by {cutoffDescription}.</p>
+                  {/* A percentile cutoff landing on a block of equal scores
+                      is common here (a single gene scores exactly 0 for every
+                      sample below the rank threshold), and it silently made
+                      the arms something other than the quartiles the caption
+                      promises. Surface it next to the plot with the arm sizes
+                      visible, so the split can be reconciled on sight. */}
+                  {data.tie_note && (
+                    <p className="mb-2.5 rounded-[3px] border border-warn/30 bg-warn-soft px-2.5 py-2 text-[11.5px] text-warn">
+                      {data.tie_note.message}{" "}
+                      {Object.entries(data.curves)
+                        .map(([label, c]) => `${label} n=${c.n}`)
+                        .join(" · ")}
+                      . Change <span className="font-mono">Tied scores at the cutoff</span> to compare policies.
+                    </p>
+                  )}
                   <SurvivalPlot curves={data.curves} svgRef={chartRef} />
                   {data.n_excluded > 0 && (
                     <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">

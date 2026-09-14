@@ -51,6 +51,7 @@ def binarize_by_cutoff(
     custom_high_pct: float = 50.0,
     custom_low_pct: float = 50.0,
     score_col: str = "signature_score",
+    tie_policy: str = "trim",
 ) -> pd.Series:
     """Group samples by signature score, with a null (excluded) entry for
     anyone in neither group -- generalizes `binarize_by_median` to match
@@ -73,6 +74,16 @@ def binarize_by_cutoff(
       rather than one symmetric percentile, so a real use case is an
       asymmetric split, not just "quartile with a different number".
 
+    `tie_policy` decides what happens when a percentile threshold lands
+    exactly on a block of equal scores (see the body for why this is
+    common here, not an edge case). Only meaningful for quartile/custom:
+    - "trim" (default) -- keep the arm at its requested size, dropping
+      surplus tied samples by a deterministic rank order.
+    - "exclude" -- drop the whole tied block from both arms.
+    - "inclusive" -- the original behaviour: every tied sample joins the
+      arm, so arms can be much larger than the requested percentile.
+      Kept so an expert can reproduce prior numbers deliberately.
+
     Callers must apply the same exclusion-transparency pattern used
     elsewhere in this app (METHODS.md 6.1) whenever method != "median":
     the returned Series has real `None` entries, and how many of the
@@ -87,6 +98,11 @@ def binarize_by_cutoff(
         high_pct, low_pct = custom_high_pct, custom_low_pct
     else:
         raise ValueError(f"Unknown cutoff method: {method!r}")
+
+    if tie_policy not in ("trim", "exclude", "inclusive"):
+        raise ValueError(
+            f"Unknown tie_policy: {tie_policy!r} (expected 'trim', 'exclude', or 'inclusive')"
+        )
 
     for name, pct in (("custom_high_pct", high_pct), ("custom_low_pct", low_pct)):
         if not (0 < pct < 100):
@@ -108,6 +124,57 @@ def binarize_by_cutoff(
     group = pd.Series(pd.NA, index=df.index, dtype="object")
     group[scores >= high_threshold] = "HIGH"
     group[scores <= low_threshold] = "LOW"
+
+    if tie_policy == "inclusive":
+        return group
+
+    # A threshold can land exactly ON a tied block of scores, and then the
+    # inclusive comparison above sweeps the whole block into one arm. This
+    # is not hypothetical: `auc_signature_score` returns exactly 0.0 for
+    # every sample where the gene never reaches the top-25% rank cut, so
+    # for a single gene expressed in under ~75% of the cohort the 25th
+    # percentile IS 0.0. MEF2C on TARGET gave LOW n=217 (46% of the
+    # cohort) against HIGH n=118, while the UI still called it a quartile
+    # split -- the log-rank p and Cox HR were computed on arms that were
+    # not what the caption claimed (caught in QA).
+    #
+    # There is no single correct answer here, which is why the caller
+    # chooses and the result reports what happened:
+    #   "trim"    -- keep the requested arm size, breaking the tie by rank
+    #                order. Arms match the stated definition, but which
+    #                equals land in the arm is arbitrary (deterministic).
+    #   "exclude" -- drop the entire tied block from both arms. Never puts
+    #                equal scores in different arms, at the cost of n.
+    for label, threshold, ascending in (
+        ("HIGH", high_threshold, False),
+        ("LOW", low_threshold, True),
+    ):
+        in_arm = group == label
+        tied = in_arm & (scores == threshold)
+        n_tied = int(tied.sum())
+        if n_tied <= 1:
+            continue
+        # Requested size for this arm, from the percentile the caller asked
+        # for -- not the arm's current (tie-inflated) size.
+        pct = high_pct if label == "HIGH" else low_pct
+        target = int(round(len(scores) * pct / 100))
+        untied = int((in_arm & ~tied).sum())
+        if untied >= target:
+            # The untied members already fill the arm; every tied sample is
+            # surplus under either policy.
+            group[tied] = pd.NA
+            continue
+        if tie_policy == "exclude":
+            group[tied] = pd.NA
+            continue
+        keep = target - untied
+        if keep >= n_tied:
+            continue
+        # Deterministic: order the tied block by sample id so the same
+        # query always yields the same arms.
+        surplus = sorted(scores.index[tied])[keep:]
+        group[surplus] = pd.NA
+
     return group
 
 

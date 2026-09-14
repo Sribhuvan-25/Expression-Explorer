@@ -166,3 +166,88 @@ def test_kaplan_meier_curves_drops_excluded_middle_band():
     assert result["curves"]["HIGH"]["n"] == 25
     assert result["curves"]["LOW"]["n"] == 25
     assert "logrank_p_value" in result  # still exactly 2 groups -> log-rank runs
+
+
+def _tied_frame():
+    """Half the cohort tied at exactly 0.0 -- the real shape produced by
+    `auc_signature_score` for a single gene, where every sample below the
+    top-25% rank cut scores exactly 0."""
+    scores = [0.0] * 20 + [float(i) for i in range(1, 21)]
+    return pd.DataFrame(
+        {
+            "signature_score": scores,
+            "duration": [100.0] * 40,
+            "event": [1] * 40,
+        },
+        index=[f"S{i:02d}" for i in range(40)],
+    )
+
+
+def test_quartile_tie_policy_trim_keeps_requested_arm_sizes():
+    """A cutoff landing on a tied block used to sweep the whole block into
+    one arm: MEF2C on TARGET gave LOW n=217 of 466 while the UI still
+    called it a bottom quartile. `trim` keeps the arm at its requested
+    size."""
+    from app.analysis.survival import binarize_by_cutoff
+
+    group = binarize_by_cutoff(_tied_frame(), method="quartile", tie_policy="trim")
+    assert (group == "HIGH").sum() == 10
+    assert (group == "LOW").sum() == 10
+
+
+def test_quartile_tie_policy_inclusive_reproduces_old_behaviour():
+    """Kept so an expert can deliberately reproduce prior numbers."""
+    from app.analysis.survival import binarize_by_cutoff
+
+    group = binarize_by_cutoff(_tied_frame(), method="quartile", tie_policy="inclusive")
+    # All 20 zero-scored samples fall into LOW, not the requested 10.
+    assert (group == "LOW").sum() == 20
+    assert (group == "HIGH").sum() == 10
+
+
+def test_quartile_tie_policy_exclude_drops_the_whole_tied_block():
+    """Never splits equal scores across arms -- at the cost of an arm that
+    can empty entirely, which is why this isn't the default."""
+    from app.analysis.survival import binarize_by_cutoff
+
+    group = binarize_by_cutoff(_tied_frame(), method="quartile", tie_policy="exclude")
+    assert (group == "LOW").sum() == 0
+    assert (group == "HIGH").sum() == 10
+
+
+def test_tie_policies_agree_when_no_scores_tie():
+    """The tie handling must engage only where it's actually needed."""
+    from app.analysis.survival import binarize_by_cutoff
+
+    df = pd.DataFrame(
+        {
+            "signature_score": [float(i) for i in range(40)],
+            "duration": [100.0] * 40,
+            "event": [1] * 40,
+        },
+        index=[f"S{i:02d}" for i in range(40)],
+    )
+    results = [
+        binarize_by_cutoff(df, method="quartile", tie_policy=p).fillna("NA").tolist()
+        for p in ("trim", "exclude", "inclusive")
+    ]
+    assert results[0] == results[1] == results[2]
+
+
+def test_trim_is_deterministic():
+    """Which tied samples survive is arbitrary among equals, but must not
+    change between identical queries."""
+    from app.analysis.survival import binarize_by_cutoff
+
+    df = _tied_frame()
+    first = binarize_by_cutoff(df, method="quartile", tie_policy="trim").fillna("NA").tolist()
+    for _ in range(3):
+        again = binarize_by_cutoff(df, method="quartile", tie_policy="trim").fillna("NA").tolist()
+        assert again == first
+
+
+def test_unknown_tie_policy_raises():
+    from app.analysis.survival import binarize_by_cutoff
+
+    with pytest.raises(ValueError, match="tie_policy"):
+        binarize_by_cutoff(_tied_frame(), method="quartile", tie_policy="nonsense")

@@ -112,12 +112,37 @@ def _ensembl_gene_id(hit: dict) -> str | None:
     return None
 
 
+def _aliases(hit: dict) -> list[str]:
+    """mygene.info returns `alias` as a list for genes with several
+    aliases but as a BARE STRING for a gene with exactly one -- LYL1
+    ("bHLHa18") is the case that mattered, since LYL1 ships in this app's
+    own ETP-TF5 preset.
+
+    The contract declares `aliases: list[str]`, and the frontend does
+    `aliases.length > 0 && aliases.join(", ")`. A string passes `.length`
+    (8, truthy) and then throws on `.join`, which white-screened the whole
+    workspace rather than degrading one panel (caught in QA).
+
+    Same polymorphism as `_ensembl_gene_id` handles one field over; this
+    one was missed on the first pass, so normalise every shape here rather
+    than trusting the upstream type.
+    """
+    alias = hit.get("alias")
+    if alias is None:
+        return []
+    if isinstance(alias, str):
+        return [alias]
+    if isinstance(alias, list):
+        return [str(a) for a in alias if a]
+    return []
+
+
 def _shape(hit: dict) -> dict:
     return {
         "symbol": hit.get("symbol"),
         "name": hit.get("name"),
         "summary": hit.get("summary"),
-        "aliases": hit.get("alias") or [],
+        "aliases": _aliases(hit),
         "ensembl_gene_id": _ensembl_gene_id(hit),
         "entrez_gene_id": hit.get("entrezgene"),
     }

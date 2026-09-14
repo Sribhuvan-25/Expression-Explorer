@@ -126,7 +126,9 @@ median-mode implementation, unchanged).
   reference/gepia3-feature-review.md. The excluded middle band is
   additive to §3.3's existing "no follow-up time" exclusion, and both
   reasons are combined in one `exclusion_reason` string rather than
-  only reporting one of the two causes.
+  only reporting one of the two causes. When scores tie exactly on a
+  cutoff the arms are **not** a clean 25/25 split — see §3.1a, which
+  governs what happens then and is user-selectable.
 - **custom** — same idea as quartile but with independently chosen
   high/low percentiles (e.g. top 30% vs. bottom 10%), since a real use
   case is an asymmetric split, not just "quartile with a different
@@ -814,6 +816,48 @@ Two related QA fixes, same principle:
   shared resolver wasn't, so `?gene=dtx1` 404'd on an API the UI happens
   to uppercase for you.
 
+### 3.1a Tied scores at a percentile cutoff
+**Decided (2026-09-13), after QA.** `binarize_by_cutoff()` takes a
+`tie_policy` (`trim` default / `exclude` / `inclusive`), and the survival
+response carries a `tie_note` reporting how many samples were tied and
+which policy ran.
+
+A percentile threshold can land exactly on a block of equal scores, and
+the original inclusive comparisons (`scores <= low_threshold`) then swept
+the **whole block** into one arm. This is not an edge case here:
+`auc_signature_score` returns exactly `0.0` for every sample where the
+gene never reaches the top-25% rank cut (§2.3 — a score of 0 is
+meaningful, not missing), so for a single gene expressed in under ~75% of
+the cohort the 25th percentile *is* 0.0. Measured on TARGET:
+
+| gene | scores = 0.0 | inclusive | trim | exclude |
+|---|---|---|---|---|
+| MEF2C | 217 / 466 | 118 / **217** | 116 / 116 | 116 / **0** |
+| TAL1 | 242 / 466 | 117 / **242** | 117 / 116 | 117 / **0** |
+| LMO2 | 34 / 466 | 117 / 117 | 117 / 117 | 117 / 117 |
+
+The UI meanwhile asserted "top vs. bottom quartile (middle 50%
+excluded)", so the log-rank p and Cox HR were computed on arms that were
+not what the caption claimed. For MEF2C the log-rank p moves from
+7.51e-13 (inclusive) to 1.08e-08 (trim) — same data, materially
+different strength of conclusion.
+
+**Why this is a user-facing option rather than an internal default.**
+There is no policy that is simply correct: `trim` matches the stated
+definition but picks arbitrarily among equals; `exclude` never splits
+equal scores across arms but **empties an arm entirely** for MEF2C and
+TAL1, making the analysis impossible for exactly the genes that trigger
+it; `inclusive` reproduces prior numbers. Choosing silently would hide a
+judgement that belongs to the domain expert running the analysis — so
+the app surfaces the tie, names the applied policy, prints the resulting
+arm sizes beside the curve, and lets the user switch. LMO2 is identical
+under all three policies, confirming the handling engages only where
+ties actually occur.
+
+`trim` is the default because it is the only policy that keeps the arms
+consistent with what the interface says it is doing, and it never
+silently produces an unusable result.
+
 ### 8.7 Aux feature ids normalise like gene symbols — but not by upper-casing
 **Decided (2026-09-13), after QA.** `_resolve_aux_feature()` mirrors
 `_resolve_gene()`'s normalisation contract for an aux layer's own row
@@ -880,3 +924,4 @@ returning a wrong value.
 | 2026-09-13 | QA on §8 (2 parallel agents). Blocker check PASSED: all 739 TARGET MAFs re-downloaded from GDC independently and the mutation matrix reproduced by exact set identity (same barcodes, not just counts) across 7 genes / 717 samples; CRISPR sign convention confirmed two ways (essentials negative, 10/10 lineage oncogenes negative); all 6,789 PRISM compound joins verified against the upstream file. Found and fixed two reporting defects — §8.6 exclusion-reason conflation (visible on the CRISPR tab's default view) and the drug layer's 6,790 headline where only 22% of compounds are usable (now reported as `n_usable_features`). No computed statistic was wrong; every reference number reproduced unchanged after the fixes. |
 | 2026-09-13 | E2E UI QA pass (4 parallel agents driving a real browser, Playwright MCP). Found and fixed: §8.7 `aux_feature` was case-sensitive while `gene` in the same endpoint was not, with an error that misread as a data-coverage claim; §8.8 `/genes/{symbol}` 500'd on mygene.info's list-shaped `ensembl` field (ZAP70). Six regression tests added (109 pass). Independently re-verified and found CORRECT, no change needed: DTX1/NOTCH1 biology direction (median 18.86 mutant vs 9.69 WT, p=4.9e-3), CRISPR sign convention (MYB r=-0.652, p=2.5e-12), §8.6 split exclusion reasons (95+78=173 exact), §3.1 quartile wording (25%/25%, 469=335+134), §3.4 Cox CI rendered with HR inside its own CI, §7.2 no cross-metric pooling (tpm and log2_intensity returned side by side, no pooled field). |
 | 2026-09-13 | Testing-process note: the canonical backend port is **8420** (`vite.config.ts`, `README.md`, `docker-compose.yml`, `backend/Dockerfile` all agree). Starting uvicorn on any other port makes every frontend call 502 and makes every pane render empty — which looks like a catastrophic app failure and wasted most of one QA agent's run. Start the backend on 8420. |
+| 2026-09-13 | §3.1a added after QA found quartile/custom survival arms silently violating their own definition when scores tie at a cutoff (MEF2C LOW n=217 of 466, captioned as a bottom quartile). Exposed as a user-chosen `tie_policy` with a reported `tie_note` rather than an internal default, at the user's direction: the domain expert should be able to see what happened and change it, since no policy is unconditionally correct (`exclude` empties an arm for the very genes that trigger it). §8.8 extended — `alias` has the same list-or-string polymorphism as `ensembl`; LYL1 (single alias "bHLHa18", and a member of this app's own ETP-TF5 preset) returned a bare string against a `list[str]` contract and white-screened the entire workspace via `.join` on a string. Fixed in the API, made structurally impossible in `GeneAnnotation`, and the poisoned LYL1 cache entry cleared. Multi-omics tab a11y: disabled tabs shared one accessible name ("Not available for this dataset") so a screen reader couldn't tell which layer was missing — now names the layer; disabled tabs no longer keep the active tint. 115 tests pass. |

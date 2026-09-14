@@ -112,11 +112,22 @@ export interface SurvivalCurve {
   points: SurvivalPoint[];
 }
 
+export type TiePolicy = "trim" | "exclude" | "inclusive";
+
 export interface SurvivalResult {
   genes: string[];
   n: number;
   curves: Record<string, SurvivalCurve>;
   logrank_p_value?: number;
+  // Present only when a percentile cutoff landed on a block of equal
+  // scores. Not an error: it says how many samples were tied and which
+  // policy resolved them, so the arm sizes on screen can be reconciled
+  // against the stated quartile definition rather than silently differing.
+  tie_note: {
+    n_tied_at_cutoff: number;
+    tie_policy: TiePolicy;
+    message: string;
+  } | null;
   cox: {
     n: number;
     coefficients: Record<
@@ -362,7 +373,12 @@ export const api = {
     datasetId: string,
     genes: string[],
     covariates: string[] = [],
-    cutoff?: { method: "median" | "quartile" | "custom"; highPct?: number; lowPct?: number },
+    cutoff?: {
+      method: "median" | "quartile" | "custom";
+      highPct?: number;
+      lowPct?: number;
+      tiePolicy?: TiePolicy;
+    },
   ) =>
     request<SurvivalResult>(`/datasets/${datasetId}/survival`, {
       method: "POST",
@@ -372,6 +388,7 @@ export const api = {
         cutoff_method: cutoff?.method ?? "median",
         cutoff_high_pct: cutoff?.highPct ?? 50,
         cutoff_low_pct: cutoff?.lowPct ?? 50,
+        tie_policy: cutoff?.tiePolicy ?? "trim",
       }),
     }),
   rankByGene: (datasetId: string, gene: string) =>

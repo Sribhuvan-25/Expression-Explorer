@@ -411,9 +411,21 @@ export function MultiOmicsPage() {
                   type="button"
                   onClick={() => available && setTab(t)}
                   disabled={!available}
-                  title={available ? undefined : "Not available for this dataset"}
+                  // A bare `title` REPLACES the accessible name rather than
+                  // adding to it, so every unavailable tab announced as the
+                  // identical "Not available for this dataset" and a screen
+                  // reader user couldn't tell which layer was missing --
+                  // on a dataset with no layers at all, that was all three
+                  // buttons reading the same (caught in QA). Name the layer
+                  // first, then the reason.
+                  title={available ? undefined : `${TAB_LABELS[t]} — not available for this dataset`}
                   className={`whitespace-nowrap px-3 py-2 text-[12.5px] font-medium transition-colors ${
-                    tab === t ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                    // Guard on `available`: an unavailable tab that happened
+                    // to be the selected one kept the active tint, so it read
+                    // as both current and disabled at once.
+                    tab === t && available
+                      ? "bg-accent-soft text-accent-ink"
+                      : "text-ink-mute hover:text-ink-soft"
                   } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink-mute`}
                 >
                   {TAB_LABELS[t]}

@@ -574,6 +574,15 @@ class SurvivalRequest(BaseModel):
     cutoff_method: Literal["median", "quartile", "custom"] = "median"
     cutoff_high_pct: float = 50.0
     cutoff_low_pct: float = 50.0
+    # What to do when a percentile threshold lands exactly on a block of
+    # tied scores -- see binarize_by_cutoff. Exposed rather than decided
+    # internally because the right answer is a domain judgement: "trim"
+    # keeps the arms the caption promises, "exclude" never splits equal
+    # scores across arms but can empty an arm entirely (MEF2C/TAL1 on
+    # TARGET both give LOW n=0), and "inclusive" reproduces the previous
+    # behaviour. The response's `tie_note` says which was applied and how
+    # many samples were tied.
+    tie_policy: Literal["trim", "exclude", "inclusive"] = "trim"
 
 
 @app.post("/datasets/{dataset_id}/survival")
@@ -606,9 +615,35 @@ def survival(dataset_id: str, body: SurvivalRequest):
             method=body.cutoff_method,
             custom_high_pct=body.cutoff_high_pct,
             custom_low_pct=body.cutoff_low_pct,
+            tie_policy=body.tie_policy,
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    # Report the tie situation regardless of which policy was applied: the
+    # user is a domain expert who can only choose sensibly if the app says
+    # what it actually did. `inclusive` silently produced arms that weren't
+    # the quartiles the caption promised (MEF2C: LOW n=217 of 466), so the
+    # fix isn't only picking a better default -- it's surfacing the tie.
+    tie_note = None
+    if body.cutoff_method != "median":
+        scores = surv_df["signature_score"]
+        high_pct, low_pct = (25.0, 25.0) if body.cutoff_method == "quartile" else (
+            body.cutoff_high_pct, body.cutoff_low_pct,
+        )
+        n_tied_high = int((scores == scores.quantile(1 - high_pct / 100)).sum())
+        n_tied_low = int((scores == scores.quantile(low_pct / 100)).sum())
+        n_tied = max(n_tied_high, n_tied_low)
+        if n_tied > 1:
+            tie_note = {
+                "n_tied_at_cutoff": n_tied,
+                "tie_policy": body.tie_policy,
+                "message": (
+                    f"{n_tied} samples share the exact score at a cutoff boundary "
+                    f"(common for a single gene, where every sample below the rank "
+                    f"threshold scores exactly 0). Applied tie policy: "
+                    f"'{body.tie_policy}'."
+                ),
+            }
     # Quartile/custom cutoffs exclude a middle band on top of whatever
     # build_survival_frame already dropped -- both are real, distinct
     # reasons a sample doesn't appear on the curve, so n_excluded/
@@ -657,5 +692,6 @@ def survival(dataset_id: str, body: SurvivalRequest):
         "n_dataset_total": n_total,
         "n_excluded": n_excluded,
         "exclusion_reason": exclusion_reason,
+        "tie_note": tie_note,
         **result,
     }
