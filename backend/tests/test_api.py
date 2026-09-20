@@ -316,3 +316,57 @@ def test_pca_requires_an_explicit_gene_set(client):
     assert len(body["variance_explained"]) == body["n_components"]
     assert all(0.0 <= v <= 1.0 for v in body["variance_explained"])
     assert sum(body["variance_explained"]) <= 1.0 + 1e-9
+
+
+def test_health_is_independent_of_dataset_readiness(client):
+    """/health is the platform's deploy healthcheck. Gating it on data
+    being downloaded is what turned a slow GDC pull into a failed
+    deployment -- it must answer on process liveness alone."""
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_readiness_reports_per_dataset_state(client):
+    r = client.get("/readiness")
+    assert r.status_code == 200
+    body = r.json()
+    for key in ("finished", "n_ready", "n_failed", "n_total", "datasets"):
+        assert key in body
+
+
+def test_datasets_listing_never_blocks_on_a_warming_dataset(client, monkeypatch):
+    """/datasets is the frontend's first call. On a cold container a
+    dataset can be minutes from ready, so this endpoint must report it as
+    warming rather than calling the loader and hanging the whole UI."""
+    from app.api import main as api_main
+
+    monkeypatch.setattr(
+        api_main.warmup_tracker,
+        "snapshot",
+        lambda: {
+            "finished": False,
+            "n_ready": 0,
+            "n_failed": 0,
+            "n_total": 1,
+            "datasets": [{"dataset_id": DATASET_ID, "state": "loading"}],
+        },
+    )
+
+    def _explode(dataset_id):  # pragma: no cover - must never be reached
+        raise AssertionError(f"/datasets called the loader for {dataset_id} while it was warming")
+
+    monkeypatch.setattr(api_main, "_get_dataset", _explode)
+
+    body = client.get("/datasets").json()
+    entry = next(d for d in body["datasets"] if d["dataset_id"] == DATASET_ID)
+    assert entry["warming"] is True
+    # Provenance is absent precisely because it was not waited for.
+    assert "n_samples" not in entry
+
+
+def test_warm_datasets_are_listed_with_provenance_and_not_flagged(client):
+    body = client.get("/datasets").json()
+    entry = next(d for d in body["datasets"] if d["dataset_id"] == DATASET_ID)
+    assert entry["warming"] is False
+    assert entry["n_samples"] == N

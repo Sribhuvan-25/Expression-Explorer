@@ -24,6 +24,16 @@ class Settings:
         default_cache = Path(__file__).resolve().parents[2] / "data" / "cache"
         self.cache_dir: Path = Path(os.environ.get("CACHE_DIR", str(default_cache)))
         self.environment: str = os.environ.get("APP_ENV", "development")
+        # Warm every dataset's cache on a background thread at startup.
+        # On by default so a deployed container populates its volume
+        # without a user waiting on the first request; off for tests and
+        # any local run that shouldn't pull ~500MB. Never blocks the
+        # server from binding either way -- see app/services/warmup.py.
+        self.warmup_on_startup: bool = os.environ.get("WARMUP_ON_STARTUP", "1") not in (
+            "0",
+            "false",
+            "False",
+        )
 
 
 settings = Settings()

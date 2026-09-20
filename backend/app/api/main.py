@@ -6,6 +6,7 @@ app/registry.py.
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Literal
 
@@ -30,10 +31,33 @@ from app.config import settings
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, AuxMatrix, Dataset
 from app.registry import ensure_loaded, get_descriptor, list_descriptors
 from app.services.gene_info import lookup_gene
+from app.services.warmup import start_background_warmup, tracker as warmup_tracker
 
 ensure_loaded()
 
-app = FastAPI(title="Expression Explorer API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Warm every dataset's cache on a background thread at startup.
+
+    Deliberately NOT awaited: the container used to run the same work to
+    completion before uvicorn bound, which made deploy success a race
+    against a multi-minute download and cost a failed deploy once the aux
+    layers pushed cold start to ~848s of a 900s healthcheck budget. See
+    app/services/warmup.py for the full history.
+
+    Disabled by WARMUP_ON_STARTUP=0 -- tests and local runs generally
+    want the lazy path, not ~500MB of downloads.
+    """
+    if settings.warmup_on_startup:
+        start_background_warmup(
+            loader_for=_get_dataset,
+            dataset_ids=[d.dataset_id for d in list_descriptors()],
+        )
+    yield
+
+
+app = FastAPI(title="Expression Explorer API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -109,7 +133,27 @@ def _resolve_aux_feature(aux: AuxMatrix, feature: str) -> str:
 
 @app.get("/health")
 def health():
+    """Liveness only -- deliberately independent of dataset readiness.
+
+    This is the platform's deploy healthcheck. Gating it on data being
+    downloaded is what turned a slow GDC pull into a failed deployment;
+    the process being up and able to route is the thing this endpoint is
+    actually asked about. Use /readiness for data state.
+    """
     return {"status": "ok"}
+
+
+@app.get("/readiness")
+def readiness():
+    """Which datasets are warm, which are still downloading, which failed.
+
+    Split from /health on purpose: a half-warm server is genuinely
+    serving (every ready dataset works, and an unwarmed one still
+    lazy-loads), so reporting it as unhealthy would be wrong -- but
+    pretending it is fully warm would hide a real, visible delay from
+    whoever is looking. Both facts get said, separately.
+    """
+    return warmup_tracker.snapshot()
 
 
 @app.get("/genes/{symbol}")
@@ -130,16 +174,33 @@ def list_datasets():
     # n_samples/assay/accession come from the loaded dataset's own source
     # record rather than the descriptor, so the listing can show provenance
     # (how many samples, which assay, which accession) without the frontend
-    # making a follow-up request per dataset. _get_dataset is lru_cached and
-    # every dataset is pre-warmed at startup, so this stays cheap.
+    # making a follow-up request per dataset.
+    #
+    # This endpoint must NEVER block on a download. It is the first call
+    # the frontend makes, and on a cold container a dataset can be minutes
+    # from ready -- calling the loader here would hang the whole UI behind
+    # a ~14-minute GDC pull, which is the failure this background-warmup
+    # work exists to remove. So provenance is read only for datasets
+    # already warm; the rest are listed with `warming: true` and the UI
+    # says so. `_get_dataset` is lru_cached, so a ready dataset is a dict
+    # lookup.
     out = []
+    warm_states = {d["dataset_id"]: d["state"] for d in warmup_tracker.snapshot()["datasets"]}
     for d in list_descriptors():
+        state = warm_states.get(d.dataset_id)
         entry = {
             "dataset_id": d.dataset_id,
             "display_name": d.display_name,
             "group_columns": list(d.group_columns),
             "supports_survival": d.supports_survival,
+            # "warming" means: real dataset, not queryable *yet*. Distinct
+            # from a dataset that failed to load, which is queryable via
+            # the lazy path and will surface its own error.
+            "warming": state in ("pending", "loading"),
         }
+        if entry["warming"]:
+            out.append(entry)
+            continue
         try:
             source = _get_dataset(d.dataset_id).source
             entry["n_samples"] = source.n_samples

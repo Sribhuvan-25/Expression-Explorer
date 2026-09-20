@@ -1,14 +1,19 @@
 """
-Pre-warms every registered dataset's on-disk cache before the API starts
-serving traffic. Run once at container startup (see Dockerfile).
+Pre-warms every registered dataset's on-disk cache, synchronously.
 
-Without this, the first real user request to a not-yet-cached dataset
-triggers its full ingest pipeline inline -- for target_all_p2 that's a
-530-file sequential download from GDC, several minutes long, which
-exceeds most PaaS reverse-proxy request timeouts (measured: Railway
-returns 502 at ~5 minutes) even once the loader itself is memory-safe.
-Running the same loaders here, before uvicorn binds, means every real
-request just reads an already-assembled parquet file.
+**No longer run at container startup.** It used to be the Dockerfile's
+CMD prefix (`prewarm_cache.py && uvicorn ...`), which meant the platform
+healthcheck could not pass until every download finished -- and once the
+auxiliary layers landed, measured cold start reached ~848s against a
+900s healthcheck budget. The app now warms itself on a background thread
+while serving (app/services/warmup.py), so the deploy no longer races the
+download.
+
+This script is kept for the cases where blocking is what you actually
+want: seeding a fresh volume on purpose, priming a dev machine before
+going offline, or checking how long a cold load really takes. It shares
+its per-dataset failure behaviour with the background warmer -- one
+unreachable source is logged and skipped, not fatal.
 """
 from __future__ import annotations
 

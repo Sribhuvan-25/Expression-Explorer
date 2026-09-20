@@ -15,14 +15,23 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-# The container now pre-warms every dataset's cache (a ~5 minute, 530-file
-# GDC download for target_all_p2, plus DepMap's own fetch) before uvicorn
-# binds, so /health doesn't respond until that finishes. The old 30s
-# timeout killed every deploy before the healthcheck could ever pass --
-# confirmed in Railway's deploy diagnosis (Build/Deploy both succeeded,
-# only Healthcheck failed, at exactly 30s). 900s covers a full cold
-# double-dataset prewarm with real margin; every deploy after the first
-# is fast since the persistent volume keeps the cache warm.
-healthcheckTimeout = 900
+# 120s is now generous rather than tight: /health answers as soon as
+# uvicorn binds, because dataset warm-up moved to a background thread
+# inside the app (app/services/warmup.py). It does NOT wait on data.
+#
+# History, since the number moved twice and the reason matters:
+#   30s  -> every deploy failed. Build and Deploy succeeded, Healthcheck
+#           failed at exactly 30s, because the container ran a blocking
+#           prewarm before binding.
+#   900s -> bought time instead of fixing the race. Then the auxiliary
+#           layers (METHODS.md 8) added a 739-file GDC MAF pull and a
+#           198MB CRISPR matrix to that same blocking path, taking
+#           measured cold start to ~848s of the 900s budget -- 94%
+#           consumed, ~52s of headroom, from a home connection. GDC is
+#           slower to datacenter IPs and the MAF loader retries up to 4x
+#           per file, so the margin was plausibly negative in production.
+#   120s -> the healthcheck no longer races a download at all. Adding a
+#           dataset now lengthens warm-up, not the deploy.
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

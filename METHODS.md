@@ -707,6 +707,64 @@ ETP-TF5 signature used elsewhere in this app) do rank highly (65th and
 real biology — just competing against genuinely low p-values from a
 different, also-legitimate source at the very top of the list.
 
+### 7.9 Dataset warm-up must not gate the deploy healthcheck
+**Decided (2026-09-20), after a failed Railway deploy.**
+`app/services/warmup.py` loads every dataset on a background thread
+started by the app's lifespan hook. `/health` answers as soon as uvicorn
+binds; `/readiness` reports per-dataset state.
+
+The container previously ran `scripts/prewarm_cache.py` to completion
+*before* uvicorn bound, which made deploy success a race against a
+download. That race was lost twice:
+
+| Timeout | Outcome |
+|---|---|
+| 30s | Every deploy failed. Build and Deploy succeeded; Healthcheck failed at exactly 30s. |
+| 900s | Bought time instead of removing the race. Then §8's aux layers added a 739-file GDC MAF pull and a 198MB CRISPR matrix to the same blocking path. |
+| 120s | The healthcheck no longer waits on data at all. |
+
+Measured cold start after the aux layers, on a home connection:
+
+| Stage | Seconds |
+|---|---|
+| target_all_p2 RNA-seq (530-file GDC pull) | ~300 |
+| target_all_p2 MAF mutations (739 files @ 0.47s, measured) | ~348 |
+| DepMap expression (124MB) | ~60 |
+| DepMap CRISPR (198MB, added §8.3) | ~95 |
+| DepMap PRISM (40MB, added §8.4) | ~25 |
+| GDS4299 | ~20 |
+| **Total** | **~848s of a 900s budget (94%)** |
+
+~52s of headroom, from a home connection. GDC is typically slower to
+datacenter IPs and the MAF loader retries up to 4x per flaky file, so
+the real margin was plausibly negative — which matches the reported
+failure.
+
+**Raising the timeout again was rejected.** It is a treadmill: every
+dataset added restarts the same race, and the failure mode is a dead
+deploy rather than a slow one. Binding first makes dataset size cost
+warm-up time instead of deploy success.
+
+Two consequences that had to be handled rather than hidden:
+
+- **`/datasets` must never call a loader for an unwarmed dataset.** It is
+  the frontend's first call; blocking there would hang the entire UI
+  behind a ~14-minute pull — the same failure wearing different clothes.
+  Unwarmed datasets are returned with `warming: true` and no provenance.
+- **The UI says "preparing — downloading source data…"** rather than
+  rendering a name above a blank line, which reads as broken rather than
+  pending, and polls every 5s so it flips to ready on its own.
+
+Verified end to end against an empty cache: `/health` returned 200 in
+**2s** (was ~848s), `/datasets` answered in **16ms** while a 300MB+
+download ran, DepMap went ready at ~90s and immediately served its
+reference value (MYB r=-0.652361, n=91) while the other two were still
+downloading.
+
+**Disk note:** the warm cache is now ~495MB (DepMap CRISPR alone is a
+198MB parquet). The Railway volume must exceed that or the deploy fails
+on disk instead of time.
+
 ---
 
 ## 8. Auxiliary measurement layers
@@ -1070,3 +1128,4 @@ a jsdom assertion would. jsdom needs `ResizeObserver` and a non-zero
 | 2026-09-13 | §8.4 follow-through on PRISM sparsity: new `GET /datasets/{id}/aux-features` searchable picker over features that actually have data on the selected dataset (searches name/id/MOA/target), replacing a free-text box pre-filled with a raw Broad id — 77.6% of compounds have zero measurements on the covered lines, so typed guesses mostly failed. `MIN_AUX_SAMPLES` centralised in `contract.py` so the picker, the usable-feature count, and the correlation cannot disagree. Zero-coverage error now says the compound was never assayed on this cohort rather than "need at least 3 to correlate". Drug tab default moved to AZ-628 (the one compound covering all 79 lines). 118 tests pass. |
 | 2026-09-13 | §9 added. HTTP-level test suite for the API surface (`tests/test_api.py`, 24 tests against a synthetic in-registry dataset — no network). `app/api/main.py` coverage 26% → 74%; suite 118 → 142 tests. Motivated by the observation that every API bug found in this session's QA was an HTTP-shape bug invisible to the existing function-level tests. Suite validated by reintroducing two real bugs (case-sensitive aux_feature; compare-multi shadowed by the dynamic route) and confirming it fails on both. Documented the remaining deliberate gaps: ingest download paths, and the absence of any frontend test suite. |
 | 2026-09-13 | §9.3 added: frontend test suite (Vitest + Testing Library, 21 tests, `npm test` in `frontend/`) — the last layer with zero automated coverage. Scoped to defects that actually shipped: the LYL1 white-screen (§8.8), the histogram bin rule (§5.6), and export identity (§5.7). Each validated by reintroducing its bug; the export tests initially passed while failing to catch a reverted fix, because they exercised `ExportButton` rather than the call site that carried the defect — rewritten against `DatasetPanel`. `histogramBinCount` extracted from an inline IIFE and exported to make it testable. Coverage ~30% by intent, not by omission. |
+| 2026-09-20 | §7.9 added after a failed Railway deploy. Dataset warm-up moved off the startup path onto a background thread (`app/services/warmup.py`): uvicorn binds immediately, `/health` answers on liveness alone, `/readiness` reports per-dataset state, and `/datasets` returns `warming: true` rather than blocking on a loader. Root cause measured, not guessed — §8's aux layers pushed cold prewarm to ~848s against the 900s healthcheck budget (94% consumed, ~52s headroom from a home connection; GDC is slower to datacenter IPs and the MAF loader retries 4x per file). `healthcheckTimeout` reduced 900→120s because it no longer waits on data. Verified against an empty cache: /health 200 in 2s, /datasets in 16ms mid-download, DepMap ready at 90s serving its reference value while the other two still downloaded. 9 new tests (backend 151, frontend 24), each validated by reverting the fix. Warm cache is ~495MB — the Railway volume must exceed that. |

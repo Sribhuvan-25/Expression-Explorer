@@ -22,6 +22,11 @@ export interface DatasetSummary {
   // ever called that endpoint, so a real, correctly-computed warning was
   // silently invisible to every user.
   notes?: string;
+  // True while the dataset is still downloading on a freshly-deployed
+  // container. It is real and coming, just not queryable yet -- which is
+  // a different thing from missing or broken, and the UI says so rather
+  // than showing an unexplained empty picker.
+  warming?: boolean;
 }
 
 export interface GeneInfo {
