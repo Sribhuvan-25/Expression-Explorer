@@ -1,4 +1,24 @@
 services:
+  # Metadata only -- dataset identity, sample attributes, gene catalogue.
+  # The expression matrices stay as parquet on the volume below; see
+  # app/db/models.py for why 92M dense numeric cells do not belong in
+  # relational storage.
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=expression
+      - POSTGRES_PASSWORD=expression
+      - POSTGRES_DB=expression
+    ports:
+      - "5432:5432"
+    volumes:
+      - metadata_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U expression"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build: ./backend
     ports:
@@ -6,6 +26,10 @@ services:
     environment:
       - CORS_ORIGINS=http://localhost:8080
       - APP_ENV=production
+      - DATABASE_URL=postgresql://expression:expression@db:5432/expression
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       # Named volume so downloaded dataset matrices (GDC: ~500 files,
       # DepMap: ~500MB) survive a container restart.
@@ -25,3 +49,4 @@ services:
 
 volumes:
   dataset_cache:
+  metadata_db:

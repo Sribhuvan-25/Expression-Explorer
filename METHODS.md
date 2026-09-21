@@ -1102,6 +1102,78 @@ a jsdom assertion would. jsdom needs `ResizeObserver` and a non-zero
 
 ---
 
+## 10. Dataset metadata database
+
+### 10.1 What goes in the database, and what deliberately does not
+**Decided (2026-09-20).** PostgreSQL holds dataset *metadata*; the
+expression values stay in parquet files. `app/db/models.py`.
+
+The split is measured, not stylistic:
+
+| matrix | shape | cells |
+|---|---|---|
+| TARGET expression | 60,660 x 469 | 28.4M |
+| DepMap expression | 19,193 x 1,673 | 32.1M |
+| DepMap CRISPR | 17,916 x 1,178 | 21.1M |
+| PRISM drug | 6,790 x 919 | 6.2M |
+| TARGET mutations | 6,250 x 717 | 4.5M |
+
+92M dense numeric cells today. Every analysis reads whole rows or whole
+columns of them -- a genome-wide differential scan touches all 60,660
+genes and costs **0.03s** against parquet (measured). Stored relationally
+that is 92M rows now and 600M+ as datasets are added, turning each scan
+into a 60,000-row aggregate. Row storage buys nothing for dense numeric
+data whose access pattern is "read it all", and costs an order of
+magnitude. The metadata, by contrast, is ~102,000 small rows that are
+genuinely filtered, grouped and joined -- exactly what SQL is for.
+
+### 10.2 Why a database at all
+Dataset identity was hardcoded: `registry.ensure_loaded()` held a literal
+import list and each `ingest/*.py` carried its own accession and group
+columns. Adding a dataset therefore required editing code and
+redeploying. Moving the description into a table makes dataset addition a
+data operation (`scripts/ingest_dataset.py`) instead of a code change --
+which is the entire point, and the only reason this was worth doing.
+
+The loader stays in code. Parsing a new upstream format is genuinely
+programming, and pretending otherwise would move that work somewhere
+worse.
+
+### 10.3 Sample attributes are JSON, deliberately
+The cohorts really do differ: TARGET carries `vital_status` /
+`days_to_death` / `etp_status` / `mrd_status`, DepMap carries `lineage` /
+`subtype` / `cell_line_name`, GDS4299 carries only `etp_status`. Typed
+columns would mean a schema migration for every new cohort, defeating the
+purpose of the change.
+
+The tradeoff is real and worth stating plainly: column-level type
+checking and NOT NULL constraints are given up. Postgres still indexes
+and filters inside JSONB, so query capability is retained -- verified:
+"ETP samples across all cohorts" returns gds4299=12, target_all_p2=19 in
+2ms, a question that previously required loading ~500MB of matrices.
+Validation moves to ingest time rather than write time.
+
+### 10.4 Portability and ordering
+`models.py` uses SQLAlchemy's generic `JSON` type rather than
+Postgres-native `JSONB`, so the same models run on SQLite locally and in
+tests (zero-setup, matching how `CACHE_DIR` and `CORS_ORIGINS` already
+behave) and on Postgres in production. Alembic owns schema changes and
+reads `DATABASE_URL` through the same resolver the app uses, so
+migrations cannot drift to a different database than the one being
+served.
+
+Ingest writes matrices to their final location **before** marking a row
+`ready`, so a crash leaves a `draft`/`failed` row rather than a `ready`
+row pointing at a missing file. A failed ingest is recorded as `failed`
+with its error rather than leaving the dataset silently absent.
+
+**Not yet verified against a live Postgres instance** -- Docker was
+unavailable in the session that built this. The schema compiles against
+the Postgres dialect and the full suite passes on SQLite; a real
+Postgres run is the remaining check before relying on it in production.
+
+---
+
 ## Change log
 
 | Date | Change |
@@ -1129,3 +1201,4 @@ a jsdom assertion would. jsdom needs `ResizeObserver` and a non-zero
 | 2026-09-13 | §9 added. HTTP-level test suite for the API surface (`tests/test_api.py`, 24 tests against a synthetic in-registry dataset — no network). `app/api/main.py` coverage 26% → 74%; suite 118 → 142 tests. Motivated by the observation that every API bug found in this session's QA was an HTTP-shape bug invisible to the existing function-level tests. Suite validated by reintroducing two real bugs (case-sensitive aux_feature; compare-multi shadowed by the dynamic route) and confirming it fails on both. Documented the remaining deliberate gaps: ingest download paths, and the absence of any frontend test suite. |
 | 2026-09-13 | §9.3 added: frontend test suite (Vitest + Testing Library, 21 tests, `npm test` in `frontend/`) — the last layer with zero automated coverage. Scoped to defects that actually shipped: the LYL1 white-screen (§8.8), the histogram bin rule (§5.6), and export identity (§5.7). Each validated by reintroducing its bug; the export tests initially passed while failing to catch a reverted fix, because they exercised `ExportButton` rather than the call site that carried the defect — rewritten against `DatasetPanel`. `histogramBinCount` extracted from an inline IIFE and exported to make it testable. Coverage ~30% by intent, not by omission. |
 | 2026-09-20 | §7.9 added after a failed Railway deploy. Dataset warm-up moved off the startup path onto a background thread (`app/services/warmup.py`): uvicorn binds immediately, `/health` answers on liveness alone, `/readiness` reports per-dataset state, and `/datasets` returns `warming: true` rather than blocking on a loader. Root cause measured, not guessed — §8's aux layers pushed cold prewarm to ~848s against the 900s healthcheck budget (94% consumed, ~52s headroom from a home connection; GDC is slower to datacenter IPs and the MAF loader retries 4x per file). `healthcheckTimeout` reduced 900→120s because it no longer waits on data. Verified against an empty cache: /health 200 in 2s, /datasets in 16ms mid-download, DepMap ready at 90s serving its reference value while the other two still downloaded. 9 new tests (backend 151, frontend 24), each validated by reverting the fix. Warm cache is ~495MB — the Railway volume must exceed that. |
+| 2026-09-20 | §10 added: dataset metadata moved into a database (`app/db/`, 4 tables, Alembic migration) so adding a dataset stops requiring a code change and redeploy. Postgres in production, SQLite locally/in tests via the same generic-typed models. Expression matrices deliberately stay as parquet — measured 92M dense cells across 5 matrices, and a genome-wide scan costs 0.03s against parquet vs a 60,000-row aggregate as SQL. `scripts/ingest_dataset.py` is the new add-a-dataset path; all 3 existing datasets migrated (102,162 metadata rows). Cross-dataset metadata queries now possible without loading matrices — "ETP samples across all cohorts" in 2ms. 7 new tests (158 total). NOT yet run against a live Postgres (Docker unavailable); schema compiles for the Postgres dialect. |
