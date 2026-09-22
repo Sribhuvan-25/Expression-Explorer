@@ -765,6 +765,72 @@ downloading.
 198MB parquet). The Railway volume must exceed that or the deploy fails
 on disk instead of time.
 
+### 7.10 Single-file clinical-supplement fetches need the same defense as the MAF/STAR-Counts fetches
+**Decided (2026-09-21), after a production incident.** After §7.9's fix
+landed and the deploy succeeded, `/readiness` showed `target_all_p2`
+itself failing: `"Excel file format cannot be determined, you must
+specify an engine manually."` after 502s. `depmap` and `gds4299` warmed
+fine (75.7s and 3.0s) — this was isolated to one dataset's clinical
+enrichment, and it took the whole 469-sample dataset down with it.
+
+Root cause: `app/ingest/target_mrd.py`'s `load_mrd_status()` did a
+single-shot `httpx.get(...)` for TARGET's clinical supplement `.xlsx`
+with no retry and no check that the response body was actually an Excel
+file before handing it to `pd.read_excel`. A 200 response whose body
+isn't the expected file — an HTML error/redirect page, a truncated
+transfer — passes `raise_for_status()` (it's a 200) and isn't an
+`httpx.TransportError` (the connection didn't drop), so nothing in the
+loader caught it before pandas' own format sniff failed with the
+"cannot be determined" message. Fetched directly outside the app, the
+same URL returned a valid file — the failure is intermittent, upstream,
+and not reproducible on demand, exactly like the GDC connection drops
+`gdc_target.py`'s `_download_star_counts()` already retries with the
+comment *"observed repeatedly from Railway, not reproducible locally"*.
+`liu2017_etp.py`'s `load_etp_status()` has the identical single-shot
+shape (fetches a different third-party host, Springer Nature) and while
+investigating this incident its endpoint was independently observed
+timing out for 277s before eventually succeeding — the same failure
+class, not yet triggered in production only because it hadn't happened
+to fail on a warmup run yet.
+
+**Two independent layers of defense, not one:**
+
+1. **`app/ingest/_http.py`** — `fetch_with_retry()` generalises the
+   existing MAF-download retry pattern to the single-file case, and adds
+   the piece that pattern didn't need: `validate_excel_bytes()` checks
+   the response for an XLSX/XLS magic number before parsing, so a bad
+   body is retried (like a transport error) instead of reaching pandas
+   as garbage. A real 4xx/5xx still raises immediately — that's not
+   transient, retrying only delays a failure that won't change. Both
+   `target_mrd.py` and `liu2017_etp.py` now go through it.
+2. **`gdc_target.load()` no longer lets either fetch be fatal.**
+   `etp_status`/`mrd_status` are supplementary grouping columns on an
+   existing cohort, not the cohort itself — the same "additive, never
+   fatal" contract §8.1's aux layers already follow. Each is wrapped in
+   its own try/except; a failure after retries is logged and the dataset
+   loads with that one column simply absent, rather than propagating up
+   and killing the 60,660×469 expression matrix and survival support
+   along with it.
+
+Verified by mocking both sources to fail unconditionally: the dataset
+still loads with the full matrix and correct `n_samples`, `vital_status`
+(sourced from GDC's own clinical file, not either flaky third-party
+endpoint) is unaffected, and `etp_status`/`mrd_status` are absent from
+every sample's `group_columns` rather than present-but-wrong. A second
+test confirms partial degradation (only `mrd_status` failing leaves
+`etp_status` intact) — the two sources are independent and one failing
+must not take the other down too.
+
+**A related, narrower gap closed at the same time:** `GET
+/datasets/{id}/group-values` could return `{"values": []}` for a column
+that is genuinely declared on the dataset but has zero non-null values
+on the current load (exactly what a degraded `etp_status` fetch would
+produce) — indistinguishable from the "unknown column" case §8.6-era QA
+already fixed once for a different reason. Added an explicit
+`"unavailable": true` flag so the UI states why a picker is empty
+("no samples currently have a value... may be temporarily unavailable")
+rather than rendering it with no options and no explanation.
+
 ---
 
 ## 8. Auxiliary measurement layers
@@ -1251,3 +1317,4 @@ unaffected.
 | 2026-09-20 | §10 added: dataset metadata moved into a database (`app/db/`, 4 tables, Alembic migration) so adding a dataset stops requiring a code change and redeploy. Postgres in production, SQLite locally/in tests via the same generic-typed models. Expression matrices deliberately stay as parquet — measured 92M dense cells across 5 matrices, and a genome-wide scan costs 0.03s against parquet vs a 60,000-row aggregate as SQL. `scripts/ingest_dataset.py` is the new add-a-dataset path; all 3 existing datasets migrated (102,162 metadata rows). Cross-dataset metadata queries now possible without loading matrices — "ETP samples across all cohorts" in 2ms. 7 new tests (158 total). NOT yet run against a live Postgres (Docker unavailable); schema compiles for the Postgres dialect. |
 | 2026-09-21 | §10 verified end to end against live Postgres 16 (Docker). Migration applied, 3 datasets ingested in 17s with counts identical to SQLite, 158 tests passed with DATABASE_URL on Postgres, app served the unchanged MYB CRISPR reference value (r=-0.652361, n=91) through it, and JSONB cross-cohort filtering confirmed (ETP: gds4299=12, target_all_p2=19). Re-ingest replace-not-duplicate confirmed. Compose maps host port 5433 since 5432 is commonly occupied. |
 | 2026-09-21 | §10.5: registry cut over to read datasets from the database, with code-registered datasets kept as the fallback floor. A dataset that exists only as a row + parquet now loads with no ingest module and no redeploy (covered by a test that seeds exactly that). Verified bit-identical to the code path and every reference statistic unchanged to 12 dp; graceful degradation confirmed by pointing DATABASE_URL at a dead host. 7 new tests, 165 total, passing on both SQLite and Postgres. |
+| 2026-09-21 | §7.10 added after a production incident: `target_all_p2` failed to warm on the live Railway deploy (502s, "Excel file format cannot be determined") while `depmap`/`gds4299` warmed fine — one supplementary clinical-supplement fetch with no retry and no response-body validation took the whole 469-sample dataset down. New `app/ingest/_http.py` (`fetch_with_retry` + `validate_excel_bytes`) generalises the existing MAF-download retry pattern and adds response-body sniffing before parsing; wired into both `target_mrd.py` and `liu2017_etp.py` (the latter independently observed hanging 277s on the same class of failure while investigating). `gdc_target.load()` no longer lets either fetch be fatal — `etp_status`/`mrd_status` follow the same additive-never-fatal contract as the §8.1 aux layers, verified by mocking both to fail unconditionally and confirming the dataset still loads with its full matrix. Also closed a related gap: `/group-values` now reports `unavailable: true` for a declared column with zero current values, distinct from an unknown column, surfaced in the UI instead of a silently-empty picker. 9 new backend tests (174 total), frontend unaffected build/typecheck/test all clean. |

@@ -17,10 +17,10 @@ own dataset.
 """
 from __future__ import annotations
 
-import httpx
 import pandas as pd
 
 from app.config import settings
+from app.ingest._http import fetch_with_retry, validate_excel_bytes
 
 SUPP_URL = (
     "https://media.springernature.com/original/springer-static/esm/"
@@ -49,9 +49,13 @@ def load_etp_status(use_cache: bool = True) -> pd.Series:
     if use_cache and cache_path.exists():
         df = pd.read_parquet(cache_path)
     else:
-        resp = httpx.get(SUPP_URL, timeout=120.0, follow_redirects=True)
-        resp.raise_for_status()
-        raw = pd.read_excel(pd.io.common.BytesIO(resp.content), sheet_name=SHEET_NAME)
+        # Retries transient failures AND a 200 whose body isn't actually
+        # an Excel file -- see app/ingest/_http.py. This is the sibling
+        # of target_mrd.py's fetch: same single-shot-with-no-defense
+        # shape, and ETP status is used more widely, so it's fixed the
+        # same way rather than waiting for it to fail in production too.
+        content = fetch_with_retry(SUPP_URL, timeout=120.0, validate=validate_excel_bytes)
+        raw = pd.read_excel(pd.io.common.BytesIO(content), sheet_name=SHEET_NAME)
         df = raw[["USI", "ETP status"]].copy()
         df["sample_id"] = "TARGET-10-" + df["USI"].astype(str)
         df["etp_status"] = df["ETP status"].map(_STATUS_MAP)

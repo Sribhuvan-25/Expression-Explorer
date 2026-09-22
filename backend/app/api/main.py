@@ -330,7 +330,21 @@ def group_values(dataset_id: str, group_column: str):
     else:
         values = ds.samples["group_columns"].apply(lambda d: d.get(group_column))
     counts = values.dropna().value_counts()
-    return {"group_column": group_column, "values": [{"value": v, "n": int(n)} for v, n in counts.items()]}
+    return {
+        "group_column": group_column,
+        "values": [{"value": v, "n": int(n)} for v, n in counts.items()],
+        # Distinct from a 404: the column is genuinely declared on this
+        # dataset, but the current load has zero non-null values for it.
+        # Without this the UI can't tell "typo'd column name" (404),
+        # "genuinely empty right now" (this), and "the dropdown just
+        # hasn't loaded yet" apart -- all three look identical as a bare
+        # []. The realistic cause is an upstream fetch for a
+        # supplementary grouping column (e.g. target_all_p2's
+        # etp_status/mrd_status, sourced from a third-party file this app
+        # doesn't control) degrading on this particular load -- see
+        # app/ingest/_http.py and METHODS.md 7.10.
+        "unavailable": len(counts) == 0,
+    }
 
 
 @app.get("/datasets/{dataset_id}/compare")

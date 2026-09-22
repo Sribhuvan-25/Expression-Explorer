@@ -440,9 +440,16 @@ export const api = {
       `/datasets/${datasetId}/differential?group_column=${encodeURIComponent(groupColumn)}&group_a=${encodeURIComponent(groupA)}&group_b=${encodeURIComponent(groupB)}&top_n=${topN}`,
     ),
   groupValues: (datasetId: string, groupColumn: string) =>
-    request<{ group_column: string; values: { value: string; n: number }[] }>(
-      `/datasets/${datasetId}/group-values?group_column=${encodeURIComponent(groupColumn)}`,
-    ),
+    request<{
+      group_column: string;
+      values: { value: string; n: number }[];
+      // True when the column is a real grouping column on this dataset
+      // but the current load has zero non-null values for it -- distinct
+      // from a 404 (unknown column name) and distinct from "still
+      // loading". Lets the UI say why a picker is empty instead of
+      // rendering it with no options and no explanation.
+      unavailable?: boolean;
+    }>(`/datasets/${datasetId}/group-values?group_column=${encodeURIComponent(groupColumn)}`),
   auxLayers: (datasetId: string) =>
     request<{ dataset_id: string; layers: AuxLayerSummary[] }>(`/datasets/${datasetId}/aux-layers`),
   mutatedGenes: (datasetId: string, topN: number = 25) =>

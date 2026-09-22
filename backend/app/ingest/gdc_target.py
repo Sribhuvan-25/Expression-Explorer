@@ -241,10 +241,42 @@ def load(limit: int | None = None, use_cache: bool = True, with_aux: bool = True
     # exact TARGET T-ALL cohort. Only ~190 of the ~530 RNA-seq samples get
     # a classification; the rest simply lacked immunophenotyping and stay
     # unlabeled rather than guessed at.
-    etp_status = load_etp_status()
+    #
+    # Both this and mrd_status below are fetched best-effort: each is one
+    # supplementary grouping column layered onto the core expression
+    # matrix, from a third-party endpoint (Springer Nature / GDC's
+    # clinical-supplement file) this app doesn't control. A bad response
+    # from either previously took the whole 469-sample dataset down --
+    # its expression matrix and survival support along with the one
+    # grouping column that actually failed (observed in production,
+    # 2026-09-21: target_mrd's single-shot fetch got a response pandas
+    # couldn't parse as Excel, and had no retry to fall back on). Fixed
+    # at the source too (see app/ingest/_http.py), but this is the second,
+    # independent layer: even if the fetch itself somehow fails again,
+    # the dataset degrades to that one column missing rather than
+    # disappearing entirely -- the same additive-layer contract the aux
+    # layers below already follow.
+    etp_status = pd.Series(dtype=object)
+    try:
+        etp_status = load_etp_status()
+    except Exception as exc:  # noqa: BLE001 - grouping column, never fatal to the dataset
+        logging.getLogger(__name__).warning(
+            "target_all_p2 dataset: ETP status unavailable (%s) -- "
+            "dataset will load without etp_status grouping",
+            exc,
+        )
+
     # Day-29 MRD status, same source and threshold Wang et al. 2025 used
     # (TARGET's Phase II Validation clinical supplement, MRD_neg <=0.01).
-    mrd_status = load_mrd_status()
+    mrd_status = pd.Series(dtype=object)
+    try:
+        mrd_status = load_mrd_status()
+    except Exception as exc:  # noqa: BLE001 - grouping column, never fatal to the dataset
+        logging.getLogger(__name__).warning(
+            "target_all_p2 dataset: MRD status unavailable (%s) -- "
+            "dataset will load without mrd_status grouping",
+            exc,
+        )
 
     def _group_columns(sid: str) -> dict:
         cols = {}

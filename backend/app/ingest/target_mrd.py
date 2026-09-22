@@ -16,10 +16,10 @@ MRD_neg <=0.01, MRD_pos >0.01."
 """
 from __future__ import annotations
 
-import httpx
 import pandas as pd
 
 from app.config import settings
+from app.ingest._http import fetch_with_retry, validate_excel_bytes
 
 GDC_API = "https://api.gdc.cancer.gov"
 # TARGET_ALL_ClinicalData_Phase_II_Validation_20230727.xlsx
@@ -39,11 +39,15 @@ def load_mrd_status(use_cache: bool = True) -> pd.Series:
     if use_cache and cache_path.exists():
         df = pd.read_parquet(cache_path)
     else:
-        resp = httpx.get(
-            f"{GDC_API}/data/{CLINICAL_FILE_ID}", follow_redirects=True, timeout=60.0
+        # Retries transient failures AND a 200 whose body isn't actually
+        # an Excel file -- both observed in production from this exact
+        # endpoint (see app/ingest/_http.py). A bare single-attempt fetch
+        # previously took the whole 469-sample target_all_p2 dataset down
+        # over one bad response to this one supplementary file.
+        content = fetch_with_retry(
+            f"{GDC_API}/data/{CLINICAL_FILE_ID}", timeout=60.0, validate=validate_excel_bytes
         )
-        resp.raise_for_status()
-        raw = pd.read_excel(pd.io.common.BytesIO(resp.content))
+        raw = pd.read_excel(pd.io.common.BytesIO(content))
         tall = raw[raw["Cell of Origin"] == "T Cell ALL"].copy()
         df = pd.DataFrame(
             {

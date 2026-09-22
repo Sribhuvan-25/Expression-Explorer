@@ -458,6 +458,20 @@ function DifferentialGenesTab() {
         {groupA && groupA === groupB && (
           <p className="mt-2.5 text-[12px] text-warn">Group A and Group B must be different.</p>
         )}
+        {groupValuesResult?.unavailable && (
+          // "{groupColumn}" is a real column on this dataset (it's in the
+          // dropdown above), but the current load has zero samples with a
+          // value for it -- distinct from a typo'd column name, and from
+          // the picker just not having loaded yet. The realistic cause is
+          // an upstream data source for this one grouping column
+          // (fetched from outside this app, e.g. a supplementary
+          // clinical file) being temporarily unavailable -- not that the
+          // dataset itself is broken.
+          <p className="mt-2.5 text-[12px] text-warn">
+            No samples currently have a "{groupColumn}" value on this dataset — the source for this
+            grouping may be temporarily unavailable. Try another grouping column, or check back later.
+          </p>
+        )}
       </Panel>
 
       {error && <ErrorState message={(error as Error).message} />}
