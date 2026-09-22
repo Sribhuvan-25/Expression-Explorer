@@ -1167,10 +1167,20 @@ Ingest writes matrices to their final location **before** marking a row
 row pointing at a missing file. A failed ingest is recorded as `failed`
 with its error rather than leaving the dataset silently absent.
 
-**Not yet verified against a live Postgres instance** -- Docker was
-unavailable in the session that built this. The schema compiles against
-the Postgres dialect and the full suite passes on SQLite; a real
-Postgres run is the remaining check before relying on it in production.
+**Verified against a live Postgres 16 instance (2026-09-21).** The
+Alembic migration applied cleanly, all three datasets ingested in 17s
+(707 samples / 101,449 features / 3 aux layers -- identical counts to
+SQLite), the full suite passed with `DATABASE_URL` pointed at Postgres,
+and the app served the unchanged reference value through it (MYB CRISPR
+r=-0.652361, n=91). Cross-cohort JSON filtering behaves as designed:
+`attributes->>'etp_status' = 'ETP'` returns gds4299=12, target_all_p2=19.
+Re-ingest replaces rather than duplicates (cascade delete confirmed on
+Postgres, not just SQLite).
+
+Local compose maps Postgres to host port **5433**, not 5432 -- the
+default is commonly taken by another local Postgres. The container still
+listens on 5432 internally, so `DATABASE_URL` inside compose is
+unaffected.
 
 ---
 
@@ -1202,3 +1212,4 @@ Postgres run is the remaining check before relying on it in production.
 | 2026-09-13 | §9.3 added: frontend test suite (Vitest + Testing Library, 21 tests, `npm test` in `frontend/`) — the last layer with zero automated coverage. Scoped to defects that actually shipped: the LYL1 white-screen (§8.8), the histogram bin rule (§5.6), and export identity (§5.7). Each validated by reintroducing its bug; the export tests initially passed while failing to catch a reverted fix, because they exercised `ExportButton` rather than the call site that carried the defect — rewritten against `DatasetPanel`. `histogramBinCount` extracted from an inline IIFE and exported to make it testable. Coverage ~30% by intent, not by omission. |
 | 2026-09-20 | §7.9 added after a failed Railway deploy. Dataset warm-up moved off the startup path onto a background thread (`app/services/warmup.py`): uvicorn binds immediately, `/health` answers on liveness alone, `/readiness` reports per-dataset state, and `/datasets` returns `warming: true` rather than blocking on a loader. Root cause measured, not guessed — §8's aux layers pushed cold prewarm to ~848s against the 900s healthcheck budget (94% consumed, ~52s headroom from a home connection; GDC is slower to datacenter IPs and the MAF loader retries 4x per file). `healthcheckTimeout` reduced 900→120s because it no longer waits on data. Verified against an empty cache: /health 200 in 2s, /datasets in 16ms mid-download, DepMap ready at 90s serving its reference value while the other two still downloaded. 9 new tests (backend 151, frontend 24), each validated by reverting the fix. Warm cache is ~495MB — the Railway volume must exceed that. |
 | 2026-09-20 | §10 added: dataset metadata moved into a database (`app/db/`, 4 tables, Alembic migration) so adding a dataset stops requiring a code change and redeploy. Postgres in production, SQLite locally/in tests via the same generic-typed models. Expression matrices deliberately stay as parquet — measured 92M dense cells across 5 matrices, and a genome-wide scan costs 0.03s against parquet vs a 60,000-row aggregate as SQL. `scripts/ingest_dataset.py` is the new add-a-dataset path; all 3 existing datasets migrated (102,162 metadata rows). Cross-dataset metadata queries now possible without loading matrices — "ETP samples across all cohorts" in 2ms. 7 new tests (158 total). NOT yet run against a live Postgres (Docker unavailable); schema compiles for the Postgres dialect. |
+| 2026-09-21 | §10 verified end to end against live Postgres 16 (Docker). Migration applied, 3 datasets ingested in 17s with counts identical to SQLite, 158 tests passed with DATABASE_URL on Postgres, app served the unchanged MYB CRISPR reference value (r=-0.652361, n=91) through it, and JSONB cross-cohort filtering confirmed (ETP: gds4299=12, target_all_p2=19). Re-ingest replace-not-duplicate confirmed. Compose maps host port 5433 since 5432 is commonly occupied. |

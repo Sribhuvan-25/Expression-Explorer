@@ -10,7 +10,10 @@ services:
       - POSTGRES_PASSWORD=expression
       - POSTGRES_DB=expression
     ports:
-      - "5432:5432"
+      # 5433 on the host: 5432 is commonly already taken by another local
+      # Postgres. The container still listens on 5432 internally, so the
+      # backend's DATABASE_URL below is unaffected.
+      - "5433:5432"
     volumes:
       - metadata_db:/var/lib/postgresql/data
     healthcheck:
