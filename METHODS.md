@@ -1153,6 +1153,43 @@ and filters inside JSONB, so query capability is retained -- verified:
 2ms, a question that previously required loading ~500MB of matrices.
 Validation moves to ingest time rather than write time.
 
+### 10.5 The registry reads from the database, with code as the floor
+**Decided (2026-09-21).** `registry.list_descriptors()` merges rows from
+the `datasets` table (status `ready`) over the code-registered ones, so a
+dataset that exists only as a row plus a parquet file is served without
+any code change. That is the cutover that actually delivers "add a
+dataset without a redeploy" -- the schema alone did not.
+
+The descriptor's `loader` re-fetches its row by id rather than closing
+over the ORM object: the session is closed by the time the loader runs,
+and a fresh fetch also means a re-ingest is picked up on the next load
+instead of serving a stale description.
+
+**Code-registered datasets remain the fallback, deliberately.** An
+unreachable, unmigrated, or empty database degrades to exactly the
+previous behaviour and logs why -- verified by pointing `DATABASE_URL` at
+a dead host: `/health`, `/datasets` and a real comparison all still
+returned 200 off the code path. The previous behaviour is the floor,
+never the casualty. Where both exist the database wins, since that is the
+row an operator most recently wrote.
+
+Two round-trip details that would break grouping silently if missed, both
+covered by tests:
+- Ingest flattens clinical fields into one JSON blob, but the analysis
+  layer reads them **both** as top-level columns and from a nested
+  `group_columns` dict. Both shapes are restored.
+- Sample rows come back in arbitrary order, so they are re-ordered to
+  follow the matrix columns -- the analysis layer aligns the two
+  positionally.
+
+Verified after cutover: a dataset loaded from the database is
+bit-identical to the same dataset loaded through its ingest module (same
+matrix values, same sample order, same 12 ETP / 40 non-ETP counts), and
+every reference statistic is unchanged to 12 decimal places -- MYB CRISPR
+r=-0.652360635454 n=91, DTX1/NOTCH1 p=4.940894660436e-03 (159/120/190),
+quartile survival arms 116/116 with 217 tied. 165 tests pass on both
+SQLite and Postgres.
+
 ### 10.4 Portability and ordering
 `models.py` uses SQLAlchemy's generic `JSON` type rather than
 Postgres-native `JSONB`, so the same models run on SQLite locally and in
@@ -1213,3 +1250,4 @@ unaffected.
 | 2026-09-20 | §7.9 added after a failed Railway deploy. Dataset warm-up moved off the startup path onto a background thread (`app/services/warmup.py`): uvicorn binds immediately, `/health` answers on liveness alone, `/readiness` reports per-dataset state, and `/datasets` returns `warming: true` rather than blocking on a loader. Root cause measured, not guessed — §8's aux layers pushed cold prewarm to ~848s against the 900s healthcheck budget (94% consumed, ~52s headroom from a home connection; GDC is slower to datacenter IPs and the MAF loader retries 4x per file). `healthcheckTimeout` reduced 900→120s because it no longer waits on data. Verified against an empty cache: /health 200 in 2s, /datasets in 16ms mid-download, DepMap ready at 90s serving its reference value while the other two still downloaded. 9 new tests (backend 151, frontend 24), each validated by reverting the fix. Warm cache is ~495MB — the Railway volume must exceed that. |
 | 2026-09-20 | §10 added: dataset metadata moved into a database (`app/db/`, 4 tables, Alembic migration) so adding a dataset stops requiring a code change and redeploy. Postgres in production, SQLite locally/in tests via the same generic-typed models. Expression matrices deliberately stay as parquet — measured 92M dense cells across 5 matrices, and a genome-wide scan costs 0.03s against parquet vs a 60,000-row aggregate as SQL. `scripts/ingest_dataset.py` is the new add-a-dataset path; all 3 existing datasets migrated (102,162 metadata rows). Cross-dataset metadata queries now possible without loading matrices — "ETP samples across all cohorts" in 2ms. 7 new tests (158 total). NOT yet run against a live Postgres (Docker unavailable); schema compiles for the Postgres dialect. |
 | 2026-09-21 | §10 verified end to end against live Postgres 16 (Docker). Migration applied, 3 datasets ingested in 17s with counts identical to SQLite, 158 tests passed with DATABASE_URL on Postgres, app served the unchanged MYB CRISPR reference value (r=-0.652361, n=91) through it, and JSONB cross-cohort filtering confirmed (ETP: gds4299=12, target_all_p2=19). Re-ingest replace-not-duplicate confirmed. Compose maps host port 5433 since 5432 is commonly occupied. |
+| 2026-09-21 | §10.5: registry cut over to read datasets from the database, with code-registered datasets kept as the fallback floor. A dataset that exists only as a row + parquet now loads with no ingest module and no redeploy (covered by a test that seeds exactly that). Verified bit-identical to the code path and every reference statistic unchanged to 12 dp; graceful degradation confirmed by pointing DATABASE_URL at a dead host. 7 new tests, 165 total, passing on both SQLite and Postgres. |
