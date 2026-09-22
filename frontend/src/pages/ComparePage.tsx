@@ -326,7 +326,11 @@ function SingleGeneCompareTab() {
   );
 }
 
-function DifferentialGenesTab() {
+// Exported for tests: a grouping column with fewer than 2 distinct values
+// (e.g. DepMap's own `lineage`, filtered to Lymphoid-only upstream) left
+// "Rank genes" and both group selects silently disabled with no text on
+// the page explaining why -- see the "only one value" message below.
+export function DifferentialGenesTab() {
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
 
@@ -455,6 +459,26 @@ function DifferentialGenesTab() {
             Rank genes
           </PrimaryButton>
         </div>
+        {/* The "Rank genes" button and both group selects go disabled
+            whenever groupOptions.length < 2, but a bare disabled control
+            explains nothing. The zero-values case is already covered
+            below by groupValuesResult.unavailable (§7.10; the API
+            guarantees values.length === 0 implies unavailable === true,
+            so that branch alone covers it). What was missing is the
+            single-value case: a column that IS populated but happens to
+            have exactly one distinct value on this dataset -- the
+            structural case, not a fetch failure. DepMap's own `lineage`
+            is filtered to "Lymphoid" only upstream (see depmap.py), so
+            there is nothing to compare no matter what the user picks,
+            and previously the selects and button just went quietly grey
+            with no text anywhere on the page saying why (caught in
+            regression testing, 2026-09-21). */}
+        {!!groupColumn && groupValuesResult && !groupValuesResult.unavailable && groupOptions.length === 1 && (
+          <p className="mt-2.5 text-[12px] text-ink-mute">
+            "{groupColumn}" has only one value on this dataset ({groupOptions[0]}) — nothing to
+            compare. Pick a different grouping column.
+          </p>
+        )}
         {groupA && groupA === groupB && (
           <p className="mt-2.5 text-[12px] text-warn">Group A and Group B must be different.</p>
         )}

@@ -299,6 +299,38 @@ image — a saved figure could not be identified after the fact, which
 makes it useless as a record. Every other export site already named its
 subject; this one and the PCA title (a bare "PCA") were the exceptions.
 
+### 5.8 A disabled control must say why
+**Decided (2026-09-21), found during regression testing.** The
+Differential Genes tab's "Rank genes" button and both group selects go
+disabled whenever the chosen grouping column has fewer than 2 distinct
+values on the selected dataset — but for the single-value case
+specifically, nothing on the page said so.
+
+Root cause: `groupA`/`groupB` only get auto-populated by an effect gated
+on `groupOptions.length >= 2`; with exactly one option (DepMap's own
+`lineage`, filtered to Lymphoid-only upstream — see §7.2's dataset
+filtering) that effect never runs, so both stay `""`. The pre-existing
+"Group A and Group B must be different" hint requires `groupA` to be
+truthy first, so it never fires either. The net result was a visibly
+disabled control with zero explanatory text anywhere on the page —
+worse than the "must be different" case, which at least says something.
+
+Distinct from §7.10's `unavailable` flag (a column that is declared but
+currently has zero values — e.g. a degraded upstream fetch): this is the
+**structural** case, where the column genuinely, permanently has exactly
+one value for this dataset. The API guarantees `values.length === 0`
+implies `unavailable === true`, so the two conditions never overlap —
+verified by a test asserting the single-value message and the
+`unavailable` message are mutually exclusive for the same disabled-button
+symptom.
+
+Fixed with a third, explicit message: `"{column}" has only one value on
+this dataset ({value}) — nothing to compare. Pick a different grouping
+column.` Verified live: switching from DepMap/`lineage` (message shown,
+button disabled) to TARGET-ALL-P2/`vital_status` (2 values, no message,
+button enabled, ranking runs normally) toggles correctly with no false
+positives on a working configuration.
+
 ---
 
 ## 6. Reporting and transparency
@@ -1318,3 +1350,4 @@ unaffected.
 | 2026-09-21 | §10 verified end to end against live Postgres 16 (Docker). Migration applied, 3 datasets ingested in 17s with counts identical to SQLite, 158 tests passed with DATABASE_URL on Postgres, app served the unchanged MYB CRISPR reference value (r=-0.652361, n=91) through it, and JSONB cross-cohort filtering confirmed (ETP: gds4299=12, target_all_p2=19). Re-ingest replace-not-duplicate confirmed. Compose maps host port 5433 since 5432 is commonly occupied. |
 | 2026-09-21 | §10.5: registry cut over to read datasets from the database, with code-registered datasets kept as the fallback floor. A dataset that exists only as a row + parquet now loads with no ingest module and no redeploy (covered by a test that seeds exactly that). Verified bit-identical to the code path and every reference statistic unchanged to 12 dp; graceful degradation confirmed by pointing DATABASE_URL at a dead host. 7 new tests, 165 total, passing on both SQLite and Postgres. |
 | 2026-09-21 | §7.10 added after a production incident: `target_all_p2` failed to warm on the live Railway deploy (502s, "Excel file format cannot be determined") while `depmap`/`gds4299` warmed fine — one supplementary clinical-supplement fetch with no retry and no response-body validation took the whole 469-sample dataset down. New `app/ingest/_http.py` (`fetch_with_retry` + `validate_excel_bytes`) generalises the existing MAF-download retry pattern and adds response-body sniffing before parsing; wired into both `target_mrd.py` and `liu2017_etp.py` (the latter independently observed hanging 277s on the same class of failure while investigating). `gdc_target.load()` no longer lets either fetch be fatal — `etp_status`/`mrd_status` follow the same additive-never-fatal contract as the §8.1 aux layers, verified by mocking both to fail unconditionally and confirming the dataset still loads with its full matrix. Also closed a related gap: `/group-values` now reports `unavailable: true` for a declared column with zero current values, distinct from an unknown column, surfaced in the UI instead of a silently-empty picker. 9 new backend tests (174 total), frontend unaffected build/typecheck/test all clean. |
+| 2026-09-21 | §5.8 added: the Differential Genes tab's "Rank genes" button and group selects went silently disabled with no explanation when the chosen grouping column has fewer than 2 distinct values (e.g. DepMap's `lineage`, filtered to Lymphoid-only upstream) -- the auto-select effect that populates groupA/groupB is gated on >= 2 options, so the pre-existing "must be different" hint (which needs groupA truthy) never fired either. Found during regression testing after the §7.10 deploy fix. Added an explicit message, distinguished from §7.10's `unavailable` case (declared-but-currently-empty) since the two conditions are mutually exclusive by construction. 3 new frontend tests (27 total), each validated by reverting the fix and confirming failure. Verified live: message shows/hides correctly across a single-valued and a two-valued column, no false positives. |
