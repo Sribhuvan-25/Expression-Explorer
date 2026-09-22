@@ -105,7 +105,14 @@ def client():
                 dataset_id=DATASET_ID,
                 display_name="API Test Cohort",
                 loader=_build_dataset,
-                group_columns=("etp_status", "vital_status"),
+                # mrd_status is declared but deliberately never populated in
+            # _build_dataset() -- this mirrors the real §7.10 incident
+            # shape (a supplementary clinical grouping column whose
+            # upstream fetch can fail while the column itself stays
+            # declared on the dataset) and is what
+            # test_group_values_reports_unavailable_for_a_declared_but_empty_column
+            # exercises.
+            group_columns=("etp_status", "vital_status", "mrd_status"),
                 supports_survival=True,
             )
         )
@@ -173,6 +180,27 @@ def test_group_values_404s_on_unknown_column(client):
     ok = client.get(f"/datasets/{DATASET_ID}/group-values?group_column=etp_status")
     assert ok.status_code == 200 and ok.json()["values"]
     assert client.get(f"/datasets/{DATASET_ID}/group-values?group_column=nope").status_code == 404
+
+
+def test_group_values_reports_unavailable_for_a_declared_but_empty_column(client):
+    """§7.10: a column can be genuinely declared on the dataset (it's in
+    group_columns, so NOT a 404) while having zero non-null values on
+    this particular load -- the exact shape produced by a degraded
+    third-party clinical-supplement fetch (mrd_status/etp_status on
+    target_all_p2). Distinguishing this from the 404 case, and from
+    "still loading", is what lets the UI explain an empty picker rather
+    than showing one with no options and no reason why."""
+    r = client.get(f"/datasets/{DATASET_ID}/group-values?group_column=mrd_status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["values"] == []
+    assert body["unavailable"] is True
+
+
+def test_group_values_unavailable_is_false_for_a_populated_column(client):
+    r = client.get(f"/datasets/{DATASET_ID}/group-values?group_column=etp_status")
+    assert r.status_code == 200
+    assert r.json()["unavailable"] is False
 
 
 def test_correlation_rejects_identical_genes(client):

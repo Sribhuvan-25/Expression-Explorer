@@ -10,3 +10,4 @@ node_modules/
 
 # Local dev tooling (machine-specific paths)
 .mcp.json
+.vercel
