@@ -8,6 +8,7 @@ ingestion pipeline change.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -23,6 +24,24 @@ def _require_variance(values: pd.Series, label: str) -> None:
             f"{label} has the same value ({values.iloc[0]:g}) in every sample, so it has no "
             f"variance and cannot be correlated with anything."
         )
+
+
+def _correlate_rows(others: pd.DataFrame, query: pd.Series, method: str) -> pd.Series:
+    """Pearson or Spearman r of every row of `others` with `query`, as one
+    matrix product. `others.T.corrwith(query)` took ~3 s on TARGET's
+    60,660 x 469 matrix; this gives the same coefficients (max difference
+    ~1e-15 on real data, same top-N) in a fraction of that. Constant rows
+    come back NaN, as before."""
+    x = others.to_numpy(dtype=float)
+    q = query.reindex(others.columns).to_numpy(dtype=float)
+    if method == "spearman":
+        x = stats.rankdata(x, axis=1)
+        q = stats.rankdata(q)
+    xc = x - x.mean(axis=1, keepdims=True)
+    qc = q - q.mean()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = (xc @ qc) / (np.sqrt((xc * xc).sum(axis=1)) * np.sqrt((qc * qc).sum()))
+    return pd.Series(r, index=others.index)
 
 
 _METHODS = {
@@ -120,7 +139,7 @@ def co_expression_network(
     query = matrix.loc[gene]
     # It used to return an empty network with no explanation.
     _require_variance(query, gene)
-    corr = others.T.corrwith(query, method=method).dropna()
+    corr = _correlate_rows(others, query, method).dropna()
 
     ranked = corr.sort_values(ascending=(direction == "negative"))
     top = ranked.head(top_n)
