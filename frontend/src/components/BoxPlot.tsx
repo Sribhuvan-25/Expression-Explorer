@@ -187,7 +187,7 @@ export function BoxPlot({
   const fewPoints = points.length <= 40;
   const dot = fewPoints ? { r: 3.6, opacity: 0.9, stroke: 1 } : null;
 
-  const availableWidth = Math.max(containerWidth || 720, 320);
+  const availableWidth = Math.max(containerWidth || 720, 220); // lay out at a phone-width container rather than scaling down
 
   // Domain is computed in transformed space so log mode actually
   // compresses the long tail instead of relabeling a linear axis. Tick
@@ -428,7 +428,7 @@ export function BoxPlot({
   // ---- Vertical layout: few enough groups that columns read well ----
   const longestLabel = groups.reduce((m, g) => Math.max(m, g.group.length), 0);
   const margin = { top: 20, right: 24, bottom: 44, left: 56 };
-  const innerWidth = Math.max(availableWidth - margin.left - margin.right, 200);
+  const innerWidth = Math.max(availableWidth - margin.left - margin.right, 120);
   const bandW = innerWidth / Math.max(groups.length, 1);
   // With <= 7 groups there's room for horizontal labels unless the names
   // are genuinely long.

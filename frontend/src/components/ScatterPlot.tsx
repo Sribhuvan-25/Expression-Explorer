@@ -85,9 +85,9 @@ export function ScatterPlot({
     return () => observer.disconnect();
   }, []);
 
-  const width = Math.max(containerWidth || 640, 320);
+  const width = Math.max(containerWidth || 640, 220); // lay out at a phone-width container rather than scaling down
   const margin = { top: 16, right: 20, bottom: 46, left: 56 };
-  const plotW = Math.max(width - margin.left - margin.right, 160);
+  const plotW = Math.max(width - margin.left - margin.right, 130);
   const plotH = Math.round(Math.min(400, Math.max(220, plotW * 0.62)));
   const height = plotH + margin.top + margin.bottom;
 

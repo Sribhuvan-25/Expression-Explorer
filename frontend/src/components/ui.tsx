@@ -35,9 +35,11 @@ export function Panel({
   return (
     <section className={`rounded-[4px] border border-rule bg-surface ${className}`}>
       {title && (
-        <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
-          <h2 className="text-[12.5px] font-semibold text-ink">{title}</h2>
-          {action}
+        // flex-wrap: on a phone-width pane the actions (unit, n, PNG) were
+        // squeezed into narrow columns beside the title; they now drop below.
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-rule px-4 py-2.5">
+          <h2 className="min-w-0 text-[12.5px] font-semibold text-ink">{title}</h2>
+          {action && <div className="max-w-full [&>div]:flex-wrap">{action}</div>}
         </div>
       )}
       <div className="p-4">{children}</div>
