@@ -19,7 +19,7 @@ from app.analysis.aux_analysis import (
     expression_vs_aux_correlation,
     most_mutated_genes,
 )
-from app.analysis.compare import expression_by_group, kruskal_wallis, pairwise_tests
+from app.analysis.compare import clean_group_label, expression_by_group, group_labels, kruskal_wallis, pairwise_tests
 from app.analysis.contrast import contrast_gene_stats, top_contrast_genes
 from app.analysis.correlation import co_expression_network, gene_correlation
 from app.analysis.differential import top_differential_genes
@@ -95,7 +95,7 @@ def _sample_groups(dataset_id: str, ds: Dataset) -> dict[str, dict]:
         groups = {}
         for col in declared:
             v = row[col] if col in samples.columns else nested.get(col)
-            groups[col] = None if v is None or (isinstance(v, float) and v != v) else v
+            groups[col] = clean_group_label(v)
         out[str(sid)] = groups
     return out
 
@@ -446,7 +446,11 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
             # lineage (0 excluded, 100% coverage) still claimed "no value
             # recorded for 'lineage'", implying an exclusion that never
             # happened. Caught in QA, not by a user, but a real defect.
-            "exclusion_reason": f"no value recorded for '{group_column}'" if n_excluded > 0 else None,
+            "exclusion_reason": (
+            f"no value recorded for '{group_column}' (blank, or a placeholder such as 'Unknown' or 'Not Reported')"
+            if n_excluded > 0
+            else None
+        ),
             "points": df.to_dict("records"),
             "pairwise_tests": tests,
             "stratum_caveat": stratum_caveat,
@@ -489,11 +493,7 @@ def group_values(dataset_id: str, group_column: str):
             404, f"'{group_column}' is not a grouping column on '{descriptor.display_name}'."
         )
     ds = _get_dataset(dataset_id)
-    if group_column in ds.samples.columns:
-        values = ds.samples[group_column]
-    else:
-        values = ds.samples["group_columns"].apply(lambda d: d.get(group_column))
-    counts = values.dropna().value_counts()
+    counts = group_labels(ds.samples, group_column).dropna().value_counts()
     return {
         "group_column": group_column,
         "values": [{"value": v, "n": int(n)} for v, n in counts.items()],
@@ -534,7 +534,11 @@ def compare(dataset_id: str, gene: str, group_column: str):
         "n_excluded": n_excluded,
         # None when nothing was excluded -- see compare_multi's identical fix
         # above for why this can't be an unconditional string.
-        "exclusion_reason": f"no value recorded for '{group_column}'" if n_excluded > 0 else None,
+        "exclusion_reason": (
+            f"no value recorded for '{group_column}' (blank, or a placeholder such as 'Unknown' or 'Not Reported')"
+            if n_excluded > 0
+            else None
+        ),
         "points": df.to_dict("records"),
         "pairwise_tests": tests,
         "stratum_caveat": stratum_caveat,
