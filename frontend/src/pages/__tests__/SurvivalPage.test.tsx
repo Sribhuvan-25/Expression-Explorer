@@ -158,3 +158,26 @@ describe("SurvivalPage sample accounting and captions follow the cutoff", () => 
     expect(screen.getByTestId("cox-unit-note")).not.toHaveTextContent("median-split");
   });
 });
+
+describe("SurvivalPage tie-break sensitivity", () => {
+  it("shows how far the log-rank p moves with the choice of tied samples", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue({
+      ...NORMAL_RESULT,
+      logrank_p_value: 0.0041,
+      tie_note: {
+        n_tied_at_cutoff: 246,
+        tie_policy: "trim",
+        message: "246 samples share the exact score at a cutoff boundary.",
+        sensitivity: { n_draws: 200, p_median: 0.044, p_low: 0.0034, p_high: 0.32 },
+      },
+    } as unknown as SurvivalResult);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "quartile" }));
+    fireEvent.click(screen.getByRole("button", { name: /run survival analysis/i }));
+    const note = await screen.findByTestId("tie-sensitivity");
+    expect(note).toHaveTextContent("across 200 random choices, the log-rank p ranged 0.003 to 0.320");
+    expect(note).toHaveTextContent("median 0.044");
+    expect(note).toHaveTextContent("against 0.004 shown");
+  });
+});

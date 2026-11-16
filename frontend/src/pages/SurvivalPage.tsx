@@ -315,6 +315,14 @@ export function SurvivalPage() {
                         .map(([label, c]) => `${label} n=${c.n}`)
                         .join(" · ")}
                       . Change <span className="font-mono">Tied scores at the cutoff</span> to compare policies.
+                      {data.tie_note.sensitivity && (
+                        <span data-testid="tie-sensitivity" className="mt-1 block">
+                          Which tied samples are kept matters: across {data.tie_note.sensitivity.n_draws} random
+                          choices, the log-rank p ranged {fmtP(data.tie_note.sensitivity.p_low)} to{" "}
+                          {fmtP(data.tie_note.sensitivity.p_high)} (middle 95%; median{" "}
+                          {fmtP(data.tie_note.sensitivity.p_median)}), against {fmtP(data.logrank_p_value)} shown.
+                        </span>
+                      )}
                     </p>
                   )}
                   <SurvivalPlot curves={data.curves} svgRef={chartRef} />
@@ -410,4 +418,9 @@ export function SurvivalPage() {
       </div>
     </div>
   );
+}
+
+function fmtP(p: number | null | undefined): string {
+  if (p == null) return "—";
+  return p < 0.001 ? p.toExponential(2) : p.toFixed(3);
 }

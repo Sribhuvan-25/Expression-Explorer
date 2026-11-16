@@ -166,6 +166,9 @@ export interface SurvivalResult {
     n_tied_at_cutoff: number;
     tie_policy: TiePolicy;
     message: string;
+    // Trim only, when it dropped tied samples: log-rank p over random
+    // choices of which tied samples to keep.
+    sensitivity?: { n_draws: number; p_median: number; p_low: number; p_high: number } | null;
   } | null;
   cox: {
     n: number;

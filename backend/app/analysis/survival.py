@@ -6,6 +6,10 @@ rebuilds the mechanics behind Figure 10 C/D/N/O/P for any signature.
 """
 from __future__ import annotations
 
+import hashlib
+
+import numpy as np
+
 import pandas as pd
 from lifelines import CoxPHFitter, KaplanMeierFitter
 from lifelines.statistics import logrank_test
@@ -52,6 +56,7 @@ def binarize_by_cutoff(
     custom_low_pct: float = 50.0,
     score_col: str = "signature_score",
     tie_policy: str = "trim",
+    tie_seed: int | None = None,
 ) -> pd.Series:
     """Group samples by signature score, with a null (excluded) entry for
     anyone in neither group -- generalizes `binarize_by_median` to match
@@ -170,12 +175,52 @@ def binarize_by_cutoff(
         keep = target - untied
         if keep >= n_tied:
             continue
-        # Deterministic: order the tied block by sample id so the same
-        # query always yields the same arms.
-        surplus = sorted(scores.index[tied])[keep:]
+        surplus = _tie_order(scores.index[tied], tie_seed)[keep:]
         group[surplus] = pd.NA
 
     return group
+
+
+def _tie_order(sample_ids, seed: int | None) -> list:
+    """Order in which `trim` keeps tied samples (first kept, rest dropped).
+
+    It used to be sorted sample id, and TARGET's USIs track outcome: the
+    event rate by sextile of sorted id runs 0.40 down to 0.04, so trim
+    kept the early-id, high-event patients of a tied block. TAL1 quartile:
+    kept tied patients had a 0.41 event rate against 0.12 for those
+    dropped, and the log-rank p (5.0e-5) lay outside every one of 2,000
+    random tie-breaks (median 0.044). Now a hash of the id: repeatable,
+    but unrelated to how ids were assigned. `seed` draws a random order
+    instead, for the sensitivity check in `tie_sensitivity`."""
+    ids = list(sample_ids)
+    if seed is not None:
+        return [ids[i] for i in np.random.default_rng(seed).permutation(len(ids))]
+    return sorted(ids, key=lambda s: hashlib.sha256(str(s).encode()).hexdigest())
+
+
+def tie_sensitivity(df: pd.DataFrame, n_draws: int = 200, **cutoff) -> dict | None:
+    """Log-rank p over `n_draws` random choices of which tied samples
+    `trim` keeps. None when no tied sample is dropped (the choice does not
+    arise). Shows whether a result depends on an arbitrary tie-break."""
+    ps = []
+    for seed in range(n_draws):
+        group = binarize_by_cutoff(df, tie_policy="trim", tie_seed=seed, **cutoff)
+        high, low = group == "HIGH", group == "LOW"
+        if high.sum() < 2 or low.sum() < 2:
+            return None
+        ps.append(
+            logrank_test(
+                df.loc[high, "duration"], df.loc[low, "duration"],
+                event_observed_A=df.loc[high, "event"], event_observed_B=df.loc[low, "event"],
+            ).p_value
+        )
+    ps = np.array(ps)
+    return {
+        "n_draws": n_draws,
+        "p_median": float(np.median(ps)),
+        "p_low": float(np.quantile(ps, 0.025)),
+        "p_high": float(np.quantile(ps, 0.975)),
+    }
 
 
 def kaplan_meier_curves(df: pd.DataFrame, group: pd.Series) -> dict[str, dict]:

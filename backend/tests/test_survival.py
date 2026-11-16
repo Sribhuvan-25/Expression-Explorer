@@ -251,3 +251,31 @@ def test_unknown_tie_policy_raises():
 
     with pytest.raises(ValueError, match="tie_policy"):
         binarize_by_cutoff(_tied_frame(), method="quartile", tie_policy="nonsense")
+
+
+def test_trim_does_not_keep_tied_samples_in_sample_id_order():
+    """Trim kept the first tied samples by sorted id, and TARGET ids track
+    outcome, so the kept tied patients were the high-event ones (TAL1:
+    0.41 event rate kept vs 0.12 dropped; log-rank p outside 2,000 random
+    tie-breaks). Here the first 10 ids by sort order all have the event."""
+    from app.analysis.survival import binarize_by_cutoff
+
+    frame = _tied_frame()
+    frame["event"] = [1 if i < 10 else 0 for i in range(40)]
+    group = binarize_by_cutoff(frame, method="quartile", tie_policy="trim")
+    kept_tied = group.index[(group == "LOW") & (frame["signature_score"] == 0.0)]
+    assert len(kept_tied) == 10
+    assert 0 < frame.loc[kept_tied, "event"].sum() < 10
+    assert binarize_by_cutoff(frame, method="quartile", tie_policy="trim").equals(group)
+
+
+def test_tie_sensitivity_reports_the_spread_of_log_rank_p():
+    from app.analysis.survival import tie_sensitivity
+
+    frame = _tied_frame()
+    frame["duration"] = [50.0 + 7 * i % 90 for i in range(40)]
+    frame["event"] = [i % 3 == 0 for i in range(40)]
+    out = tie_sensitivity(frame, n_draws=50, method="quartile")
+    assert out["n_draws"] == 50
+    assert 0 <= out["p_low"] <= out["p_median"] <= out["p_high"] <= 1
+    assert out["p_low"] < out["p_high"]  # the tie-break genuinely moves p here

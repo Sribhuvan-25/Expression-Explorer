@@ -26,7 +26,7 @@ from app.analysis.differential import top_differential_genes
 from app.analysis.dimensionality import pca
 from app.analysis.ranking import rank_by_gene, rank_by_signature
 from app.analysis.signature import auc_signature_score, is_log2_unit, log2_mean_signature_score
-from app.analysis.survival import binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
+from app.analysis.survival import tie_sensitivity, binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, AuxMatrix, Dataset
@@ -1154,9 +1154,15 @@ def survival(dataset_id: str, body: SurvivalRequest):
                 "tie_policy": body.tie_policy,
                 "message": (
                     f"{n_tied} samples share the exact score at a cutoff boundary "
-                    f"(common for a single gene, where every sample below the rank "
-                    f"threshold scores exactly 0). Applied tie policy: "
+                    f"(common for a single gene: every sample where it falls outside "
+                    f"the top 25% of genes scores exactly 0). Applied tie policy: "
                     f"'{body.tie_policy}'."
+                    + (
+                        " Trim keeps a fixed pseudo-random subset of the tied samples "
+                        "to reach the requested arm size."
+                        if body.tie_policy == "trim"
+                        else ""
+                    )
                 ),
             }
     # Quartile/custom cutoffs exclude a middle band on top of whatever
@@ -1213,6 +1219,17 @@ def survival(dataset_id: str, body: SurvivalRequest):
                 "n": n_tie_dropped,
             })
     exclusion_reason = "; ".join(f"{e['n']} {e['reason']}" for e in exclusion_breakdown) or None
+    # When trim had to choose which tied patients to keep, say how much
+    # that arbitrary choice moves the answer (METHODS.md 3.1a).
+    if tie_note is not None and body.tie_policy == "trim" and any(
+        "tie policy" in e["reason"] for e in exclusion_breakdown
+    ):
+        tie_note["sensitivity"] = tie_sensitivity(
+            surv_df,
+            method=body.cutoff_method,
+            custom_high_pct=body.cutoff_high_pct,
+            custom_low_pct=body.cutoff_low_pct,
+        )
     return {
         "genes": body.genes,
         "n": n_grouped,
