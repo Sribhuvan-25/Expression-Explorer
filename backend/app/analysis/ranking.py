@@ -31,11 +31,14 @@ def rank_by_signature(
     samples: pd.DataFrame,
     gene_ids: list[str],
     method: str = "auc",
+    already_log2: bool = False,
 ) -> pd.DataFrame:
     """Same idea, but the ranking value is a multi-gene signature score
     rather than one gene's expression."""
-    scorer = auc_signature_score if method == "auc" else log2_mean_signature_score
-    scores = scorer(matrix, gene_ids)
+    if method == "auc":
+        scores = auc_signature_score(matrix, gene_ids)
+    else:
+        scores = log2_mean_signature_score(matrix, gene_ids, already_log2=already_log2)
     return _assemble_ranking(samples, scores.rename("value"))
 
 

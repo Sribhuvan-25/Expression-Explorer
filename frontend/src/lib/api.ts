@@ -193,6 +193,8 @@ export interface CorrelationPoint {
   sample_id: string;
   x: number;
   y: number;
+  // The dataset's declared grouping columns for this sample, for colouring.
+  group_columns?: Record<string, string | null>;
 }
 
 export interface CorrelationResult {
@@ -418,6 +420,7 @@ export interface MutatedGenesResult {
 export interface CompareByMutationResult {
   gene: string;
   mutated_gene: string;
+  expression_unit?: string;
   n_mutated: number;
   n_wildtype: number;
   n_dataset_total: number;

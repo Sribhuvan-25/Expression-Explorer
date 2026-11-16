@@ -93,6 +93,10 @@ export function DatasetPanel({
               ...pairwise.map(
                 (t) =>
                   `${t.group_a} vs ${t.group_b}: p = ${t.p_value < 0.001 ? t.p_value.toExponential(2) : t.p_value.toFixed(4)}${
+                    // The subtitle says "with FDR correction"; print the
+                    // corrected value the on-page table shows, not only raw p.
+                    typeof t.q_value === "number" ? `, FDR q = ${t.q_value < 0.001 ? t.q_value.toExponential(2) : t.q_value.toFixed(4)}` : ""
+                  }${
                     // An exported figure travels without the on-page notice,
                     // so a p that cannot reach 0.05 must say so in the image.
                     typeof t.min_p_achievable === "number" && t.min_p_achievable > 0.05
@@ -109,7 +113,7 @@ export function DatasetPanel({
         <GroupFilter groupCounts={groupCounts} selected={selectedGroups} onChange={setSelectedGroups} />
       </div>
       {filteredPoints.length > 0 ? (
-        <BoxPlot points={filteredPoints} valueLabel="expression" svgRef={chartRef} />
+        <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
       ) : (
         <p className="py-8 text-center text-[12.5px] text-ink-mute">
           No groups selected — check at least one group above to see the chart.

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { inlineComputedPaint } from "../exportFigure";
+import { inlineComputedPaint, localDate } from "../exportFigure";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -49,5 +49,14 @@ describe("wrapText", () => {
     const { wrapText } = await import("../exportFigure");
     expect(wrapText("p = 0.0357", 300, measure)).toEqual(["p = 0.0357"]);
     expect(wrapText("a ENSG00000310517ENSG00000310517 b", 100, measure)).toEqual(["a", "ENSG00000310517ENSG00000310517", "b"]);
+  });
+});
+
+describe("export date stamp", () => {
+  it("uses the reader's local calendar date, not UTC", () => {
+    // 21:30 local on 15 Nov: toISOString() would say 16 Nov in any zone
+    // behind UTC. Built from local fields so the test holds in every zone.
+    expect(localDate(new Date(2026, 10, 15, 21, 30))).toBe("2026-11-15");
+    expect(localDate(new Date(2026, 0, 5, 0, 5))).toBe("2026-01-05");
   });
 });

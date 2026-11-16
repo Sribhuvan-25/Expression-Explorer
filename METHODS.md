@@ -137,6 +137,26 @@ signature genes. Unbounded, unlike AUC. `signature.py` →
 Kept because some published figures use a simple mean; the toggle makes
 the choice explicit rather than hidden.
 
+**Update 2026-11-15.** For datasets already stored on a log2 scale
+(`log2_tpm`: DepMap; `log2_intensity`: GDS4299, GSE66586) the values are
+averaged as they are; log2(x+1) is applied only to linear units (TPM).
+Previously every matrix was transformed, so on three of five datasets
+the score was a mean of log2(log2(x)+1) — GSE66586 samples at 9–11 log2
+units scored about 3.3. `is_log2_unit` / `already_log2` in
+`app/analysis/signature.py`, used by `/signature-score` and
+`/rank-signature`. Verified: GSE66586 PP2A-inhibitor log2-mean scores
+equal the raw series-matrix probe means exactly (highest-mean probe per
+gene, §7.1).
+
+### 2.4a Entering a gene set
+**Decided (2026-11-15).** The gene-set tag input (Signature Score,
+Sample Ranking, PCA, Survival) splits typed or pasted text with the gene
+panel's parser (`frontend/src/lib/geneInput.ts`): spaces, commas,
+newlines, "Heading:" prefixes and "(former name)" notes. Typing "CIP2A
+SET ANP32A ARPP19 PABIR1" then Enter used to make one tag that no
+dataset could resolve; text left in the box when the user clicked
+Score was dropped and is now kept.
+
 ### 2.5 Unknown genes
 **Decided.** Reject the whole request with a clear 404 naming the gene,
 rather than silently dropping it. `backend/app/api/main.py` →
@@ -279,9 +299,27 @@ to linear meant users saw the unreadable view first.
 Uses `log1p` / `expm1`, not bare log: true zeros are common and
 `log(0)` is undefined, while `log1p(0) = 0`.
 
+**Update 2026-11-15 — units already on a log scale.** `BoxPlot` now takes
+the dataset's `expression_unit`. For `log2_*` and `delta_ct` units the
+toggle is hidden (a further `log1p` would plot log of a log2 value) and
+the axis is **fitted to the data with 8% padding instead of starting at
+0** (`valueDomain`). Zero is meaningful on a TPM axis ("not expressed")
+and stays there; on a log2 axis it is just a low reading. Found in
+user-standpoint testing: GSE66586 PPP2R5B (7.5–10.0 log2 intensity) on a
+0-based axis filled the top quarter of the plot and the MYCN-status
+difference was barely visible. The axis title now names the unit
+("EXPRESSION (LOG2 INTENSITY)"), so an exported PNG says what its numbers
+are.
+
 ### 5.2 Axis headroom
 **Decided.** 4% headroom added in **raw** space, before the log
 transform. `BoxPlot.tsx:134-135`
+
+Linear axes (2026-11-15) put ticks on round values — steps of 1, 2, 2.5
+or 5 × 10^k (`niceTicks`) — with the domain widened to the outer ticks,
+all printed at one precision; the previous evenly divided axis printed
+"10.4, 8.35, 6.25, 4.18". The headroom rule above still governs the log
+mode.
 
 Scaling the transformed max instead inflates exponentially once
 untransformed for tick labels: a real max of 6.402 printed as 7.02, an
@@ -342,6 +380,33 @@ the dataset name as the only title, so exporting two genes silently
 image — a saved figure could not be identified after the fact, which
 makes it useless as a record. Every other export site already named its
 subject; this one and the PCA title (a bare "PCA") were the exceptions.
+
+**2026-11-15 additions.** Box-plot PNGs print each pair's FDR q beside
+its raw p (the subtitle says "with FDR correction"; the image printed
+only raw p, e.g. 0.0357 for a pair whose q is 0.107). The box plot uses
+the shared scatter/PCA palette: its own order put two near-identical
+blues on groups 1 and 3, the PCA defect above, so GSE66586's
+"non-malignant" and "MYCN-amplified" boxes looked alike. With ≤ 40
+samples, sample dots are drawn larger and opaque (each one is the data
+in a cell-line panel). The export stamp uses the local date (it was UTC,
+so evening exports in the Americas carried tomorrow's date).
+
+**Correlation and PCA scatter (2026-11-15).** The correlation scatter is
+coloured by a grouping column (default: the dataset's first declared one;
+"None" turns it off) and, whenever the points span more than one group,
+says under the result and in the PNG that r pools every sample and a
+between-group difference alone can produce a strong r. GSE66586 MYCN vs
+PPP2R5B, r = −0.847 (recomputed from the raw series matrix: −0.84696,
+p = 0.00199), is mostly the five MYCN-amplified lines sitting apart; one
+colour hid that. Axes name the unit and use round ticks (§5.2). Both
+endpoints attach each sample's declared group columns through one
+helper, `_sample_groups` in `app/api/main.py`, which reads top-level
+columns as well as the nested dict: PCA used to read only the dict, so
+on TARGET (where `etp_status` is top-level) its default "Color by
+etp_status" coloured nothing. Samples with no value in the colouring
+column are grey, drawn underneath and counted in the legend ("no value
+279"); they had fallen back to the first group's blue, so TARGET's 279
+uncalled samples read as ETP. Legend and PNG key carry per-group n.
 
 ### 5.8 A disabled control must say why
 **Decided (2026-09-21), found during regression testing.** The
@@ -1735,6 +1800,16 @@ about protein level or PP2A activity. Direction-only differences of
 small size (|log2FC| < 0.3) at n = 2 deserve caution even when q is
 small, since the variance prior is doing much of the work.
 
+The panel's "Across both experiments" column states the direction and
+which experiment reaches q < 0.05, by name: "Reciprocal (both q<0.05)",
+"Opposite direction; q<0.05 only in C4-2B", "Same direction (both
+q<0.05)", "… q≥0.05 in both", or "Tested only in NCI-H660" when the
+other experiment's filter dropped the gene. Same-direction movement in
+an overexpression and a knockdown is not the MYCL-dependent pattern,
+whatever its q. Code: `describeAcross` in
+`frontend/src/pages/ContrastsPage.tsx`; the panel CSV's `across_both_experiments` column
+uses the same words.
+
 ---
 
 ## Change log
@@ -1779,3 +1854,9 @@ small, since the variance prior is doing much of the work.
 | 2026-11-15 | Remaining usability/identity gaps closed, each verified in the browser and pinned by a test validated by reintroducing the defect. Signature Score listed bare GSM ids; it now reads the same scores from `/rank-signature` (identical to `/signature-score` on all 5 datasets, max difference 0.0, both methods) and shows each sample's cell line and groups. A renamed gene (C1orf112, now FIRRM) returned a bare "not found" on GSE324984: the gene-annotation panel, which already knew the current symbol from MyGene.info, now says the searched name is a previous one and offers "Search FIRRM instead" — an explicit choice, never a silent re-query (§7.4). Compare's skipped-dataset line printed a double full stop. Differential and Sample Ranking CSVs did not name their dataset (same group pair from two datasets overwrote one file): dataset id now in filename and every row; differential CSV carries the exact-test floor. Differential, Sample Ranking, panel and top-genes CSVs and every PNG export checked against the API (corrected: the co-expression CSV was not yet checked at this point — see next line). Backend 260 passed (1 skipped), frontend 56 passed, tsc and build clean, 107-check API sweep clean. |
 | 2026-11-15 | Co-expression network CSV — the one CSV export not yet checked — exported in the browser: matched the API on all 20 rows but carried no dataset in its filename or rows (one gene's network from two datasets overwrote one file); fixed like the others, with a test validated by reverting the fix. The app has exactly five CSV exports (Compare differential, Perturbation Contrasts panel and top genes, Sample Ranking, co-expression), all now verified value-for-value against the API; Correlation scatter, PCA and Survival export PNG only, all verified. §7.1 and §8.2 now lead with the values the running app serves (Mann–Whitney on GDS4299; post-§8.6a DTX1/MYCN), the earlier figures kept as dated history. Frontend 57 passed, backend 260 passed. |
 | 2026-11-15 | §9.1a: backend tests are now network-free by construction (`tests/conftest.py` refuses non-loopback connections). Found while waiting on PR #1's CI: one listing test was silently downloading every real cohort, ~19 of CI's ~20 minutes. Suite on an empty cache: 264 passed, 1 skipped in ~7 s. |
+| 2026-11-15 | §11.5: the panel's "Across both experiments" column said "Opposite direction, not significant in both" for CIP2A, SET and PPP2R1B, which are q < 0.002 in C4-2B — readable as "significant in neither" — and gave "Same direction in both" to PPP2R2C (q < 0.05 in both) and ARPP19 (in neither) alike. Now names which experiment reaches q < 0.05, and says "Tested only in NCI-H660" for MYCN/PPP2R2B instead of a dash. Found in user-standpoint testing; same session re-checked the 23-gene panel against an independent R edgeR/limma run on the raw GEO counts (44 gene × contrast pairs, max |ΔlogFC| 4.5e-15, max relative Δp and Δq 1.5e-12) and all 184 replicate TPMs against the raw TPM file (0 mismatches). Test validated by restoring the old wording. |
+| 2026-11-15 | §5.1/5.2/5.7, from user-standpoint testing of GSE66586 in Expression Compare: box plots of log-scale units (log2 intensity, log2 TPM) no longer start the axis at 0 or offer log-of-log; ticks are round and of one precision; the axis names the unit; groups 1 and 3 no longer share near-identical blues; small-n sample dots are visible; box-plot PNGs print FDR q beside p; export date is local. `/compare-by-mutation` now returns `expression_unit` so the Multi-omics box plot gets the same axis. Statistics unchanged: PPP2R5B by MYCN status re-derived by hand (exact Mann–Whitney 2/56, 2/21, 2/10; BH 0.107/0.143/0.2) and matches the served table. Each fix has a test validated by reintroducing the defect; frontend 67 passed, backend 264 passed. |
+| 2026-11-15 | §5.7 correlation/PCA scatter, from user-standpoint testing: correlation scatter coloured by group with a pooled-groups note (GSE66586 MYCN vs PPP2R5B r = −0.847 re-derived from the raw series matrix); PCA on TARGET coloured nothing by `etp_status` (top-level column ignored) — both endpoints now use `_sample_groups`, verified against `/group-values` (146 non-ETP / 25 near-ETP / 19 ETP); ungrouped points grey instead of the first group's blue; units and round ticks on scatter axes. Tests validated by reintroducing each defect; backend 265 passed, frontend 72 passed. |
+| 2026-11-15 | §2.4a: gene-set tag input split nothing — a typed or pasted list became one unresolvable tag, and unconfirmed text was dropped on clicking Score. Now parsed like the gene panel; tests validated by reintroducing each defect. Found scoring the PP2A inhibitors on GSE66586 as a user. |
+| 2026-11-15 | §2.4: "log2 mean" signature scores re-logged data already on a log2 scale (DepMap, GDS4299, GSE66586), giving mean log2(log2(x)+1). Fixed for both endpoints; GSE66586 scores now match the raw GEO probe means exactly. AUC scoring and survival unaffected. Tests validated by reintroducing the defect; backend 270 passed. |
+| 2026-11-15 | §3 Survival, from user-standpoint testing: TARGET MEF2C median split re-run in R `survival` on the same scores — n 466 (233/233), log-rank p 1.797e-13 vs app 1.798e-13, Cox HR 7.003 (3.904–12.562), p 6.628e-11, identical. Day-axis ticks now round (0, 1000 … 4000, was 1096, 2192 …); a caption under the Cox table says the signature_score hazard ratio is per 1.0 of a 0–1 AUC score — its whole range — since "HR 27.7" for ETP-TF5 otherwise reads as a per-unit effect. Censoring marks are not drawn (the API does not return censoring times); noted, not done. |

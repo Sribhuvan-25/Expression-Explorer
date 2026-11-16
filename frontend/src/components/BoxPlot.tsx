@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComparePoint } from "../lib/api";
+import { formatUnit, isLogUnit } from "../lib/units";
+import { niceTicks, tickDigits as stepDigits } from "../lib/axis";
 
-const GROUP_COLORS = ["var(--cool)", "var(--hot)", "var(--accent)", "var(--warn)", "#8B6DBF", "#5C8A6B"];
+// Shared with the scatter/PCA palette. The box plot had its own order
+// starting --cool, --hot, --accent: two near-identical blues (#2C6E9B,
+// #2455A4) for the first and third group, so with three groups --
+// GSE66586's MYCN status -- "non-malignant" and "MYCN-amplified" could
+// not be told apart (same defect fixed for PCA in METHODS 5.7).
+import { GROUP_COLORS } from "./ScatterPlot";
 
 // Past this many groups a vertical box plot stops working at any width:
 // 35 groups need ~3000px to keep labels legible, which means the reader
@@ -35,15 +42,45 @@ interface GroupStats {
   color: string;
 }
 
+export { niceTicks };
+
+/**
+ * The value-axis domain before ticks are rounded. Exported for tests.
+ *
+ * Linear units (TPM, counts) keep 0 in view: there, 0 means "not
+ * expressed" and bar-like comparisons against it are meaningful. Units
+ * already on a log scale do not: GSE66586's PPP2R5B sits at 8.3-8.5 log2
+ * intensity, and an axis from 0 squeezed all three groups into the top
+ * twentieth of the plot, so a 0.15-log2 group difference was invisible
+ * (caught in user-standpoint testing). Those fit the data with 8% padding.
+ */
+export function valueDomain(values: number[], logUnit: boolean): [number, number] {
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length === 0) return [0, 1];
+  const lo = Math.min(...finite);
+  const hi = Math.max(...finite);
+  if (logUnit) {
+    const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.02 || 0.5;
+    return [lo - pad, hi + pad];
+  }
+  return [Math.min(0, lo), Math.max(hi, 1) * 1.04];
+}
+
 export function BoxPlot({
   points,
   valueLabel = "Expression",
+  unit,
   svgRef,
 }: {
   points: ComparePoint[];
   valueLabel?: string;
+  // The dataset's `expression_unit`. Named on the axis (an exported PNG
+  // otherwise says only "EXPRESSION") and decides whether 0 belongs on it.
+  unit?: string | null;
   svgRef?: React.RefObject<SVGSVGElement | null>;
 }) {
+  const logUnit = isLogUnit(unit);
+  const axisLabel = unit ? `${valueLabel} (${formatUnit(unit)})` : valueLabel;
   const [hover, setHover] = useState<{ x: number; y: number; sample: string; value: number } | null>(null);
 
   // Expression data is routinely right-skewed -- a single high-expressing
@@ -63,7 +100,7 @@ export function BoxPlot({
     const max = sorted[sorted.length - 1];
     return max > 0 && max / Math.max(median, 1e-6) > 10;
   }, [points]);
-  const logScale = scaleChoice === null ? skewed : scaleChoice === "log";
+  const logScale = logUnit ? false : scaleChoice === null ? skewed : scaleChoice === "log";
   const setLogScale = (v: boolean) => setScaleChoice(v ? "log" : "linear");
   const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
   const untransform = (v: number) => (logScale ? Math.expm1(v) : v);
@@ -116,6 +153,12 @@ export function BoxPlot({
   }, [points]);
 
   const horizontal = groups.length > HORIZONTAL_THRESHOLD;
+  // With a handful of samples per group (cell-line panels: 2-5) each
+  // point IS the data, and faint 2.6px dots disappeared behind the box
+  // outline. Large cohorts keep small translucent dots so they don't
+  // become a solid smear.
+  const fewPoints = points.length <= 40;
+  const dot = fewPoints ? { r: 3.6, opacity: 0.9, stroke: 1 } : null;
 
   const availableWidth = Math.max(containerWidth || 720, 320);
 
@@ -131,16 +174,38 @@ export function BoxPlot({
   // a 10% overstatement, and worse for larger values. The axis would then
   // claim an expression level that does not occur in the data.
   const rawValues = points.map((p) => p.value).filter((v) => Number.isFinite(v));
-  const rawMax = Math.max(...rawValues, 1) * 1.04;
-  const tMax = transform(rawMax);
-  const tMin = logScale ? 0 : Math.min(0, Math.min(...rawValues.map(transform)));
-  const span = tMax - tMin || 1;
   const tickCount = 5;
+  let tMin: number;
+  let tMax: number;
+  let tickValues: number[];
+  if (logScale) {
+    const rawMax = Math.max(...rawValues, 1) * 1.04;
+    tMax = transform(rawMax);
+    tMin = 0;
+    const sp = tMax - tMin || 1;
+    tickValues = Array.from({ length: tickCount + 1 }, (_, i) => untransform(tMin + (sp * i) / tickCount));
+  } else {
+    const [lo, hi] = valueDomain(rawValues, logUnit);
+    tickValues = niceTicks(lo, hi, tickCount);
+    tMin = tickValues[0];
+    tMax = tickValues[tickValues.length - 1];
+  }
+  const span = tMax - tMin || 1;
 
   // Digits shown on the value axis: log mode lands on values like 0.6 or
   // 148, so a fixed 1-decimal format either loses precision at the low end
   // or adds noise at the high end.
-  const fmt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
+  // Linear ticks share one step, so they share one precision ("7, 8 ... 11"
+  // or "2.5, 5.0, 7.5"), not "11.0, 10.0, 9.00".
+  const tickDigits = !logScale && tickValues.length > 1 ? stepDigits(tickValues[1] - tickValues[0]) : null;
+  const fmt = (v: number) =>
+    tickDigits !== null
+      ? v.toFixed(tickDigits)
+      : Math.abs(v) >= 100
+        ? v.toFixed(0)
+        : Math.abs(v) >= 10
+          ? v.toFixed(1)
+          : v.toFixed(2);
 
   if (horizontal) {
     // ---- Horizontal layout: one row per group, names in a left column ----
@@ -161,11 +226,10 @@ export function BoxPlot({
     const plotW = Math.max(width - plotLeft - margin.right, 120);
     const x = (v: number) => plotLeft + ((transform(v) - tMin) / span) * plotW;
     const boxH = Math.min(17, rowH * 0.6);
-    const tickValues = Array.from({ length: tickCount + 1 }, (_, i) => untransform(tMin + (span * i) / tickCount));
 
     return (
       <div ref={containerRef} className="w-full">
-        <ScaleToggle logScale={logScale} setLogScale={setLogScale} auto={scaleChoice === null && skewed} />
+        {!logUnit && <ScaleToggle logScale={logScale} setLogScale={setLogScale} auto={scaleChoice === null && skewed} />}
         <div className="relative">
           <svg
             ref={svgRef}
@@ -174,7 +238,7 @@ export function BoxPlot({
             height={height}
             className="block max-w-full"
             role="img"
-            aria-label={`Box plot of ${valueLabel} by group`}
+            aria-label={`Box plot of ${axisLabel} by group`}
           >
             {tickValues.map((t, i) => (
               <g key={i}>
@@ -200,7 +264,7 @@ export function BoxPlot({
               className="fill-[var(--ink-mute)]"
               style={{ letterSpacing: "0.04em" }}
             >
-              {valueLabel.toUpperCase()}
+              {axisLabel.toUpperCase()}
             </text>
             <line
               x1={plotLeft}
@@ -305,11 +369,11 @@ export function BoxPlot({
                         key={p.sample_id}
                         cx={x(p.value)}
                         cy={cy + jitter(p.sample_id, boxH * 0.8)}
-                        r={2.1}
+                        r={dot?.r ?? 2.1}
                         fill={g.color}
-                        fillOpacity={0.5}
+                        fillOpacity={dot?.opacity ?? 0.5}
                         stroke="var(--surface)"
-                        strokeWidth={0.4}
+                        strokeWidth={dot?.stroke ?? 0.4}
                         onMouseEnter={(e) => {
                           const rect = (e.target as SVGCircleElement).ownerSVGElement!.getBoundingClientRect();
                           setHover({
@@ -347,11 +411,10 @@ export function BoxPlot({
   const width = availableWidth;
   const y = (v: number) => margin.top + plotH - ((transform(v) - tMin) / span) * plotH;
   const boxW = Math.min(120, Math.max(20, bandW * 0.42));
-  const tickValues = Array.from({ length: tickCount + 1 }, (_, i) => untransform(tMin + (span * i) / tickCount));
 
   return (
     <div ref={containerRef} className="w-full">
-      <ScaleToggle logScale={logScale} setLogScale={setLogScale} auto={scaleChoice === null && skewed} />
+      {!logUnit && <ScaleToggle logScale={logScale} setLogScale={setLogScale} auto={scaleChoice === null && skewed} />}
       <div className="relative">
         <svg
           ref={svgRef}
@@ -360,7 +423,7 @@ export function BoxPlot({
           height={height}
           className="block max-w-full"
           role="img"
-          aria-label={`Box plot of ${valueLabel} by group`}
+          aria-label={`Box plot of ${axisLabel} by group`}
         >
           {tickValues.map((t, i) => (
             <g key={i}>
@@ -409,7 +472,7 @@ export function BoxPlot({
             className="fill-[var(--ink-mute)]"
             style={{ letterSpacing: "0.04em" }}
           >
-            {valueLabel.toUpperCase()}
+            {axisLabel.toUpperCase()}
           </text>
 
           {groups.map((g, i) => {
@@ -468,11 +531,11 @@ export function BoxPlot({
                       key={p.sample_id}
                       cx={cx + jitter(p.sample_id, boxW * 0.85)}
                       cy={y(p.value)}
-                      r={2.6}
+                      r={dot?.r ?? 2.6}
                       fill={g.color}
-                      fillOpacity={0.55}
+                      fillOpacity={dot?.opacity ?? 0.55}
                       stroke="var(--surface)"
-                      strokeWidth={0.5}
+                      strokeWidth={dot?.stroke ?? 0.5}
                       onMouseEnter={(e) => {
                         const rect = (e.target as SVGCircleElement).ownerSVGElement!.getBoundingClientRect();
                         setHover({

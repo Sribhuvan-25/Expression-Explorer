@@ -185,7 +185,7 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
 
   ctx.fillStyle = inkMuteColor;
   ctx.font = `400 9px ${monoFamily}`;
-  ctx.fillText("Expression Explorer · exported " + new Date().toISOString().slice(0, 10), padding, totalH - 10);
+  ctx.fillText("Expression Explorer · exported " + localDate(new Date()), padding, totalH - 10);
 
   const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!pngBlob) throw new Error("Failed to encode PNG");
@@ -198,4 +198,14 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
   a.click();
   a.remove();
   URL.revokeObjectURL(downloadUrl);
+}
+
+/**
+ * YYYY-MM-DD in the reader's own time zone. `toISOString()` is UTC, so an
+ * evening export in the Americas was stamped with tomorrow's date.
+ * Exported for tests.
+ */
+export function localDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

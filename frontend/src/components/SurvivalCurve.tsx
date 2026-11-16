@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { niceTicks } from "../lib/axis";
 import type { SurvivalCurve } from "../lib/api";
 
 const CURVE_COLORS: Record<string, string> = {
@@ -69,11 +70,14 @@ export function SurvivalPlot({
     return m || 1;
   }, [curves]);
 
+  // Round day ticks (0, 1000, 2000 ...) within the follow-up, rather than
+  // quarters of it (1096, 2192, 3287, 4383). The axis still ends at the
+  // last follow-up so the curves use the full width.
+  const xTicks = niceTicks(0, maxDays, 5).filter((t) => t <= maxDays);
   const x = (days: number) => margin.left + (days / maxDays) * plotW;
   const y = (prob: number) => margin.top + plotH - prob * plotH;
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
-  const xTicks = Array.from({ length: 5 }, (_, i) => Math.round((maxDays * i) / 4));
 
   const entries = Object.entries(curves);
 

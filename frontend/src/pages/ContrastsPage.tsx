@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatUnit } from "../lib/units";
+import { parseGeneInput, type ParsedGene } from "../lib/geneInput";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -19,16 +21,7 @@ import { exportRowsAsCsv } from "../lib/exportTable";
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-export function formatUnit(unit: string | undefined | null): string {
-  const map: Record<string, string> = {
-    tpm: "TPM",
-    log2_tpm: "log2(TPM+1)",
-    log2_intensity: "log2 intensity",
-    cpm: "CPM",
-  };
-  if (!unit) return "expression";
-  return map[unit] ?? unit.replace(/_/g, " ");
-}
+export { formatUnit };
 
 export function fmtP(v: unknown): string {
   if (!isNum(v)) return "—";
@@ -74,65 +67,37 @@ export const PP2A_PRESET_TEXT = [
   "PP2A subunits and isoforms: PPP2R1A, PPP2R1B, PPP2CA, PPP2CB, PPP2R2A, PPP2R2B, PPP2R2C, PPP2R2D, PPP2R5A, PPP2R5B, PPP2R5C, PPP2R5D, PPP2R5E",
 ].join("\n");
 
-export interface ParsedGene {
-  gene: string;
-  // Text the user wrote in parentheses after the symbol, e.g. the former
-  // name "KIAA1524" -- shown beside the row, never sent to the API.
-  note: string | null;
-  group: string | null;
-}
-
-/**
- * Parses "Heading: A, B (OLDNAME), C" lines. A line with a colon starts a
- * category heading; a line without one continues the current heading (or
- * has none, for plain free text -- which then keeps input order). Only
- * the symbol before any parenthesis is sent, so the preset sends CIP2A
- * and PABIR1, not their legacy names. Exported for tests.
- */
-export function parseGeneInput(text: string): ParsedGene[] {
-  const out: ParsedGene[] = [];
-  const seen = new Set<string>();
-  let group: string | null = null;
-  for (const line of text.split(/\n/)) {
-    let rest = line;
-    const m = line.match(/^\s*([^:,()]+):(.*)$/);
-    if (m) {
-      group = m[1].trim() || null;
-      rest = m[2];
-    }
-    for (const t of rest.matchAll(/([A-Za-z0-9][A-Za-z0-9._-]*)(?:\s*\(([^)]*)\))?/g)) {
-      const gene = t[1];
-      const key = gene.toUpperCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ gene, note: t[2]?.trim() || null, group });
-    }
-  }
-  return out;
-}
+export { parseGeneInput };
+export type { ParsedGene };
 
 // ------------------------------------------------- across both experiments
 
-export type AcrossClass = "reciprocal" | "opposite_ns" | "same" | "none";
-
-export const ACROSS_LABELS: Record<AcrossClass, string> = {
-  reciprocal: "Reciprocal (both q<0.05)",
-  opposite_ns: "Opposite direction, not significant in both",
-  same: "Same direction in both",
-  none: "—",
-};
-
-/** Exported for tests: the four-way rule for the two-contrast case. */
-export function classifyAcross(cells: (ContrastPanelCell | undefined)[]): AcrossClass {
-  if (cells.length !== 2) return "none";
+/**
+ * Exported for tests: the "across both experiments" verdict for the
+ * two-contrast case, in words that say WHICH experiment reaches q < 0.05.
+ *
+ * The earlier four-way label ("Opposite direction, not significant in
+ * both") read as "significant in neither" for CIP2A, SET and PPP2R1B,
+ * which are q < 0.002 in C4-2B -- and "Same direction in both" gave
+ * PPP2R2C (q < 0.05 in both) the same words as ARPP19 (in neither).
+ * Caught in user-standpoint testing.
+ */
+export function describeAcross(cells: (ContrastPanelCell | undefined)[], tags: string[]): string {
+  if (cells.length !== 2 || tags.length !== 2) return "—";
   const [a, b] = cells;
-  if (!a?.tested || !b?.tested || !isNum(a.log2_fc) || !isNum(b.log2_fc)) return "none";
-  const prod = a.log2_fc * b.log2_fc;
-  if (prod < 0) {
-    return isNum(a.q_value) && isNum(b.q_value) && a.q_value < 0.05 && b.q_value < 0.05 ? "reciprocal" : "opposite_ns";
-  }
-  if (prod > 0) return "same";
-  return "none";
+  const usable = (c: ContrastPanelCell | undefined) => !!c?.tested && isNum(c.log2_fc);
+  if (!usable(a) && !usable(b)) return "—";
+  if (!usable(a)) return `Tested only in ${tags[1]}`;
+  if (!usable(b)) return `Tested only in ${tags[0]}`;
+  const prod = a!.log2_fc! * b!.log2_fc!;
+  if (prod === 0) return "—";
+  const sig = [a, b].map((c) => isNum(c!.q_value) && c!.q_value! < 0.05);
+  const opposite = prod < 0;
+  if (sig[0] && sig[1]) return opposite ? "Reciprocal (both q<0.05)" : "Same direction (both q<0.05)";
+  const dir = opposite ? "Opposite direction" : "Same direction";
+  if (sig[0]) return `${dir}; q<0.05 only in ${tags[0]}`;
+  if (sig[1]) return `${dir}; q<0.05 only in ${tags[1]}`;
+  return `${dir}; q≥0.05 in both`;
 }
 
 function perturbation(c: ContrastSummary): { gene: string; kind: "gain" | "loss" } | null {
@@ -472,7 +437,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
         continue;
       }
       const r = it.row!;
-      const across = twoWay ? ACROSS_LABELS[classifyAcross(shownContrasts.map((c) => r.contrasts?.find((x) => x?.contrast_id === c.contrast_id)))] : "";
+      const across = twoWay ? describeAcross(shownContrasts.map((c) => r.contrasts?.find((x) => x?.contrast_id === c.contrast_id)), shownContrasts.map(contrastTag)) : "";
       for (const c of shownContrasts) {
         const cell = r.contrasts?.find((x) => x?.contrast_id === c.contrast_id);
         const row: Record<string, unknown> = {
@@ -684,7 +649,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
                           ))}
                           {twoWay && (
                             <td className="min-w-[18ch] border-b border-l border-rule px-2.5 py-1.5 align-top text-[12px] text-ink-soft">
-                              {ACROSS_LABELS[classifyAcross(shownContrasts.map((c) => it.row!.contrasts?.find((x) => x?.contrast_id === c.contrast_id)))]}
+                              {describeAcross(shownContrasts.map((c) => it.row!.contrasts?.find((x) => x?.contrast_id === c.contrast_id)), shownContrasts.map(contrastTag))}
                             </td>
                           )}
                         </tr>

@@ -368,6 +368,16 @@ export function SurvivalPage() {
                           p: c.p < 0.001 ? c.p.toExponential(2) : c.p.toFixed(4),
                         }))}
                       />
+                      {"signature_score" in data.cox.coefficients && (
+                        // HR 27.7 on ETP-TF5 reads as an enormous per-unit
+                        // effect unless the unit is stated: the score is an
+                        // AUC bounded to [0, 1], so one unit is its full range.
+                        <p data-testid="cox-unit-note" className="mt-2 text-[11.5px] text-ink-mute">
+                          signature_score is the continuous AUC score (0–1); its hazard ratio compares a score of 1
+                          with a score of 0 — the whole range, not a typical difference between two patients. The
+                          HIGH/LOW curves and log-rank p above are the median-split comparison.
+                        </p>
+                      )}
                     </div>
                   )}
                 </Panel>

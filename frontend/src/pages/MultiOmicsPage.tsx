@@ -155,7 +155,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
           }
         >
           {data.points.length > 0 ? (
-            <BoxPlot points={data.points} valueLabel={`${data.gene} (expression)`} svgRef={chartRef} />
+            <BoxPlot points={data.points} valueLabel={`${data.gene} expression`} unit={data.expression_unit} svgRef={chartRef} />
           ) : (
             <p className="py-8 text-center text-[12.5px] text-ink-mute">No samples to plot.</p>
           )}

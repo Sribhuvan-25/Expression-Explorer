@@ -6,6 +6,7 @@ import { DataTable, EmptyState, ErrorState, GeneTagInput, PageHeader, Panel, Pre
 import { ScatterPlot, scatterColorKey } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
 import { exportRowsAsCsv } from "../lib/exportTable";
+import { formatUnit } from "../lib/units";
 
 type Tab = "correlation" | "network" | "pca";
 
@@ -17,7 +18,13 @@ const PCA_PRESETS: Record<string, string[]> = {
 const POOLED_EXPORT_NOTE =
   "Note: pools separate designed experiments (e.g. cell lines); mostly reflects differences between them, not the perturbation.";
 
-function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datasetId: string; datasetName?: string; pooled?: boolean }) {
+/** Exported for tests. Shown (and printed in the PNG) whenever the
+ * points span more than one group of the colouring column. */
+export function poolsGroupsNote(n: number, nGroups: number, column: string): string {
+  return `r is computed across all ${n} samples together, spanning ${nGroups} ${column} groups. A difference between groups alone can produce a strong r; check whether the trend also holds within each colour.`;
+}
+
+export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datasetId: string; datasetName?: string; pooled?: boolean }) {
   const chartRef = useRef<SVGSVGElement>(null);
   const [geneA, setGeneA] = useState("MYCN");
   const [geneB, setGeneB] = useState("MYC");
@@ -25,6 +32,17 @@ function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datas
   const [query, setQuery] = useState<{ datasetId: string; geneA: string; geneB: string; method: typeof method } | null>(
     null,
   );
+  const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
+  const activeDataset = datasetList?.datasets.find((d) => d.dataset_id === datasetId);
+  // r pools every sample, so a difference between groups alone can make it
+  // strong (GSE66586 MYCN vs PPP2R5B: r = -0.85, mostly amplified vs not).
+  // Colouring by the dataset's first grouping by default makes that
+  // visible without the reader having to think to ask.
+  const [colorBy, setColorBy] = useState<string>("");
+  useEffect(() => {
+    if (!activeDataset) return;
+    setColorBy((prev) => (activeDataset.group_columns.includes(prev) ? prev : activeDataset.group_columns[0] ?? ""));
+  }, [activeDataset]);
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["correlation", query],
@@ -37,6 +55,19 @@ function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datas
     const b = geneB.trim().toUpperCase();
     if (a && b && datasetId) setQuery({ datasetId, geneA: a, geneB: b, method });
   };
+
+  const plotPoints = useMemo(
+    () =>
+      (data?.points ?? []).map((p) => ({
+        sample_id: p.sample_id,
+        x: p.x,
+        y: p.y,
+        group: colorBy ? (p.group_columns?.[colorBy] ?? null) : null,
+      })),
+    [data, colorBy],
+  );
+  const nColorGroups = new Set(plotPoints.map((p) => p.group).filter((g) => g != null)).size;
+  const unitSuffix = activeDataset?.expression_unit ? ` (${formatUnit(activeDataset.expression_unit)})` : "";
 
   return (
     <>
@@ -85,6 +116,25 @@ function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datas
               ))}
             </div>
           </div>
+          {activeDataset && activeDataset.group_columns.length > 0 && (
+            <div className="min-w-[16ch]">
+              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                Color by
+              </label>
+              <select
+                value={colorBy}
+                onChange={(e) => setColorBy(e.target.value)}
+                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+              >
+                <option value="">None</option>
+                {activeDataset.group_columns.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <PrimaryButton
             onClick={run}
             loading={isFetching}
@@ -133,13 +183,20 @@ function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datas
                 statLines={[
                   `${data.method} r = ${data.coefficient.toFixed(3)}`,
                   `p = ${data.p_value < 0.001 ? data.p_value.toExponential(2) : data.p_value.toFixed(4)}`,
+                  ...(colorBy && scatterColorKey(plotPoints) ? [`Colour by ${colorBy}: ${scatterColorKey(plotPoints)}`] : []),
+                  ...(nColorGroups > 1 ? [poolsGroupsNote(data.n, nColorGroups, colorBy)] : []),
                   ...(pooled ? [POOLED_EXPORT_NOTE] : []),
                 ]}
               />
             </div>
           }
         >
-          <ScatterPlot points={data.points} xLabel={data.gene_a} yLabel={data.gene_b} svgRef={chartRef} />
+          <ScatterPlot
+            points={plotPoints}
+            xLabel={`${data.gene_a}${unitSuffix}`}
+            yLabel={`${data.gene_b}${unitSuffix}`}
+            svgRef={chartRef}
+          />
           <div className="mt-4 flex gap-8 border-t border-rule pt-3">
             <Stat
               label={`${data.method[0].toUpperCase()}${data.method.slice(1)} r`}
@@ -152,6 +209,11 @@ function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datas
               tone={data.p_value < 0.05 ? "hot" : "neutral"}
             />
           </div>
+          {nColorGroups > 1 && (
+            <p data-testid="pools-groups-note" className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
+              {poolsGroupsNote(data.n, nColorGroups, colorBy)}
+            </p>
+          )}
         </Panel>
       )}
     </>
