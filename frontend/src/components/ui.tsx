@@ -392,7 +392,11 @@ export function ErrorState({ message }: { message: string }) {
 export function DataTable({
   columns,
   rows,
+  label = "Results table",
 }: {
+  // Accessible name of the scrolling region; give it something unique when
+  // several tables can show at once (one per dataset panel).
+  label?: string;
   // srLabel names a column whose visible header is blank (a bar column).
   columns: { key: string; label: string; align?: "left" | "right"; srLabel?: string }[];
   rows: Record<string, ReactNode>[];
@@ -411,7 +415,7 @@ export function DataTable({
     <div
       tabIndex={0}
       role="region"
-      aria-label="Results table"
+      aria-label={label}
       className="max-h-[70vh] overflow-x-auto overflow-y-auto rounded-[3px] border border-rule"
     >
       <table className="w-full min-w-[28rem] border-collapse text-[12.5px]">
