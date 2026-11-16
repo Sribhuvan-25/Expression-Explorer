@@ -67,13 +67,30 @@ app.add_middleware(
 )
 
 
-@lru_cache(maxsize=8)
-def _get_dataset(dataset_id: str) -> Dataset:
+def _descriptor(dataset_id: str):
+    """The dataset's descriptor, or a 404 (a bare get_descriptor raised
+    KeyError, and /survival and /group-values answered 500)."""
     try:
-        descriptor = get_descriptor(dataset_id)
+        return get_descriptor(dataset_id)
     except KeyError:
         raise HTTPException(404, f"Unknown dataset: {dataset_id}")
-    return descriptor.loader()
+
+
+@lru_cache(maxsize=8)
+def _get_dataset(dataset_id: str) -> Dataset:
+    return _descriptor(dataset_id).loader()
+
+
+def _require_group_column(dataset_id: str, group_column: str) -> None:
+    """Only declared grouping columns can group samples: /compare accepted
+    days_to_death (about 100 'groups') or sample_id."""
+    descriptor = _descriptor(dataset_id)
+    if group_column not in descriptor.group_columns:
+        raise HTTPException(
+            422,
+            f"'{group_column}' is not a grouping column on '{descriptor.display_name}' "
+            f"(available: {', '.join(descriptor.group_columns) or 'none'}).",
+        )
 
 
 def _sample_groups(dataset_id: str, ds: Dataset) -> dict[str, dict]:
@@ -397,7 +414,13 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
     before the dynamic one or "/datasets/compare-multi" would be captured
     as dataset_id="compare-multi" and 404 as an unknown dataset.
     """
-    requested = set(dataset_ids.split(",")) if dataset_ids else None
+    requested = {d.strip() for d in dataset_ids.split(",") if d.strip()} if dataset_ids else None
+    if requested:
+        unknown = sorted(requested - {d.dataset_id for d in list_descriptors()})
+        if unknown:
+            # A typo was silently dropped, so the user saw fewer datasets
+            # than they asked for with no reason.
+            raise HTTPException(404, f"Unknown dataset(s): {', '.join(unknown)}")
     results = []
     for d in list_descriptors():
         if requested is not None and d.dataset_id not in requested:
@@ -481,7 +504,7 @@ def group_values(dataset_id: str, group_column: str):
     gene to already be entered (an earlier draft of the Differential
     Genes UI probed this via /compare with a hardcoded gene name, which
     is fragile -- not every dataset is guaranteed to have that gene)."""
-    descriptor = get_descriptor(dataset_id)
+    descriptor = _descriptor(dataset_id)
     if group_column not in descriptor.group_columns:
         # Sibling endpoints (/compare -> 400, /differential -> 422) both
         # reject an unrecognised group_column outright; this endpoint used
@@ -513,6 +536,7 @@ def group_values(dataset_id: str, group_column: str):
 
 @app.get("/datasets/{dataset_id}/compare")
 def compare(dataset_id: str, gene: str, group_column: str):
+    _require_group_column(dataset_id, group_column)
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
     df = expression_by_group(ds.matrix, ds.samples, feature_id, group_column)
@@ -558,11 +582,29 @@ def differential(dataset_id: str, group_column: str, group_a: str, group_b: str,
     count, not a micro-optimisation)."""
     if not (1 <= top_n <= 500):
         raise HTTPException(422, "top_n must be between 1 and 500.")
+    _require_group_column(dataset_id, group_column)
+    if group_a == group_b:
+        raise HTTPException(422, f"Group A and group B must differ (both were {group_a!r}).")
     ds = _get_dataset(dataset_id)
     try:
         result = top_differential_genes(ds.matrix, ds.samples, group_column, group_a, group_b, top_n=top_n)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    # Sample accounting (METHODS.md 6.1), each reason on its own: samples
+    # in neither compared group vs samples with no value at all.
+    labels = group_labels(ds.samples, group_column)
+    n_total = len(ds.samples)
+    n_missing = int(labels.isna().sum())
+    n_other = n_total - n_missing - result["n_a"] - result["n_b"]
+    breakdown = []
+    if n_other:
+        breakdown.append({"reason": f"in another '{group_column}' group", "n": n_other})
+    if n_missing:
+        breakdown.append({"reason": f"with no value recorded for '{group_column}'", "n": n_missing})
+    result["n_dataset_total"] = n_total
+    result["n_excluded"] = n_total - result["n_a"] - result["n_b"]
+    result["exclusion_breakdown"] = breakdown
+    result["exclusion_reason"] = "; ".join(f"{e['n']} {e['reason']}" for e in breakdown) or None
     # Attach display symbols the same way /co-expression does -- the
     # matrix's own index may be an Ensembl id (TARGET) or a symbol
     # (DepMap/GDS4299) depending on the dataset, but a reader always wants
@@ -984,6 +1026,19 @@ def mutated_genes(dataset_id: str, top_n: int = 25):
         raise HTTPException(422, str(exc))
 
 
+def _resolve_mutated_gene(ds: Dataset, gene: str) -> str:
+    """Match a mutation-layer gene exactly, else case-insensitively if
+    unambiguous. Upper-casing alone turned C11orf53 (mutated in 2 covered
+    TARGET samples) into "C11ORF53 has no recorded mutation" -- 40 layer
+    genes have non-upper-case symbols."""
+    stripped = gene.strip()
+    aux = ds.aux.get(AuxLayer.MUTATION_STATUS) if ds.aux else None
+    if aux is None or stripped in aux.matrix.index:
+        return stripped
+    hits = [g for g in aux.matrix.index if str(g).upper() == stripped.upper()]
+    return hits[0] if len(hits) == 1 else stripped.upper()
+
+
 @app.get("/datasets/{dataset_id}/compare-by-mutation")
 def compare_by_mutation(dataset_id: str, gene: str, mutated_gene: str):
     """Expression of `gene`, split by whether each sample carries a
@@ -994,7 +1049,7 @@ def compare_by_mutation(dataset_id: str, gene: str, mutated_gene: str):
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
     try:
-        result = expression_by_mutation_status(ds, feature_id, mutated_gene.strip().upper())
+        result = expression_by_mutation_status(ds, feature_id, _resolve_mutated_gene(ds, mutated_gene))
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     result["gene"] = gene
@@ -1132,7 +1187,7 @@ class SurvivalRequest(BaseModel):
 def survival(dataset_id: str, body: SurvivalRequest):
     if not body.genes:
         raise HTTPException(422, "At least one gene is required.")
-    descriptor = get_descriptor(dataset_id)
+    descriptor = _descriptor(dataset_id)
     if not descriptor.supports_survival:
         raise HTTPException(
             400,

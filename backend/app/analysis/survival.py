@@ -249,9 +249,12 @@ def kaplan_meier_curves(df: pd.DataFrame, group: pd.Series) -> dict[str, dict]:
             "points": sf.to_dict("records"),
         }
 
-    result: dict = {"curves": curves}
+    result: dict = {"curves": curves, "logrank_p_value": None}
     labels = list(group.unique())
-    if len(labels) == 2:
+    # Two arms of at least 2 each: custom 0.2%/0.2% gave HIGH n=1 vs LOW
+    # n=1 and still printed a log-rank p (0.317). Same floor as the
+    # group tests (METHODS.md 1.4).
+    if len(labels) == 2 and min((group == lab).sum() for lab in labels) >= 2:
         m1, m2 = group == labels[0], group == labels[1]
         test = logrank_test(
             df.loc[m1, "duration"], df.loc[m2, "duration"],
@@ -274,7 +277,9 @@ def cox_model(df: pd.DataFrame, covariates: list[str] | None = None) -> dict:
     if len(cph_df) < 10:
         raise ValueError("Too few complete cases for a Cox model (need >= 10).")
     cph = CoxPHFitter()
-    cph.fit(cph_df, duration_col="duration", event_col="event")
+    # lifelines' default convergence tolerance left HR ~1.6e-4 off R's
+    # coxph (LMO2 custom 30/10: 7.174 vs 7.175 in the shown 3rd decimal).
+    cph.fit(cph_df, duration_col="duration", event_col="event", fit_options={"precision": 1e-12})
     summary = cph.summary
     # Include the HR confidence interval lifelines already computes --
     # without it a hazard ratio has no indication of how precisely it's

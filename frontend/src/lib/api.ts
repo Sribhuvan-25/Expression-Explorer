@@ -265,6 +265,10 @@ export interface DifferentialResult {
   // See PairwiseTest.min_p_achievable. Optional: older responses lack it.
   min_p_achievable?: number | null;
   genes: DifferentialGeneRow[];
+  // Sample accounting (METHODS.md 6.1); one entry per reason.
+  n_dataset_total?: number;
+  n_excluded?: number;
+  exclusion_breakdown?: { reason: string; n: number }[];
 }
 
 // --- Design contrasts (Perturbation Contrasts pane)

@@ -632,6 +632,12 @@ export function DifferentialGenesTab() {
           <p className="mb-3 text-[12px] text-ink-mute">
             n = {data.n_a} ({data.group_a}) vs {data.n_b} ({data.group_b}) · {data.n_genes_tested.toLocaleString()}{" "}
             genes tested, Mann–Whitney with genome-wide FDR correction.
+            {data.exclusion_breakdown && data.exclusion_breakdown.length > 0 && (
+              <span data-testid="differential-exclusions" className="block">
+                {data.n_a + data.n_b} of {data.n_dataset_total} samples compared —{" "}
+                {data.exclusion_breakdown.map((e) => `${e.n} ${e.reason}`).join("; ")}.
+              </span>
+            )}
           </p>
           <DataTable
             columns={[

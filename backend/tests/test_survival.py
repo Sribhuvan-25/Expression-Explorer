@@ -165,7 +165,7 @@ def test_kaplan_meier_curves_drops_excluded_middle_band():
     assert set(result["curves"].keys()) == {"HIGH", "LOW"}
     assert result["curves"]["HIGH"]["n"] == 25
     assert result["curves"]["LOW"]["n"] == 25
-    assert "logrank_p_value" in result  # still exactly 2 groups -> log-rank runs
+    assert result["logrank_p_value"] is not None  # still exactly 2 groups -> log-rank runs
 
 
 def _tied_frame():

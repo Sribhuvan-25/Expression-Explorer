@@ -95,6 +95,10 @@ def _assemble_ranking(samples: pd.DataFrame, values: pd.Series) -> pd.DataFrame:
         meta = pd.json_normalize(indexed.loc[df["sample_id"], "group_columns"])
         meta.index = df["sample_id"].to_numpy()
         for col in meta.columns:
+            # TARGET keeps days_to_death / days_to_last_follow_up inside
+            # the dict too; the top-level skip above missed them.
+            if col in _NON_META_COLUMNS:
+                continue
             attach(col, meta[col])
 
     return df.sort_values("value", ascending=False).reset_index(drop=True)

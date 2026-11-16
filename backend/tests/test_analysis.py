@@ -67,7 +67,7 @@ def test_survival_pipeline_runs():
     group = binarize_by_median(surv_df)
     result = kaplan_meier_curves(surv_df, group)
     assert "curves" in result and len(result["curves"]) == 2
-    assert "logrank_p_value" in result
+    assert result["logrank_p_value"] is not None
 
 
 def test_placeholder_group_labels_are_missing_not_groups():

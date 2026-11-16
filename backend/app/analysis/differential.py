@@ -42,10 +42,9 @@ def top_differential_genes(
     /compare endpoint already does the >2-group omnibus case for a single
     gene; this endpoint's job is specifically "rank genes for A vs B."
     """
-    if group_column in samples.columns:
-        groups = samples[group_column]
-    else:
-        groups = samples["group_columns"].apply(lambda d: d.get(group_column))
+    from app.analysis.compare import group_labels
+
+    groups = group_labels(samples, group_column)
 
     a_mask = groups == group_a
     b_mask = groups == group_b
