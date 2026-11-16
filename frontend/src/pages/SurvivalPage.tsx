@@ -287,7 +287,11 @@ export function SurvivalPage() {
                       </span>
                       <ExportButton
                         svgRef={chartRef}
-                        filename={`${datasetId}-survival-${data.genes.join("-")}`}
+                        filename={`${datasetId}-survival-${data.genes.join("-")}-${
+                          query?.cutoffMethod === "custom"
+                            ? `top${query.cutoffHighPct}-bottom${query.cutoffLowPct}`
+                            : query?.cutoffMethod ?? "median"
+                        }${query?.cutoffMethod && query.cutoffMethod !== "median" ? `-${query.tiePolicy}` : ""}`}
                         title={`Survival — ${data.genes.join(", ")}${
                           datasets.find((d) => d.dataset_id === datasetId)?.display_name
                             ? ` — ${datasets.find((d) => d.dataset_id === datasetId)!.display_name}`

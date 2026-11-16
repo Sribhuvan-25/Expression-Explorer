@@ -89,6 +89,6 @@ describe("correlation PNG names the dataset", () => {
     await screen.findByDisplayValue("mycn_status");
     await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
     await userEvent.click(await screen.findByRole("button", { name: /png/i }));
-    expect(spy.mock.calls.at(-1)![1]).toBe("gse66586-MYCN-vs-PPP2R5B-correlation");
+    expect(spy.mock.calls.at(-1)![1]).toBe("gse66586-MYCN-vs-PPP2R5B-pearson-correlation");
   });
 });

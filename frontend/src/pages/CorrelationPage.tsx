@@ -219,7 +219,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${datasetId}-${data.gene_a}-vs-${data.gene_b}-correlation`}
+                filename={`${datasetId}-${data.gene_a}-vs-${data.gene_b}-${data.method}-correlation`}
                 title={`${data.gene_a} vs ${data.gene_b}${datasetName ? ` — ${datasetName}` : ""}`}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[
@@ -384,7 +384,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
                   // Dataset in the name and every row, as for the other CSVs
                   // (METHODS.md 5.7): one gene's network from two datasets
                   // used to overwrite one file with no provenance inside.
-                  `${datasetId}-${data.gene}-${data.direction}-network`,
+                  `${datasetId}-${data.gene}-${data.method}-${data.direction}-network`,
                   [
                     { key: "dataset_id", label: "dataset_id" },
                     { key: "rank", label: "#" },

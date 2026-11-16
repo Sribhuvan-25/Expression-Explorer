@@ -181,3 +181,18 @@ describe("SurvivalPage tie-break sensitivity", () => {
     expect(note).toHaveTextContent("against 0.004 shown");
   });
 });
+
+describe("survival PNG name carries the cutoff", () => {
+  it("so median and quartile exports do not overwrite each other", async () => {
+    const exportFigure = await import("../../lib/exportFigure");
+    const spy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue(NORMAL_RESULT);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "quartile" }));
+    fireEvent.click(screen.getByRole("button", { name: /run survival analysis/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls.at(-1)![1]).toBe("target_all_p2-survival-MEF2C-quartile-trim");
+  });
+});

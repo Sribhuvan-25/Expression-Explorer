@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnit } from "../lib/units";
 import { parseGeneInput, type ParsedGene } from "../lib/geneInput";
+import { geneListTag } from "../lib/exportName";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -491,7 +492,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
     }
     const base = Object.keys(rows[0] ?? { dataset_id: 0 }).filter((k) => !/_(sample|value|norm_cpm)_\d+$/.test(k));
     exportRowsAsCsv(
-      `${dataset.dataset_id}-contrast-panel`,
+      `${dataset.dataset_id}-contrast-panel-${geneListTag(query?.parsed.map((g) => g.gene) ?? [])}`,
       [...base.map((k) => ({ key: k, label: k })), ...repCols],
       rows,
     );
@@ -566,7 +567,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
               action={
                 <ExportButton
                   svgRef={chartRef}
-                  filename={`${dataset.dataset_id}-contrast-panel-log2fc`}
+                  filename={`${dataset.dataset_id}-contrast-panel-log2fc-${geneListTag(query?.parsed.map((g) => g.gene) ?? [])}`}
                   title={`log2 fold-change per contrast — ${dataset.display_name}`}
                   subtitle={shownContrasts[0]?.method ?? ""}
                   statLines={[
