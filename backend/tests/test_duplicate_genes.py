@@ -51,7 +51,7 @@ def test_a_duplicated_symbol_resolves_to_its_most_expressed_row(client):
     ds = api_main._get_dataset(DATASET_ID)
     assert api_main._resolve_gene(ds, "DUP") == "ENSG_DUP_HIGH"
     body = client.get(f"/datasets/{DATASET_ID}/correlation", params={"gene_a": "DUP", "gene_b": "AAA"}).json()
-    expected = ds.matrix.loc["ENSG_DUP_HIGH"].to_numpy()
+    expected = np.log2(ds.matrix.loc["ENSG_DUP_HIGH"].to_numpy() + 1)  # TPM, on the log2(x+1) scale
     assert sorted(p["x"] for p in body["points"]) == pytest.approx(sorted(expected))
 
 

@@ -67,3 +67,16 @@ describe("correlation scatter shows what r pools", () => {
     expect(screen.queryByTestId("pools-groups-note")).toBeNull();
   });
 });
+
+describe("correlation axes name the scale the points are on", () => {
+  it("labels TPM data as log2(TPM+1) when the response says so", async () => {
+    setup();
+    vi.mocked(api.correlation).mockResolvedValue({
+      ...(await api.correlation("gse66586", "MYCN", "PPP2R5B", "pearson")),
+      value_unit: "log2_tpm",
+    } as unknown as Awaited<ReturnType<typeof api.correlation>>);
+    await screen.findByDisplayValue("mycn_status");
+    await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
+    expect(await screen.findByText("MYCN (LOG2(TPM+1))")).toBeInTheDocument();
+  });
+});

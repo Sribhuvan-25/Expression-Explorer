@@ -26,6 +26,7 @@ from app.analysis.differential import top_differential_genes
 from app.analysis.dimensionality import pca
 from app.analysis.ranking import rank_by_gene, rank_by_signature
 from app.analysis.signature import auc_signature_score, is_log2_unit, log2_mean_signature_score
+from app.analysis.scale import on_analysis_scale
 from app.analysis.survival import tie_sensitivity, binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
@@ -851,14 +852,16 @@ def correlation(dataset_id: str, gene_a: str, gene_b: str, method: Literal["pear
     ds = _get_dataset(dataset_id)
     feature_a = _resolve_gene(ds, gene_a)
     feature_b = _resolve_gene(ds, gene_b)
+    pair, value_unit = on_analysis_scale(ds.matrix.loc[[feature_a, feature_b]], ds.source.expression_unit)
     try:
-        result = gene_correlation(ds.matrix, feature_a, feature_b, method=method)
+        result = gene_correlation(pair, feature_a, feature_b, method=method)
     except ValueError as exc:
         # Messages name the matrix's feature ids (Ensembl on TARGET); say
         # them the way the user typed them.
         raise HTTPException(422, str(exc).replace(feature_a, gene_a).replace(feature_b, gene_b))
     result["gene_a"] = gene_a
     result["gene_b"] = gene_b
+    result["value_unit"] = value_unit
     # Per-point groups so the scatter can be coloured: r pools every
     # sample, and a between-group difference alone can produce a strong r
     # (GSE66586 MYCN vs PPP2R5B, r = -0.85, is mostly amplified vs not).
@@ -883,7 +886,8 @@ def co_expression(
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
     try:
-        network = co_expression_network(ds.matrix, feature_id, top_n=top_n, method=method, direction=direction)
+        matrix, _ = on_analysis_scale(ds.matrix, ds.source.expression_unit)
+        network = co_expression_network(matrix, feature_id, top_n=top_n, method=method, direction=direction)
     except ValueError as exc:
         raise HTTPException(422, str(exc).replace(feature_id, gene))
     # Map each result's feature_id back to its display symbol -- the
@@ -1137,8 +1141,9 @@ def dataset_pca(dataset_id: str, body: PCARequest):
             + (f" Not found: {', '.join(missing_input_genes)}." if missing_input_genes else ""),
         )
     feature_ids = list(dict.fromkeys(feature_ids))
+    subset, value_unit = on_analysis_scale(ds.matrix.loc[feature_ids], ds.source.expression_unit)
     try:
-        result = pca(ds.matrix, feature_ids, ds.samples, n_components=body.n_components)
+        result = pca(subset, feature_ids, ds.samples, n_components=body.n_components)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     # genes_missing from pca() reflects feature_ids that resolved but
@@ -1155,6 +1160,7 @@ def dataset_pca(dataset_id: str, body: PCARequest):
     symbol = ds.features.set_index("feature_id")["symbol"] if "feature_id" in ds.features.columns else ds.features["symbol"]
     for key in ("genes_used", "genes_missing", "genes_zero_variance"):
         result[key] = [str(symbol.get(f, f)) for f in result[key]]
+    result["value_unit"] = value_unit
     result["genes_unrecognized"] = missing_input_genes
     # Why each one failed, in the resolver's words (e.g. "older name for
     # CIP2A"), so PCA explains what /compare already explains.

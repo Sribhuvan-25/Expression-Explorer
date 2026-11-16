@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
+from app.analysis.scale import on_analysis_scale
 from app.analysis.spearman import spearman_test
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, Dataset
 
@@ -144,7 +145,7 @@ def expression_vs_aux_correlation(
     shared = [c for c in ds.matrix.columns if c in aux.matrix.columns]
     paired = pd.DataFrame(
         {
-            "expression": ds.matrix.loc[expression_feature_id, shared],
+            "expression": on_analysis_scale(ds.matrix.loc[expression_feature_id, shared], ds.source.expression_unit)[0],
             "aux": aux.matrix.loc[aux_feature_id, shared],
         }
     ).dropna()
@@ -200,6 +201,7 @@ def expression_vs_aux_correlation(
 
     return {
         "layer": layer.value,
+        "expression_value_unit": on_analysis_scale(0.0, ds.source.expression_unit)[1],
         "value_label": aux.value_label,
         "value_description": aux.value_description,
         "method": method,

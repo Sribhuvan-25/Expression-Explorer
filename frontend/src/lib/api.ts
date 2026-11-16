@@ -206,6 +206,9 @@ export interface CorrelationResult {
   gene_a: string;
   gene_b: string;
   method: "pearson" | "spearman" | "kendall";
+  // Scale the points and Pearson r are on: log2_tpm for TPM data
+  // (METHODS.md 7.6a). Optional for older responses.
+  value_unit?: string;
   n: number;
   coefficient: number;
   p_value: number;
@@ -441,6 +444,7 @@ export interface CompareByMutationResult {
 
 export interface ExpressionVsAuxResult {
   gene: string;
+  expression_value_unit?: string;
   aux_feature: string;
   aux_feature_label: string;
   aux_feature_moa: string | null;

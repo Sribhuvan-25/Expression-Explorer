@@ -67,7 +67,10 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
     [data, colorBy],
   );
   const nColorGroups = new Set(plotPoints.map((p) => p.group).filter((g) => g != null)).size;
-  const unitSuffix = activeDataset?.expression_unit ? ` (${formatUnit(activeDataset.expression_unit)})` : "";
+  // The response says which scale the points are on (log2(TPM+1) for TPM
+  // data, METHODS.md 7.6a); the dataset's own unit is the fallback.
+  const shownUnit = data?.value_unit ?? activeDataset?.expression_unit;
+  const unitSuffix = shownUnit ? ` (${formatUnit(shownUnit)})` : "";
 
   return (
     <>

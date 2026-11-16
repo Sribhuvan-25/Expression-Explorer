@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuxLayerSummary } from "../lib/api";
 import { EmptyState, ErrorState, PageHeader, Panel, PrimaryButton, Stat } from "../components/ui";
+import { formatUnit } from "../lib/units";
 import { BoxPlot } from "../components/BoxPlot";
 import { ScatterPlot } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
@@ -444,7 +445,7 @@ function AuxCorrelationTab({
           )}
           <ScatterPlot
             points={data.points}
-            xLabel={`${data.gene} expression`}
+            xLabel={`${data.gene} expression${data.expression_value_unit ? ` (${formatUnit(data.expression_value_unit)})` : ""}`}
             yLabel={data.value_label}
             svgRef={chartRef}
           />
