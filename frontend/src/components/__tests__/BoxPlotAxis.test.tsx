@@ -84,3 +84,13 @@ describe("box plot tick labels", () => {
     expect(labels).toEqual(["7", "8", "9", "10", "11"]);
   });
 });
+
+describe("box plot axis for non-negative log units", () => {
+  it("does not run below 0 when no value can", () => {
+    const [lo] = valueDomain([0, 0, 0.2, 6.4], true);
+    expect(lo).toBe(0);
+    const pts = [0, 0, 0.1, 0.3, 2.2, 6.4].map((v, i) => ({ sample_id: `S${i}`, group: "Lymphoid", value: v }));
+    const { container } = render(<BoxPlot points={pts} valueLabel="expression" unit="log2_tpm" />);
+    expect(Math.min(...axisTicks(container))).toBe(0);
+  });
+});

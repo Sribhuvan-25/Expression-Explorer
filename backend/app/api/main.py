@@ -19,7 +19,14 @@ from app.analysis.aux_analysis import (
     expression_vs_aux_correlation,
     most_mutated_genes,
 )
-from app.analysis.compare import clean_group_label, expression_by_group, group_labels, kruskal_wallis, pairwise_tests
+from app.analysis.compare import (
+    clean_group_label,
+    expression_by_group,
+    group_labels,
+    kruskal_wallis,
+    missing_group_reason,
+    pairwise_tests,
+)
 from app.analysis.contrast import contrast_gene_stats, top_contrast_genes
 from app.analysis.correlation import co_expression_network, gene_correlation
 from app.analysis.differential import top_differential_genes
@@ -470,10 +477,8 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
             # lineage (0 excluded, 100% coverage) still claimed "no value
             # recorded for 'lineage'", implying an exclusion that never
             # happened. Caught in QA, not by a user, but a real defect.
-            "exclusion_reason": (
-            f"no value recorded for '{group_column}' (blank, or a placeholder such as 'Unknown' or 'Not Reported')"
-            if n_excluded > 0
-            else None
+            "exclusion_reason": missing_group_reason(
+            ds.samples, group_column, set(ds.samples["sample_id"]) - set(df["sample_id"])
         ),
             "points": df.to_dict("records"),
             "pairwise_tests": tests,
@@ -559,10 +564,8 @@ def compare(dataset_id: str, gene: str, group_column: str):
         "n_excluded": n_excluded,
         # None when nothing was excluded -- see compare_multi's identical fix
         # above for why this can't be an unconditional string.
-        "exclusion_reason": (
-            f"no value recorded for '{group_column}' (blank, or a placeholder such as 'Unknown' or 'Not Reported')"
-            if n_excluded > 0
-            else None
+        "exclusion_reason": missing_group_reason(
+            ds.samples, group_column, set(ds.samples["sample_id"]) - set(df["sample_id"])
         ),
         "points": df.to_dict("records"),
         "pairwise_tests": tests,

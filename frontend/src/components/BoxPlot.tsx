@@ -61,7 +61,9 @@ export function valueDomain(values: number[], logUnit: boolean): [number, number
   const hi = Math.max(...finite);
   if (logUnit) {
     const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.02 || 0.5;
-    return [lo - pad, hi + pad];
+    // log2(TPM+1) cannot go below 0; padding put the axis at -2 for DepMap
+    // MYCN, a value no sample can have.
+    return [lo >= 0 ? Math.max(0, lo - pad) : lo - pad, hi + pad];
   }
   return [Math.min(0, lo), Math.max(hi, 1) * 1.04];
 }

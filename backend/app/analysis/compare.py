@@ -39,6 +39,29 @@ def group_labels(samples: pd.DataFrame, group_column: str) -> pd.Series:
     return raw.map(clean_group_label).astype(object)
 
 
+def missing_group_reason(samples: pd.DataFrame, group_column: str, excluded_ids) -> str | None:
+    """Why `excluded_ids` have no group, naming placeholders only when
+    some occurred, each counted (METHODS.md 6.1)."""
+    excluded = set(excluded_ids)
+    if not excluded:
+        return None
+    if group_column in samples.columns:
+        raw = samples[group_column]
+    else:
+        raw = samples["group_columns"].apply(lambda d: d.get(group_column) if isinstance(d, dict) else None)
+    raw = raw[samples["sample_id"].isin(excluded).to_numpy()]
+    placeholders = raw[raw.map(lambda v: isinstance(v, str) and v.strip().lower() in MISSING_GROUP_LABELS)]
+    n_blank = len(raw) - len(placeholders)
+    parts = []
+    if n_blank:
+        parts.append(f"{n_blank} with no value recorded for '{group_column}'")
+    for label, n in placeholders.value_counts().items():
+        parts.append(f"{n} recorded as '{label}'")
+    if len(raw) < len(excluded):
+        parts.append(f"{len(excluded) - len(raw)} with no expression value")
+    return "; ".join(parts)
+
+
 def expression_by_group(
     matrix: pd.DataFrame,
     samples: pd.DataFrame,

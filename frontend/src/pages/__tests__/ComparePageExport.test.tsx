@@ -134,3 +134,26 @@ describe("Expression Compare with a gene whose values are all identical", () => 
     expect(screen.getByTestId("kw-note")).toHaveTextContent("TNMD: Every value is identical");
   });
 });
+
+describe("Expression Compare defaults and single-group results", () => {
+  it("defaults to the grouping most datasets share", async () => {
+    const { allGroupColumns } = await import("../ComparePage");
+    expect(
+      allGroupColumns([
+        { group_columns: ["lineage", "subtype"] },
+        { group_columns: ["vital_status", "etp_status"] },
+        { group_columns: ["etp_status"] },
+      ])[0],
+    ).toBe("etp_status");
+  });
+
+  it("says there is nothing to compare when every sample is in one group", () => {
+    const one = result("depmap", "DepMap");
+    one.points = one.points!.map((p) => ({ ...p, group: "Lymphoid" }));
+    one.kruskal_wallis = { h_stat: null, p_value: null };
+    render(<DatasetPanel result={one} gene="MYCN" />);
+    expect(screen.getByTestId("single-group-note")).toHaveTextContent(
+      "All 6 samples fall in one group (Lymphoid), so there is nothing to compare",
+    );
+  });
+});

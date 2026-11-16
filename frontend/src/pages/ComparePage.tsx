@@ -14,10 +14,13 @@ import { MinPNotice, underpoweredSizes } from "../components/MinPNotice";
 // checked -- picking the column first, then seeing which datasets qualify,
 // is the natural order (the alternative, deriving options only from
 // checked datasets, means unchecking everything empties the dropdown).
-function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
-  const seen = new Set<string>();
-  for (const d of datasets) for (const g of d.group_columns) seen.add(g);
-  return Array.from(seen);
+// Ordered by how many datasets expose the column, so the default is one
+// most datasets can answer. Registration order made the default DepMap's
+// `lineage`, where all 186 lines are Lymphoid: nothing to compare.
+export function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
+  const count = new Map<string, number>();
+  for (const d of datasets) for (const g of d.group_columns) count.set(g, (count.get(g) ?? 0) + 1);
+  return Array.from(count.keys()).sort((a, b) => count.get(b)! - count.get(a)!);
 }
 
 // `gene` is passed down rather than read off `result`: /compare-multi
@@ -68,6 +71,8 @@ export function DatasetPanel({
 
   const points = result.points ?? [];
   const pairwise = result.pairwise_tests ?? [];
+  const distinctGroups = Array.from(new Set(points.map((p) => p.group)));
+  const singleGroup = points.length > 0 && distinctGroups.length === 1 ? distinctGroups[0] : null;
 
   return (
     <Panel
@@ -122,7 +127,7 @@ export function DatasetPanel({
       {(result.n_excluded ?? 0) > 0 && (
         <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
           This grouping covers {points.length} of {result.n_dataset_total} samples in the dataset —{" "}
-          {result.n_excluded} excluded ({result.exclusion_reason}).
+          {result.n_excluded} excluded: {result.exclusion_reason}.
         </p>
       )}
 
@@ -134,6 +139,12 @@ export function DatasetPanel({
             tone={result.kruskal_wallis?.p_value != null && result.kruskal_wallis.p_value < 0.05 ? "hot" : "neutral"}
           />
         </div>
+        {singleGroup && (
+          <p data-testid="single-group-note" className="mb-3 text-[11.5px] text-ink-mute">
+            All {points.length} samples fall in one group ({singleGroup}), so there is nothing to compare — choose
+            another grouping.
+          </p>
+        )}
         {result.kruskal_wallis?.note && (
           <p data-testid="kw-note" className="mb-3 text-[11.5px] text-ink-mute">
             {gene}: {result.kruskal_wallis.note}

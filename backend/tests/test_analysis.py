@@ -89,3 +89,22 @@ def test_placeholder_group_labels_are_missing_not_groups():
     assert sorted(df["group"].unique()) == ["Alive", "Dead"]
     assert len(df) == 3
     assert group_labels(samples, "x").tolist() == ["a", None, None, "b", None, "a"]
+
+
+def test_exclusion_reason_counts_blanks_and_each_placeholder():
+    import pandas as pd
+
+    from app.analysis.compare import missing_group_reason
+
+    samples = pd.DataFrame(
+        {
+            "sample_id": list("ABCDEF"),
+            "vital_status": ["Alive", None, "Unknown", "Unknown", "Not Reported", "Dead"],
+            "group_columns": [{} for _ in range(6)],
+        }
+    )
+    assert missing_group_reason(samples, "vital_status", {"B", "C", "D", "E"}) == (
+        "1 with no value recorded for 'vital_status'; 2 recorded as 'Unknown'; 1 recorded as 'Not Reported'"
+    )
+    assert missing_group_reason(samples, "vital_status", {"B"}) == "1 with no value recorded for 'vital_status'"
+    assert missing_group_reason(samples, "vital_status", set()) is None
