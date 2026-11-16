@@ -584,6 +584,18 @@ positives on a working configuration.
 - The app is deliberately light-only (index.css); a dark OS setting does
   not alter it. At 390 px width no pane overflows horizontally; Genome
   Tracks explains it needs a wider pane.
+- *Second sweep (every pane × every dataset, every export, every Genome
+  Tracks locus, bad input, 390 px).* Fixed: grouping by a per-sample
+  identifier (cell_line_name, 186 groups of 1) drew a 5,640 px box plot
+  — it now says each sample is its own group; Top differential genes
+  opens on TARGET ETP vs non-ETP and steps past one-value columns; every
+  PNG export names its dataset (correlation, PCA, mutation, CRISPR/drug,
+  survival overwrote one another across datasets); result tables expose
+  a keyboard-focusable scroll region and name blank headers; failed
+  requests are announced (`role="alert"`); Run comparison is disabled
+  with an empty gene. Known limitation: DepMap and TARGET record no gene
+  aliases, so a legacy name there (KIAA1524) gets a bare "not found"
+  (§7.4, alias resolution still undecided).
 
 ---
 
@@ -1028,6 +1040,10 @@ and every aux join with R on all five datasets; these are the changes.
   correction across the genes searched; it now says so, with n and the
   scale, and warns below 20 samples (several genes at r = 0.952 with
   MYCL on GSE324984's 8 samples looked as strong as TARGET's 469).
+- *Speed.* The co-expression sweep is one centred matrix product instead
+  of `DataFrame.corrwith` (TARGET Pearson ~3 s → 0.3 s); checked against
+  the old code on all five datasets — same genes, max |Δr| 3e-15,
+  identical top-200 order.
 
 ### 7.7 PCA / dimensionality reduction
 **Decided and implemented (2026-08-30).** `backend/app/analysis/
