@@ -315,7 +315,7 @@ function SingleGeneCompareTab() {
           }
         >
           <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-            <div className="min-w-[12ch] flex-1">
+            <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
               <FieldLabel link={geneLink}>Gene symbol</FieldLabel>
               <input
                 aria-label="Gene symbol"
@@ -326,7 +326,7 @@ function SingleGeneCompareTab() {
                 className="wb-field wb-gene"
               />
             </div>
-            <div className="min-w-[14ch] flex-1">
+            <div className="min-w-[14ch] flex-1 @sm:max-w-[32ch]">
               <label className="wb-label">
                 Group by
               </label>
@@ -397,6 +397,14 @@ function SingleGeneCompareTab() {
             }
             title="No query run yet"
             description="Enter a gene symbol and a grouping, then run a comparison to see the distribution and statistics for every compatible dataset."
+            hint={
+              geneLink.contextValue == null && (
+                <>
+                  Working on one gene across analyses? Set it once in the <strong className="font-semibold text-ink-soft">Gene(s)</strong>{" "}
+                  field at the top (press <span className="wb-kbd">/</span>) and Survival, Correlation and Multi-omics pick it up too.
+                </>
+              )
+            }
           />
         )}
 
@@ -553,7 +561,7 @@ export function DifferentialGenesTab() {
         }
       >
         <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[20ch] flex-1">
+          <div className="min-w-[20ch] flex-1 @sm:max-w-[44ch]">
             <label className="wb-label">Dataset</label>
             <select
               aria-label="Dataset"
@@ -568,7 +576,7 @@ export function DifferentialGenesTab() {
               ))}
             </select>
           </div>
-          <div className="min-w-[14ch] flex-1">
+          <div className="min-w-[14ch] flex-1 @sm:max-w-[32ch]">
             <label className="wb-label">Group by</label>
             <select
               aria-label="Group by"
@@ -587,7 +595,7 @@ export function DifferentialGenesTab() {
               ))}
             </select>
           </div>
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <label className="wb-label">Group A</label>
             <select
               aria-label="Group A"
@@ -603,7 +611,7 @@ export function DifferentialGenesTab() {
               ))}
             </select>
           </div>
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <label className="wb-label">Group B</label>
             <select
               aria-label="Group B"

@@ -37,12 +37,12 @@ export const ContextBar = forwardRef<HTMLInputElement>(function ContextBar(_prop
         e.preventDefault();
         apply();
       }}
-      className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5"
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 max-sm:basis-full"
     >
       <span className="text-[11.5px] font-semibold text-ink-soft max-sm:hidden">Context</span>
 
-      <label className="flex min-w-0 items-center gap-1.5 max-sm:flex-1">
-        <span className="text-[11.5px] text-ink-mute">Dataset</span>
+      <label className="flex min-w-0 items-center gap-1.5 max-sm:w-full">
+        <span className="text-[11.5px] text-ink-mute max-sm:w-[52px] max-sm:shrink-0">Dataset</span>
         <select
           aria-label="Context dataset"
           value={ctx.datasetId}
@@ -59,7 +59,7 @@ export const ContextBar = forwardRef<HTMLInputElement>(function ContextBar(_prop
       </label>
 
       <label className="flex min-w-0 items-center gap-1.5 max-sm:w-full">
-        <span className="text-[11.5px] text-ink-mute">Gene(s)</span>
+        <span className="text-[11.5px] text-ink-mute max-sm:w-[52px] max-sm:shrink-0">Gene(s)</span>
         <span className="relative flex min-w-0 flex-1 items-center">
           <input
             ref={geneRef}

@@ -97,7 +97,7 @@ export function ScoreDistribution({ scores, shown, scoreLabel = "Score" }: { sco
   return (
     <div className="mb-4">
       <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+        <span className="text-[11px] font-medium text-ink-mute">
           Score distribution · {scores.length} samples ·{" "}
           {/* Count scale: without it a bar's height meant nothing. */}
           <span data-testid="hist-peak">tallest bar {peak}</span>
@@ -132,7 +132,7 @@ export function ScoreDistribution({ scores, shown, scoreLabel = "Score" }: { sco
         <span>{((min + max) / 2).toFixed(3)}</span>
         <span>{max.toFixed(3)}</span>
       </div>
-      <p className="mt-0.5 text-center font-mono text-[9.5px] uppercase tracking-wider text-ink-mute">{scoreLabel}</p>
+      <p className="mt-0.5 text-center text-[11px] text-ink-mute">{scoreLabel}</p>
     </div>
   );
 }

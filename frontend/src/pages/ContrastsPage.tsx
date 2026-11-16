@@ -631,7 +631,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
                     {items.map((it, i) =>
                       it.heading ? (
                         <tr key={`h${i}`} data-testid="category-heading">
-                          <td colSpan={totalCols} className="border-b border-rule bg-surface-sunk px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                          <td colSpan={totalCols} className="border-b border-rule bg-surface-sunk px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
                             {it.heading}
                           </td>
                         </tr>
@@ -754,7 +754,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
     <>
       <Panel title="Query">
         <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[24ch] flex-[2]">
+          <div className="min-w-[24ch] flex-[2] @sm:max-w-[60ch]">
             <label className={lbl}>Contrast</label>
             <select aria-label="Contrast" value={contrastId} onChange={(e) => setContrastId(e.target.value)} className={sel}>
               {contrasts.map((x) => (
@@ -764,7 +764,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
               ))}
             </select>
           </div>
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <label className={lbl}>Direction</label>
             <select aria-label="Direction" value={direction} onChange={(e) => setDirection(e.target.value as ContrastDirection)} className={sel}>
               <option value="both">Both</option>
@@ -772,7 +772,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
               <option value="down">Down (log2FC &lt; 0)</option>
             </select>
           </div>
-          <div className="min-w-[10ch] flex-1">
+          <div className="min-w-[10ch] flex-1 @sm:max-w-[24ch]">
             <label className={lbl}>Show top</label>
             <select aria-label="Show top" value={n} onChange={(e) => setN(Number(e.target.value))} className={sel}>
               {[25, 50, 100, 250, 500].map((v) => (
@@ -831,7 +831,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
               <thead>
                 <tr>
                   {["#", "Gene", "log2FC", `Mean ${unit}: ref → trt`, "p", "q"].map((h, i) => (
-                    <th key={h} className={`sticky top-0 z-10 border-b border-rule bg-surface-sunk px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-mute ${i === 1 ? "text-left" : "text-right"}`}>
+                    <th key={h} className={`sticky top-0 z-10 border-b border-rule bg-surface-sunk px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft ${i === 1 ? "text-left" : "text-right"}`}>
                       {h}
                     </th>
                   ))}

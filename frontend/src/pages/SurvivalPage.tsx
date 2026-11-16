@@ -304,7 +304,7 @@ export function SurvivalPage() {
               const armCount = Object.keys(data.curves).length;
               const coxIsDegenerate = armCount < 2;
               return (
-              <div className="grid items-start gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
+              <div className="grid items-start gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(440px,500px)]">
                 <Panel
                   title={`Survival — ${data.genes.join(", ")}`}
                   action={

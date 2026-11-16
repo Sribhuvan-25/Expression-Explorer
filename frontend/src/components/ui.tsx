@@ -358,12 +358,23 @@ export function Stat({
   );
 }
 
-export function EmptyState({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  hint,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  hint?: ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center justify-center gap-1.5 rounded-[3px] border border-dashed border-rule-firm px-4 py-10 text-center">
       <div className="text-ink-mute">{icon}</div>
       <p className="text-[13.5px] font-medium text-ink-soft">{title}</p>
       <p className="max-w-[40ch] text-[12.5px] text-ink-mute">{description}</p>
+      {hint && <p className="mt-2 max-w-[52ch] text-[12px] text-ink-mute">{hint}</p>}
     </div>
   );
 }

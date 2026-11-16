@@ -189,8 +189,13 @@ export function useLinkedDataset(candidateIds: string[], defaultId?: string): [s
     // Same default as before the context existed: the page's preferred
     // dataset, else the first candidate, whenever nothing valid is
     // selected yet.
-    if (!candidateIds.includes(datasetId) && candidateIds.length > 0)
-      setDatasetId(defaultId && candidateIds.includes(defaultId) ? defaultId : candidateIds[0]);
+    // Functional update: under StrictMode's double effect run, this
+    // closure's datasetId can predate the context adoption just above,
+    // and a plain set would overwrite it with the default.
+    if (candidateIds.length > 0)
+      setDatasetId((prev) =>
+        candidateIds.includes(prev) ? prev : defaultId && candidateIds.includes(defaultId) ? defaultId : candidateIds[0],
+      );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- candidate list compared by key
   }, [ctxId, ctxUsable, candidatesKey, datasetId]);
 

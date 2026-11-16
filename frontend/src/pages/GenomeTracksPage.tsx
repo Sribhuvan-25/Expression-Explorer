@@ -226,7 +226,7 @@ export function GenomeTracksPage() {
             )}
             {!tooNarrow && status === "error" && (
               <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Track load failed</p>
+                <p className="text-[11.5px] font-semibold text-hot">Track load failed</p>
                 <p className="mt-1 text-[13px] text-ink">{errorMsg}</p>
                 <p className="mt-1 text-[12px] text-ink-mute">
                   These files are hosted directly on NCBI's FTP server — this usually means a network or CORS

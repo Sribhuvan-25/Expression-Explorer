@@ -124,7 +124,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
         }
       >
         <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <FieldLabel link={geneALink}>Gene A</FieldLabel>
             <input
               aria-label="Gene A"
@@ -134,7 +134,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               className="wb-field wb-gene"
             />
           </div>
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <label className="wb-label">Gene B</label>
             <input
               aria-label="Gene B"
@@ -144,7 +144,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               className="wb-field wb-gene"
             />
           </div>
-          <div className="w-full @sm:w-auto @sm:min-w-[27ch] @sm:flex-1">
+          <div className="w-full @sm:w-auto @sm:min-w-[27ch] @sm:max-w-[36ch] @sm:flex-1">
             <label className="wb-label">Method</label>
             {/* "Kendall" is the widest label of the three -- a container that
                 can be squeezed by its @sm:flex-row siblings (as the prior
@@ -328,7 +328,7 @@ export function NetworkTab({ datasetId, datasetName = "" }: { datasetId: string;
         }
       >
         <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <FieldLabel link={geneLink}>Gene</FieldLabel>
             <input
               aria-label="Gene"

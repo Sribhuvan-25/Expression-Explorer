@@ -107,7 +107,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
         }
       >
         <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <FieldLabel link={geneLink}>Expression of</FieldLabel>
             <input
               aria-label="Expression of"
@@ -117,7 +117,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               className="wb-field wb-gene"
             />
           </div>
-          <div className="min-w-[18ch] flex-1">
+          <div className="min-w-[18ch] flex-1 @sm:max-w-[36ch]">
             <label className="wb-label">
               Split by mutation in
             </label>
@@ -395,7 +395,7 @@ function AuxCorrelationTab({
         }
       >
         <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[12ch] flex-1">
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
             <FieldLabel link={geneLink}>Expression of</FieldLabel>
             <input
               aria-label="Expression of"
@@ -405,7 +405,7 @@ function AuxCorrelationTab({
               className="wb-field wb-gene"
             />
           </div>
-          <div className="min-w-[16ch] flex-1">
+          <div className="min-w-[16ch] flex-1 @sm:max-w-[40ch]">
             <label className="wb-label">
               {featureLabel}
             </label>
