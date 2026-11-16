@@ -6,6 +6,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { IDockviewPanelHeaderProps } from "dockview-react";
+
 import { PaneTab } from "../PaneTab";
 
 function mount() {
@@ -15,7 +17,8 @@ function mount() {
   host.className = "dv-tab";
   host.tabIndex = 0;
   document.body.appendChild(host);
-  render(<PaneTab {...({ api } as never)} />, { container: host });
+  const props = { api } as unknown as IDockviewPanelHeaderProps;
+  render(<PaneTab {...props} />, { container: host });
   return { host, close };
 }
 
