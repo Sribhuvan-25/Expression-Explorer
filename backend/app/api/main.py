@@ -157,7 +157,25 @@ def _resolve_gene(ds: Dataset, gene: str) -> str:
                 "statistics are in the design contrasts (Perturbation Contrasts).",
             )
         raise HTTPException(404, f"Gene '{gene}' not found in dataset.")
-    return matches["feature_id"].iloc[0]
+    ids = list(matches["feature_id"])
+    in_matrix = [f for f in ids if f in ds.matrix.index]
+    if len(in_matrix) > 1:
+        # One symbol, several rows (TARGET: 110 symbols over two or more
+        # Ensembl ids). The first-listed row was used, and in 42 of them it
+        # is not the most expressed: RGS5 got ENSG00000143248 (mean 0.28
+        # TPM) over ENSG00000232995 (1.29), DGCR5 an all-zero row. Use the
+        # highest-mean row -- the same label-independent rule as microarray
+        # probe collapse (METHODS.md 7.1, 7.4a).
+        return ds.matrix.loc[in_matrix].mean(axis=1).idxmax()
+    return in_matrix[0] if in_matrix else ids[0]
+
+
+def _resolve_genes(ds: Dataset, genes: list[str]) -> list[str]:
+    """Resolve a gene list, each feature once. "MYB" and "MYB (4602)", or
+    a symbol and its Ensembl id, are one gene: PCA took a gene given k
+    times k^2 times (TARGET MYCN twice: PC1 0.543 vs 0.375 deduplicated)
+    and log2-mean weighted it double."""
+    return list(dict.fromkeys(_resolve_gene(ds, g) for g in genes))
 
 
 def _contrast_only_feature(ds: Dataset, gene: str) -> str | None:
@@ -737,7 +755,7 @@ def signature_score(dataset_id: str, body: SignatureRequest):
     if not body.genes:
         raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
-    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    feature_ids = _resolve_genes(ds, body.genes)
     if body.method == "auc":
         scores = auc_signature_score(ds.matrix, feature_ids)
     else:
@@ -769,7 +787,7 @@ def rank_signature(dataset_id: str, body: RankSignatureRequest):
     if not body.genes:
         raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
-    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    feature_ids = _resolve_genes(ds, body.genes)
     df = rank_by_signature(
         ds.matrix, ds.samples, feature_ids, method=body.method,
         already_log2=is_log2_unit(ds.source.expression_unit),
@@ -1059,6 +1077,7 @@ def dataset_pca(dataset_id: str, body: PCARequest):
             f"dataset -- need at least 2 to run PCA."
             + (f" Not found: {', '.join(missing_input_genes)}." if missing_input_genes else ""),
         )
+    feature_ids = list(dict.fromkeys(feature_ids))
     try:
         result = pca(ds.matrix, feature_ids, ds.samples, n_components=body.n_components)
     except ValueError as exc:
@@ -1072,6 +1091,11 @@ def dataset_pca(dataset_id: str, body: PCARequest):
     groups = _sample_groups(dataset_id, ds)
     for point in result["points"]:
         point["group_columns"] = groups.get(point["sample_id"], {})
+    # Feature ids are Ensembl on TARGET; the title, export name and
+    # zero-variance note read them, so give symbols.
+    symbol = ds.features.set_index("feature_id")["symbol"] if "feature_id" in ds.features.columns else ds.features["symbol"]
+    for key in ("genes_used", "genes_missing", "genes_zero_variance"):
+        result[key] = [str(symbol.get(f, f)) for f in result[key]]
     result["genes_unrecognized"] = missing_input_genes
     # Why each one failed, in the resolver's words (e.g. "older name for
     # CIP2A"), so PCA explains what /compare already explains.
@@ -1111,7 +1135,7 @@ def survival(dataset_id: str, body: SurvivalRequest):
             f"'{descriptor.display_name}' has no clinical follow-up data — survival analysis isn't available for it.",
         )
     ds = _get_dataset(dataset_id)
-    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    feature_ids = _resolve_genes(ds, body.genes)
     scores = auc_signature_score(ds.matrix, feature_ids)
     surv_df = build_survival_frame(ds.samples, scores)
     if len(surv_df) < 10:
