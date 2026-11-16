@@ -74,6 +74,9 @@ export function DatasetPanel({
   const pairwise = result.pairwise_tests ?? [];
   const distinctGroups = Array.from(new Set(points.map((p) => p.group)));
   const singleGroup = points.length > 0 && distinctGroups.length === 1 ? distinctGroups[0] : null;
+  // A per-sample identifier (cell_line_name: 186 groups of 1) drew a
+  // 5,640 px plot with no test possible; say so instead of plotting.
+  const everySampleOwnGroup = points.length > 2 && distinctGroups.length === points.length;
 
   return (
     <Panel
@@ -119,7 +122,14 @@ export function DatasetPanel({
         <GroupFilter groupCounts={groupCounts} selected={selectedGroups} onChange={setSelectedGroups} />
       </div>
       {filteredPoints.length > 0 ? (
-        <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
+        everySampleOwnGroup ? (
+          <p data-testid="own-group-note" className="text-[12.5px] text-ink-mute">
+            Every one of the {points.length} samples is its own group here, so there is nothing to compare — choose a
+            grouping that puts several samples together. Sample Ranking lists every sample by expression.
+          </p>
+        ) : (
+          <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
+        )
       ) : (
         <p className="py-8 text-center text-[12.5px] text-ink-mute">
           No groups selected — check at least one group above to see the chart.
@@ -422,8 +432,12 @@ export function DifferentialGenesTab() {
   const datasets = datasetList?.datasets ?? [];
 
   const [datasetId, setDatasetId] = useState<string>("");
+  // Default to a dataset with an ETP grouping -- the app's core two-group
+  // comparison. The first registered dataset is DepMap, whose first column
+  // (lineage) has one value, so the tab opened on a disabled button.
   useEffect(() => {
-    if (!datasetId && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
+    if (!datasetId && datasets.length > 0)
+      setDatasetId((datasets.find((d) => d.group_columns.includes("etp_status")) ?? datasets[0]).dataset_id);
   }, [datasets, datasetId]);
 
   const activeDataset = datasets.find((d) => d.dataset_id === datasetId);
@@ -431,9 +445,11 @@ export function DifferentialGenesTab() {
   const [groupA, setGroupA] = useState<string>("");
   const [groupB, setGroupB] = useState<string>("");
 
+  const columnChosen = useRef(false);
   useEffect(() => {
     if (activeDataset && activeDataset.group_columns.length > 0) {
-      setGroupColumn((prev) => (activeDataset.group_columns.includes(prev) ? prev : activeDataset.group_columns[0]));
+      const preferred = activeDataset.group_columns.includes("etp_status") ? "etp_status" : activeDataset.group_columns[0];
+      setGroupColumn((prev) => (activeDataset.group_columns.includes(prev) ? prev : preferred));
     }
   }, [activeDataset]);
 
@@ -455,6 +471,14 @@ export function DifferentialGenesTab() {
     () => new Map((groupValuesResult?.values ?? []).map((v) => [v.value, v.n])),
     [groupValuesResult],
   );
+
+  // Until the user picks a column, step past one with a single value.
+  useEffect(() => {
+    if (!activeDataset || columnChosen.current || !groupValuesResult || groupOptions.length >= 2) return;
+    const cols = activeDataset.group_columns;
+    const next = cols[cols.indexOf(groupColumn) + 1];
+    if (next) setGroupColumn(next);
+  }, [groupValuesResult, groupOptions, activeDataset, groupColumn]);
 
   useEffect(() => {
     if (groupOptions.length >= 2) {
@@ -503,7 +527,10 @@ export function DifferentialGenesTab() {
             <select
               aria-label="Group by"
               value={groupColumn}
-              onChange={(e) => setGroupColumn(e.target.value)}
+              onChange={(e) => {
+                columnChosen.current = true;
+                setGroupColumn(e.target.value);
+              }}
               disabled={!activeDataset || activeDataset.group_columns.length === 0}
               className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
             >

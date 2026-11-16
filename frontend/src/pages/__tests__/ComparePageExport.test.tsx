@@ -157,3 +157,13 @@ describe("Expression Compare defaults and single-group results", () => {
     );
   });
 });
+
+describe("Expression Compare grouped by a per-sample identifier", () => {
+  it("explains instead of drawing one box per sample", () => {
+    const own = result("depmap", "DepMap");
+    own.points = own.points!.map((p, i) => ({ ...p, group: `LINE${i}` }));
+    const { container } = render(<DatasetPanel result={own} gene="MYCN" />);
+    expect(screen.getByTestId("own-group-note")).toHaveTextContent("Every one of the 6 samples is its own group");
+    expect(container.querySelector("svg[role=img]")).toBeNull();
+  });
+});

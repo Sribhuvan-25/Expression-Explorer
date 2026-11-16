@@ -175,3 +175,23 @@ describe("DifferentialGenesTab sample accounting", () => {
     expect(line).toHaveTextContent("464 of 469 samples compared — 5 with no value recorded for 'vital_status'.");
   });
 });
+
+describe("DifferentialGenesTab default comparison", () => {
+  it("opens on a dataset's ETP grouping and steps past a one-value column", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({
+      datasets: [
+        { ...SINGLE_VALUED_DATASET, group_columns: ["lineage", "subtype"] },
+        { ...TWO_VALUED_DATASET, group_columns: ["vital_status", "etp_status"] },
+      ],
+    });
+    vi.spyOn(api, "groupValues").mockImplementation(async (_ds, col) => ({
+      group_column: col,
+      values: col === "etp_status" ? [{ value: "ETP", n: 19 }, { value: "non-ETP", n: 146 }] : [{ value: "Lymphoid", n: 186 }],
+      unavailable: false,
+    }));
+    renderTab();
+    await waitFor(() => expect(screen.getByLabelText("Dataset")).toHaveValue("target_all_p2"));
+    await waitFor(() => expect(screen.getAllByLabelText("Group by").at(-1)).toHaveValue("etp_status"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled());
+  });
+});
