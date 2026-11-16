@@ -7,12 +7,15 @@ export function ExportButton({
   title,
   subtitle,
   statLines,
+  caption,
 }: {
   svgRef: React.RefObject<SVGSVGElement | null>;
   filename: string;
   title: string;
   subtitle?: string;
   statLines: string[];
+  /** The figure's on-screen caption; printed into the PNG below the statistics. */
+  caption?: string;
 }) {
   const [state, setState] = useState<"idle" | "exporting" | "error">("idle");
 
@@ -20,7 +23,7 @@ export function ExportButton({
     if (!svgRef.current) return;
     setState("exporting");
     try {
-      await exportSvgAsPng(svgRef.current, filename, { title, subtitle, statLines });
+      await exportSvgAsPng(svgRef.current, filename, { title, subtitle, statLines, caption });
       setState("idle");
     } catch {
       setState("error");
