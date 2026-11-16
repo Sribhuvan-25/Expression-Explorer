@@ -391,6 +391,14 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
               title="Download as CSV"
               className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
             >
+          {data.n != null && (
+            <p data-testid="network-caption" className="mb-3 text-[11.5px] text-ink-mute">
+              {data.method === "pearson" ? "Pearson" : "Spearman"} r across {data.n} samples
+              {data.value_unit ? `, on ${formatUnit(data.value_unit)}` : ""}. Ranked by r only, with no p-value or
+              multiple-testing correction across the genes searched
+              {data.n < 20 ? `; with ${data.n} samples a high r is easily reached by chance` : ""}.
+            </p>
+          )}
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

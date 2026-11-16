@@ -889,7 +889,7 @@ def co_expression(
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
     try:
-        matrix, _ = on_analysis_scale(ds.matrix, ds.source.expression_unit)
+        matrix, value_unit = on_analysis_scale(ds.matrix, ds.source.expression_unit)
         network = co_expression_network(matrix, feature_id, top_n=top_n, method=method, direction=direction)
     except ValueError as exc:
         raise HTTPException(422, str(exc).replace(feature_id, gene))
@@ -900,7 +900,15 @@ def co_expression(
     symbol_by_feature = ds.features["symbol"]
     for entry in network:
         entry["symbol"] = symbol_by_feature.get(entry["gene"], entry["gene"])
-    return {"gene": gene, "method": method, "direction": direction, "network": network}
+    # n and scale, so an r over 8 samples is not read like one over 469.
+    return {
+        "gene": gene,
+        "method": method,
+        "direction": direction,
+        "n": int(ds.matrix.shape[1]),
+        "value_unit": value_unit,
+        "network": network,
+    }
 
 
 @app.get("/datasets/{dataset_id}/aux-layers")

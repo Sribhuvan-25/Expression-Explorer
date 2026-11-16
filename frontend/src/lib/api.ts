@@ -226,6 +226,8 @@ export interface CoExpressionResult {
   method: "pearson" | "spearman";
   direction: "positive" | "negative";
   network: CoExpressionEntry[];
+  n?: number;
+  value_unit?: string;
 }
 
 export interface PCAPoint {
