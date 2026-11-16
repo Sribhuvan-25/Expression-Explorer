@@ -68,6 +68,32 @@ export function valueDomain(values: number[], logUnit: boolean): [number, number
   return [Math.min(0, lo), Math.max(hi, 1) * 1.04];
 }
 
+/**
+ * Round tick values for the log1p axis, at most `max`. Evenly spaced
+ * points in log space printed "0.00, 1.70, 6.27, 18.6, 51.9, 142"; these
+ * are 0 plus a 1-2-5 or 1-3 series per decade. Exported for tests.
+ */
+export function logTicks(max: number): number[] {
+  const series = (steps: number[]) => {
+    const out = [0];
+    for (let e = -2; e <= 7; e++) for (const m of steps) {
+      const v = Number((m * 10 ** e).toPrecision(2));
+      if (v <= max) out.push(v);
+    }
+    return out;
+  };
+  const candidates = [series([1, 2, 5]), series([1, 3]), series([1])];
+  // Densest series that still fits in about seven labels, without
+  // crowding the bottom of the axis with sub-1 values when the data is large.
+  // Values in the bottom tenth of the axis sit on top of 0 and of each other.
+  const visible = (ticks: number[]) => ticks.filter((t) => t === 0 || Math.log1p(t) >= 0.1 * Math.log1p(max));
+  for (const ticks of candidates) {
+    const trimmed = visible(ticks);
+    if (trimmed.length <= 7) return trimmed;
+  }
+  return visible(candidates[2]);
+}
+
 export function BoxPlot({
   points,
   valueLabel = "Expression",
@@ -105,7 +131,6 @@ export function BoxPlot({
   const logScale = logUnit ? false : scaleChoice === null ? skewed : scaleChoice === "log";
   const setLogScale = (v: boolean) => setScaleChoice(v ? "log" : "linear");
   const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
-  const untransform = (v: number) => (logScale ? Math.expm1(v) : v);
 
   // The chart sizes itself to whatever space it's actually given rather
   // than to a hardcoded width.
@@ -184,8 +209,7 @@ export function BoxPlot({
     const rawMax = Math.max(...rawValues, 1) * 1.04;
     tMax = transform(rawMax);
     tMin = 0;
-    const sp = tMax - tMin || 1;
-    tickValues = Array.from({ length: tickCount + 1 }, (_, i) => untransform(tMin + (sp * i) / tickCount));
+    tickValues = logTicks(rawMax);
   } else {
     const [lo, hi] = valueDomain(rawValues, logUnit);
     tickValues = niceTicks(lo, hi, tickCount);
@@ -201,7 +225,9 @@ export function BoxPlot({
   // or "2.5, 5.0, 7.5"), not "11.0, 10.0, 9.00".
   const tickDigits = !logScale && tickValues.length > 1 ? stepDigits(tickValues[1] - tickValues[0]) : null;
   const fmt = (v: number) =>
-    tickDigits !== null
+    logScale
+      ? String(v)
+      : tickDigits !== null
       ? v.toFixed(tickDigits)
       : Math.abs(v) >= 100
         ? v.toFixed(0)
