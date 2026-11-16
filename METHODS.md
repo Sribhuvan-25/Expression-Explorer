@@ -593,9 +593,10 @@ positives on a working configuration.
   survival overwrote one another across datasets); result tables expose
   a keyboard-focusable scroll region and name blank headers; failed
   requests are announced (`role="alert"`); Run comparison is disabled
-  with an empty gene. Known limitation: DepMap and TARGET record no gene
-  aliases, so a legacy name there (KIAA1524) gets a bare "not found"
-  (§7.4, alias resolution still undecided).
+  with an empty gene. DepMap and TARGET now hint at the current name for
+  a legacy one (§7.4). Pane tabs no longer nest a close button inside
+  the focusable tab (axe nested-interactive); a focused tab closes with
+  Delete. axe reports no violations.
 
 ---
 
@@ -860,6 +861,15 @@ hint could never fire there and KIAA1524 got a bare "not found" — the
 coverage claim update (1) above set out to remove. The renamed names are
 now recorded as aliases (`gds4299.py` → `legacy_aliases`); re-ingested
 and verified live.
+
+**Hint for datasets with no alias table (2026-11-16).** DepMap and TARGET
+record no aliases, so the hint above could never fire there. When a name
+is not found and the dataset has no alias for it, `_external_current_symbol`
+asks the annotation service (MyGene.info, cached) for the current symbol
+and names it — only if the queried name is listed among that record's
+aliases and the dataset has the current symbol. Still a hint, never a
+silent match; any lookup failure gives the plain message. Live: KIAA1524
+on TARGET and DepMap → "older name or alias of CIP2A … search for CIP2A".
 
 ### 7.4a One symbol, several rows: the most-expressed row
 **Decided (2026-11-16), after an independent audit.** When a symbol

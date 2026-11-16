@@ -101,3 +101,25 @@ def test_gds4299_records_the_legacy_symbols_it_remaps():
     from app.ingest.gds4299 import legacy_aliases
 
     assert legacy_aliases(["CIP2A", "PPME1", "MYCN"]) == [["KIAA1524"], ["PME1"], []]
+
+
+def test_legacy_name_hint_from_gene_annotation(client, monkeypatch):  # noqa: F811
+    """DepMap and TARGET record no aliases, so a legacy name got a bare
+    'not found' while the gene was present under its current symbol."""
+    record = {"symbol": "MYCN", "aliases": ["NMYC", "MODED"]}
+    monkeypatch.setattr(api_main, "lookup_gene", lambda s: record)
+    r = client.get(f"/datasets/{DATASET_ID}/compare", params={"gene": "nmyc", "group_column": "etp_status"})
+    assert r.status_code == 404
+    assert "alias of MYCN" in r.json()["detail"] and "search for MYCN" in r.json()["detail"]
+
+    # A loose free-text hit that does not list the name as an alias: no hint.
+    monkeypatch.setattr(api_main, "lookup_gene", lambda s: {"symbol": "MYCN", "aliases": []})
+    r = client.get(f"/datasets/{DATASET_ID}/compare", params={"gene": "ZZZ9", "group_column": "etp_status"})
+    assert r.json()["detail"] == "Gene 'ZZZ9' not found in dataset."
+
+    def boom(s):
+        raise OSError("offline")
+
+    monkeypatch.setattr(api_main, "lookup_gene", boom)
+    r = client.get(f"/datasets/{DATASET_ID}/compare", params={"gene": "NMYC", "group_column": "etp_status"})
+    assert r.status_code == 404 and r.json()["detail"] == "Gene 'NMYC' not found in dataset."

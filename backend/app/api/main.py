@@ -181,6 +181,13 @@ def _resolve_gene(ds: Dataset, gene: str) -> str:
                 f"expression matrix ({ds.source.expression_unit}) -- see the dataset notes. Its "
                 "statistics are in the design contrasts (Perturbation Contrasts).",
             )
+        current = _external_current_symbol(ds, stripped)
+        if current:
+            raise HTTPException(
+                404,
+                f"Gene '{stripped}' not found in dataset under that name; MyGene.info lists it as an "
+                f"older name or alias of {current}, which this dataset has -- search for {current} instead.",
+            )
         raise HTTPException(404, f"Gene '{gene}' not found in dataset.")
     ids = list(matches["feature_id"])
     in_matrix = [f for f in ids if f in ds.matrix.index]
@@ -201,6 +208,30 @@ def _resolve_genes(ds: Dataset, genes: list[str]) -> list[str]:
     times k^2 times (TARGET MYCN twice: PC1 0.543 vs 0.375 deduplicated)
     and log2-mean weighted it double."""
     return list(dict.fromkeys(_resolve_gene(ds, g) for g in genes))
+
+
+def _external_current_symbol(ds: Dataset, gene: str) -> str | None:
+    """The current symbol for a legacy name or alias, from MyGene.info, if
+    this dataset has it -- a hint only, never a silent match (alias
+    resolution is undecided, METHODS.md 7.4). DepMap and TARGET record no
+    aliases, so KIAA1524 got a bare "not found" there while CIP2A is
+    present. Only when the queried name is listed among the record's
+    aliases (the lookup's free-text fallback can match loosely), and any
+    lookup failure means no hint."""
+    try:
+        info = lookup_gene(gene)
+    except Exception:
+        return None
+    if not info or not info.get("symbol"):
+        return None
+    symbol = str(info["symbol"])
+    if symbol.upper() == gene.upper():
+        return None
+    if gene.upper() not in {str(a).upper() for a in info.get("aliases") or []}:
+        return None
+    if not ds.features["symbol"].astype(str).str.upper().eq(symbol.upper()).any():
+        return None
+    return symbol
 
 
 def _contrast_only_feature(ds: Dataset, gene: str) -> str | None:
