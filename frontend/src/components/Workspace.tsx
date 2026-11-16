@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { PaneTab } from "./PaneTab";
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IWatermarkPanelProps } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import { PANE_COMPONENTS, PANE_LABELS, type PaneType } from "../panes/registry";
@@ -162,6 +163,7 @@ export function Workspace({ onApiReady }: { onApiReady?: (api: DockviewApi) => v
         className="dockview-theme-expression"
         components={PANE_COMPONENTS}
         watermarkComponent={EmptyWorkspace}
+        defaultTabComponent={PaneTab}
         onReady={onReady}
       />
     </div>
