@@ -72,7 +72,7 @@ export function SurvivalPage() {
       <PageHeader
         eyebrow="Survival"
         title="Kaplan–Meier by signature score"
-        description="Samples are binarized at the median signature score into LOW/HIGH groups, then compared with a log-rank test and a Cox proportional hazards model."
+        description="Samples are split into LOW and HIGH groups by signature score (at the median, or top vs. bottom quartile or percentile), then compared with a log-rank test and a Cox proportional hazards model."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">
@@ -256,7 +256,7 @@ export function SurvivalPage() {
                   </svg>
                 }
                 title="No survival analysis run yet"
-                description="Choose a gene set and run to see Kaplan–Meier curves split at the median signature score."
+                description="Choose a gene set and a cutoff, then run to see Kaplan–Meier curves for the LOW and HIGH score groups."
               />
             )}
 
@@ -320,8 +320,26 @@ export function SurvivalPage() {
                   <SurvivalPlot curves={data.curves} svgRef={chartRef} />
                   {data.n_excluded > 0 && (
                     <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
-                      Showing {data.n} of {data.n_dataset_total} samples in this dataset —{" "}
-                      {data.n_excluded} excluded ({data.exclusion_reason}).
+                      Showing {data.n} of {data.n_dataset_total} samples in this dataset — {data.n_excluded} excluded
+                      {data.exclusion_breakdown && data.exclusion_breakdown.length === 1 ? (
+                        <> {data.exclusion_breakdown[0].reason}.</>
+                      ) : data.exclusion_breakdown && data.exclusion_breakdown.length > 1 ? (
+                        // One line per reason (METHODS.md 6.1): a merged count
+                        // put patients without follow-up and patients cut by
+                        // the quartile split behind the same number.
+                        <>
+                          :
+                          <span data-testid="survival-exclusions" className="mt-1 flex flex-col">
+                            {data.exclusion_breakdown.map((e) => (
+                              <span key={e.reason}>
+                                <span className="font-mono">{e.n}</span> {e.reason}
+                              </span>
+                            ))}
+                          </span>
+                        </>
+                      ) : (
+                        <> ({data.exclusion_reason}).</>
+                      )}
                     </p>
                   )}
                 </Panel>
@@ -376,8 +394,9 @@ export function SurvivalPage() {
                         // AUC bounded to [0, 1], so one unit is its full range.
                         <p data-testid="cox-unit-note" className="mt-2 text-[11.5px] text-ink-mute">
                           signature_score is the continuous AUC score (0–1); its hazard ratio compares a score of 1
-                          with a score of 0 — the whole range, not a typical difference between two patients. The
-                          HIGH/LOW curves and log-rank p above are the median-split comparison.
+                          with a score of 0 — the whole range, not a typical difference between two patients. It is
+                          fit on the {data.n} patients shown. The HIGH/LOW curves and log-rank p above compare groups
+                          split by {cutoffDescription}.
                         </p>
                       )}
                     </div>

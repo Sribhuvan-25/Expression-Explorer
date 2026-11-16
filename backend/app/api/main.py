@@ -1178,30 +1178,43 @@ def survival(dataset_id: str, body: SurvivalRequest):
     # samples) surfaced as an unhandled 500 instead of cox: null.
     except (ValueError, ConvergenceError, StatError):
         result["cox"] = None
-    exclusion_reason = None
-    if n_excluded > 0:
-        if body.cutoff_method == "median":
-            exclusion_reason = "no follow-up time recorded"
-        else:
-            # quartile fixes both percentiles at 25 regardless of what the
-            # request body's cutoff_high_pct/cutoff_low_pct happened to be
-            # (those fields only take effect for "custom") -- the message
-            # must report what binarize_by_cutoff actually used, not the
-            # unused request defaults, or a quartile run would misreport
-            # itself as a "50%/50%" cutoff.
-            high_pct, low_pct = (25.0, 25.0) if body.cutoff_method == "quartile" else (
-                body.cutoff_high_pct, body.cutoff_low_pct,
-            )
-            exclusion_reason = (
-                "no follow-up time recorded, or score fell in the excluded middle band "
-                f"between the low ({low_pct:.0f}%) and high ({high_pct:.0f}%) cutoffs"
-            )
+    # Each reason counted on its own (METHODS.md 6.1, 8.6). One merged
+    # "235 excluded (no follow-up time recorded, or score fell in the
+    # excluded middle band)" put 3 patients without follow-up and 232 cut
+    # by the quartile split behind the same word.
+    exclusion_breakdown = []
+    n_no_followup = n_total - len(surv_df)
+    if n_no_followup > 0:
+        exclusion_breakdown.append({"reason": "with no follow-up time recorded", "n": n_no_followup})
+    if body.cutoff_method != "median":
+        high_pct, low_pct = (25.0, 25.0) if body.cutoff_method == "quartile" else (
+            body.cutoff_high_pct, body.cutoff_low_pct,
+        )
+        scores = surv_df["signature_score"]
+        in_band = (scores < scores.quantile(1 - high_pct / 100)) & (scores > scores.quantile(low_pct / 100))
+        n_band = int((in_band & group.isna()).sum())
+        n_tie_dropped = int((~in_band & group.isna()).sum())
+        if n_band > 0:
+            exclusion_breakdown.append({
+                "reason": f"with a score between the low ({low_pct:g}%) and high ({high_pct:g}%) cutoffs",
+                "n": n_band,
+            })
+        if n_tie_dropped > 0:
+            exclusion_breakdown.append({
+                "reason": (
+                    f"with a score tied at the low ({low_pct:g}%) or high ({high_pct:g}%) cutoff, "
+                    f"dropped by the '{body.tie_policy}' tie policy"
+                ),
+                "n": n_tie_dropped,
+            })
+    exclusion_reason = "; ".join(f"{e['n']} {e['reason']}" for e in exclusion_breakdown) or None
     return {
         "genes": body.genes,
         "n": n_grouped,
         "n_dataset_total": n_total,
         "n_excluded": n_excluded,
         "exclusion_reason": exclusion_reason,
+        "exclusion_breakdown": exclusion_breakdown,
         "tie_note": tie_note,
         **result,
     }

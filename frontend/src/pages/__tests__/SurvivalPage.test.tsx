@@ -131,3 +131,30 @@ describe("SurvivalPage degenerate Cox model", () => {
     expect(screen.getByTestId("cox-unit-note")).toHaveTextContent("compares a score of 1 with a score of 0");
   });
 });
+
+describe("SurvivalPage sample accounting and captions follow the cutoff", () => {
+  it("lists each exclusion reason on its own and names the quartile split", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue({
+      ...NORMAL_RESULT,
+      n: 234,
+      n_excluded: 235,
+      exclusion_reason: "3 with no follow-up time recorded; 232 with a score between the low (25%) and high (25%) cutoffs",
+      exclusion_breakdown: [
+        { reason: "with no follow-up time recorded", n: 3 },
+        { reason: "with a score between the low (25%) and high (25%) cutoffs", n: 232 },
+      ],
+    } as unknown as SurvivalResult);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "quartile" }));
+    fireEvent.click(screen.getByRole("button", { name: /run survival analysis/i }));
+
+    const list = await screen.findByTestId("survival-exclusions");
+    expect(list.children).toHaveLength(2);
+    expect(list).toHaveTextContent("3 with no follow-up time recorded");
+    expect(list).toHaveTextContent("232 with a score between the low (25%) and high (25%) cutoffs");
+    expect(screen.getByTestId("cox-unit-note")).toHaveTextContent("quartile");
+    expect(screen.getByTestId("cox-unit-note")).not.toHaveTextContent("median-split");
+  });
+});

@@ -187,6 +187,8 @@ export interface SurvivalResult {
   n_dataset_total: number;
   n_excluded: number;
   exclusion_reason: string | null;
+  // The same exclusions, one entry per reason; sums to n_excluded.
+  exclusion_breakdown?: { reason: string; n: number }[];
 }
 
 export interface CorrelationPoint {
