@@ -112,7 +112,10 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-ground text-ink">
-      <aside className="flex w-[248px] shrink-0 flex-col border-r border-rail-rule bg-rail-bg max-lg:w-[68px]">
+      {/* overflow-y-auto: at 1440x900 the dataset list ran 105px past the
+          screen inside an overflow-hidden parent, so the last dataset
+          (GSE66586) was cut off with no way to scroll to it. */}
+      <aside className="flex w-[248px] shrink-0 flex-col overflow-y-auto border-r border-rail-rule bg-rail-bg max-lg:w-[68px]">
         <div className="flex items-center gap-2.5 border-b border-rail-rule px-4 py-4 max-lg:justify-center max-lg:px-0">
           <MarkGlyph />
           <span className="font-display text-[15px] font-semibold tracking-tight text-rail-ink max-lg:hidden">
