@@ -501,7 +501,10 @@ export function DifferentialGenesTab() {
   const { data: groupValuesResult } = useQuery({
     queryKey: ["group-values", datasetId, groupColumn],
     queryFn: () => api.groupValues(datasetId, groupColumn),
-    enabled: !!datasetId && !!groupColumn,
+    // Only for a column this dataset has: when the shared context switches
+    // dataset, groupColumn still holds the previous dataset's column for one
+    // render, and the request 404'd (e.g. mycn_status on DepMap).
+    enabled: !!datasetId && !!groupColumn && !!activeDataset?.group_columns.includes(groupColumn),
     retry: false,
   });
   const groupOptions = useMemo(
