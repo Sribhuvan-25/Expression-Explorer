@@ -190,14 +190,20 @@ function Shell() {
         }
         return;
       }
-      if (e.key === "/" && !e.altKey && !e.ctrlKey && !e.metaKey && !isTypingTarget(e.target)) {
+      // composedPath()[0] is the element really focused: inside igv.js's
+      // shadow DOM e.target is only its host, so typing "/" in igv's own
+      // locus box would have jumped to the gene field.
+      if (e.key === "/" && !e.altKey && !e.ctrlKey && !e.metaKey && !isTypingTarget(e.composedPath()[0] ?? e.target)) {
         e.preventDefault();
         contextGeneRef.current?.focus();
         contextGeneRef.current?.select();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Capture phase: igv.js listens for keys on the document and can stop
+    // them before a bubbling window listener sees them, which made "/"
+    // intermittently do nothing once Genome Tracks had loaded.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [open]);
 
   // Arrow keys move between analyses in the nav list.
