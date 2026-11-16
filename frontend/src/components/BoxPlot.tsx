@@ -99,6 +99,7 @@ export function BoxPlot({
   valueLabel = "Expression",
   unit,
   svgRef,
+  groupColors,
 }: {
   points: ComparePoint[];
   valueLabel?: string;
@@ -106,6 +107,10 @@ export function BoxPlot({
   // otherwise says only "EXPRESSION") and decides whether 0 belongs on it.
   unit?: string | null;
   svgRef?: React.RefObject<SVGSVGElement | null>;
+  // Label -> colour for a whole multi-facet result (lib/groupColors.ts),
+  // so a label is one colour in every facet. Without it, groups are
+  // coloured by their median rank in this plot alone.
+  groupColors?: Map<string, string>;
 }) {
   const logUnit = isLogUnit(unit);
   const axisLabel = unit ? `${valueLabel} (${formatUnit(unit)})` : valueLabel;
@@ -176,8 +181,8 @@ export function BoxPlot({
         };
       })
       .sort((a, b) => b.median - a.median)
-      .map((g, i) => ({ ...g, color: GROUP_COLORS[i % GROUP_COLORS.length] }));
-  }, [points]);
+      .map((g, i) => ({ ...g, color: groupColors?.get(g.group) ?? GROUP_COLORS[i % GROUP_COLORS.length] }));
+  }, [points, groupColors]);
 
   const horizontal = groups.length > HORIZONTAL_THRESHOLD;
   // With a handful of samples per group (cell-line panels: 2-5) each
@@ -312,7 +317,7 @@ export function BoxPlot({
               const cy = margin.top + rowH * i + (stacked ? 31 : rowH / 2);
               const single = g.values.length === 1;
               return (
-                <g key={g.group}>
+                <g key={g.group} data-group={g.group}>
                   {i % 2 === 1 && (
                     <rect
                       x={plotLeft}
@@ -512,7 +517,7 @@ export function BoxPlot({
             const cx = margin.left + bandW * i + bandW / 2;
             const single = g.values.length === 1;
             return (
-              <g key={g.group}>
+              <g key={g.group} data-group={g.group}>
                 {single ? (
                   <circle cx={cx} cy={y(g.median)} r={4.5} fill={g.color} stroke="var(--surface)" strokeWidth={1} />
                 ) : (

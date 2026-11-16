@@ -10,6 +10,7 @@ import { GroupFilter, useGroupFilter } from "../components/GroupFilter";
 import { GeneAnnotation } from "../components/GeneAnnotation";
 import { exportRowsAsCsv } from "../lib/exportTable";
 import { MinPNotice, underpoweredSizes } from "../components/MinPNotice";
+import { groupColorMap } from "../lib/groupColors";
 
 // Every group-by column any registered dataset has ever declared, so the
 // "Group by" dropdown offers a column even before a dataset exposing it is
@@ -38,9 +39,14 @@ export function DatasetPanel({
   result,
   gene,
   hasContrasts = false,
+  groupColors,
 }: {
   result: CompareMultiDatasetResult;
   gene: string;
+  // One label -> colour map for every facet of the result, so "non-ETP"
+  // is the same colour in TARGET and GDS4299. A panel rendered alone
+  // builds its own from its full (unfiltered) points.
+  groupColors?: Map<string, string>;
   // The dataset declares design contrasts -- the notice below then points
   // at the Perturbation Contrasts pane, which has a test that can actually
   // reach significance at these sample sizes.
@@ -58,6 +64,7 @@ export function DatasetPanel({
     () => (result.points ?? []).filter((p) => selectedGroups.has(p.group)),
     [result.points, selectedGroups],
   );
+  const ownColors = useMemo(() => groupColorMap([result.points ?? []]), [result.points]);
 
   if (result.skipped) {
     return (
@@ -134,7 +141,13 @@ export function DatasetPanel({
             grouping that puts several samples together. Sample Ranking lists every sample by expression.
           </p>
         ) : (
-          <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
+          <BoxPlot
+            points={filteredPoints}
+            valueLabel="expression"
+            unit={result.expression_unit}
+            svgRef={chartRef}
+            groupColors={groupColors ?? ownColors}
+          />
         )
       ) : (
         <p className="py-8 text-center text-[12.5px] text-ink-mute">
@@ -294,6 +307,10 @@ function SingleGeneCompareTab() {
   const shownResults = data?.datasets ?? [];
   const runnable = shownResults.filter((r) => !r.skipped);
   const skipped = shownResults.filter((r) => r.skipped);
+  const groupColors = useMemo(
+    () => groupColorMap((data?.datasets ?? []).filter((r) => !r.skipped).map((r) => r.points ?? [])),
+    [data],
+  );
 
   return (
     <>
@@ -445,6 +462,7 @@ function SingleGeneCompareTab() {
                   key={r.dataset_id}
                   result={r}
                   gene={data.gene}
+                  groupColors={groupColors}
                   hasContrasts={(datasets.find((d) => d.dataset_id === r.dataset_id)?.n_contrasts ?? 0) > 0}
                 />
               ))}
