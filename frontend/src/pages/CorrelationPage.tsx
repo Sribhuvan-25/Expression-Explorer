@@ -39,6 +39,12 @@ export function pickColorColumn(
   return columns.find(usable) ?? "";
 }
 
+/** "PC1 (73.2% of variance)" -- the axis alone said "PC1". */
+export function pcLabel(k: number, varianceExplained: number[] | undefined): string {
+  const v = varianceExplained?.[k - 1];
+  return v == null ? `PC${k}` : `PC${k} (${(v * 100).toFixed(1)}% of variance)`;
+}
+
 export function poolsGroupsNote(n: number, nGroups: number, column: string): string {
   return `r is computed across all ${n} samples together, spanning ${nGroups} ${column} groups. A difference between groups alone can produce a strong r; check whether the trend also holds within each colour.`;
 }
@@ -570,7 +576,12 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
             </div>
           }
         >
-          <ScatterPlot points={plotPoints} xLabel="PC1" yLabel="PC2" svgRef={chartRef} />
+          <ScatterPlot
+            points={plotPoints}
+            xLabel={pcLabel(1, data.variance_explained)}
+            yLabel={pcLabel(2, data.variance_explained)}
+            svgRef={chartRef}
+          />
           <div className="mt-4 flex gap-8 border-t border-rule pt-3">
             <Stat label="PC1 variance" value={`${(data.variance_explained[0] * 100).toFixed(1)}%`} tone="accent" />
             {data.variance_explained[1] != null && (

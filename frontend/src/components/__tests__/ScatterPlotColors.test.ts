@@ -42,3 +42,12 @@ describe("correlation colouring default", () => {
     expect(pickColorColumn(["lineage", "cell_line_name"], pts)).toBe("");
   });
 });
+
+describe("PCA axis labels", () => {
+  it("carry the variance explained", async () => {
+    const { pcLabel } = await import("../../pages/CorrelationPage");
+    expect(pcLabel(1, [0.7315, 0.12])).toBe("PC1 (73.2% of variance)");
+    expect(pcLabel(2, [0.7315, 0.12])).toBe("PC2 (12.0% of variance)");
+    expect(pcLabel(3, [0.7315])).toBe("PC3");
+  });
+});
