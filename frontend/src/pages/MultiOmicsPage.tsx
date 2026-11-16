@@ -86,6 +86,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               Expression of
             </label>
             <input
+              aria-label="Expression of"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -97,6 +98,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               Split by mutation in
             </label>
             <select
+              aria-label="Split by mutation in"
               value={mutatedGene}
               onChange={(e) => setMutatedGene(e.target.value)}
               disabled={!topMutated?.genes.length}
@@ -243,6 +245,7 @@ function AuxFeaturePicker({
     <div ref={boxRef} className="relative">
       <div className="flex gap-1">
         <input
+          aria-label="Feature"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSubmit()}
@@ -263,6 +266,7 @@ function AuxFeaturePicker({
         <div className="absolute z-20 mt-1 max-h-[280px] w-full overflow-y-auto rounded-[3px] border border-rule-firm bg-surface shadow-lg">
           <div className="sticky top-0 border-b border-rule bg-surface p-2">
             <input
+              aria-label="Search features"
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -355,6 +359,7 @@ function AuxCorrelationTab({
               Expression of
             </label>
             <input
+              aria-label="Expression of"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -522,6 +527,7 @@ export function MultiOmicsPage() {
                 Dataset
               </label>
               <select
+                aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"

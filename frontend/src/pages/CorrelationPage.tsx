@@ -79,6 +79,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene A</label>
             <input
+              aria-label="Gene A"
               value={geneA}
               onChange={(e) => setGeneA(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -88,6 +89,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene B</label>
             <input
+              aria-label="Gene B"
               value={geneB}
               onChange={(e) => setGeneB(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -126,6 +128,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
                 Color by
               </label>
               <select
+                aria-label="Color by"
                 value={colorBy}
                 onChange={(e) => setColorBy(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -255,6 +258,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene</label>
             <input
+              aria-label="Gene"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -264,6 +268,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
           <div className="min-w-[10ch]">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Top N</label>
             <input
+              aria-label="Top N"
               type="number"
               min={1}
               max={200}
@@ -456,6 +461,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
                 Color by
               </label>
               <select
+                aria-label="Color by"
                 value={colorBy}
                 onChange={(e) => setColorBy(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -568,6 +574,7 @@ export function CorrelationPage() {
                 Dataset
               </label>
               <select
+                aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"

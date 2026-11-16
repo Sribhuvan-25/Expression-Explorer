@@ -284,6 +284,7 @@ function SingleGeneCompareTab() {
                 Gene symbol
               </label>
               <input
+                aria-label="Gene symbol"
                 value={geneInput}
                 onChange={(e) => setGeneInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && run()}
@@ -296,6 +297,7 @@ function SingleGeneCompareTab() {
                 Group by
               </label>
               <select
+                aria-label="Group by"
                 value={groupColumn}
                 onChange={(e) => setGroupColumn(e.target.value)}
                 disabled={groupColumnOptions.length === 0}
@@ -483,6 +485,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[20ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Dataset</label>
             <select
+              aria-label="Dataset"
               value={datasetId}
               onChange={(e) => setDatasetId(e.target.value)}
               className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -497,6 +500,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[14ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group by</label>
             <select
+              aria-label="Group by"
               value={groupColumn}
               onChange={(e) => setGroupColumn(e.target.value)}
               disabled={!activeDataset || activeDataset.group_columns.length === 0}
@@ -512,6 +516,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group A</label>
             <select
+              aria-label="Group A"
               value={groupA}
               onChange={(e) => setGroupA(e.target.value)}
               disabled={groupOptions.length < 2}
@@ -527,6 +532,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group B</label>
             <select
+              aria-label="Group B"
               value={groupB}
               onChange={(e) => setGroupB(e.target.value)}
               disabled={groupOptions.length < 2}

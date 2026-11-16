@@ -83,6 +83,7 @@ export function GeneTagInput({
           </span>
         ))}
         <input
+          aria-label="Add a gene"
           type="text"
           placeholder={genes.length === 0 ? placeholder : "Add another"}
           className="min-w-[10ch] flex-1 bg-transparent px-1 py-0.5 font-mono text-[12.5px] text-ink outline-none placeholder:text-ink-mute placeholder:font-sans placeholder:not-italic"

@@ -733,7 +733,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
         <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[24ch] flex-[2]">
             <label className={lbl}>Contrast</label>
-            <select value={contrastId} onChange={(e) => setContrastId(e.target.value)} className={sel}>
+            <select aria-label="Contrast" value={contrastId} onChange={(e) => setContrastId(e.target.value)} className={sel}>
               {contrasts.map((x) => (
                 <option key={x.contrast_id} value={x.contrast_id}>
                   {x.label}
@@ -743,7 +743,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
           </div>
           <div className="min-w-[12ch] flex-1">
             <label className={lbl}>Direction</label>
-            <select value={direction} onChange={(e) => setDirection(e.target.value as ContrastDirection)} className={sel}>
+            <select aria-label="Direction" value={direction} onChange={(e) => setDirection(e.target.value as ContrastDirection)} className={sel}>
               <option value="both">Both</option>
               <option value="up">Up (log2FC &gt; 0)</option>
               <option value="down">Down (log2FC &lt; 0)</option>
@@ -751,7 +751,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
           </div>
           <div className="min-w-[10ch] flex-1">
             <label className={lbl}>Show top</label>
-            <select value={n} onChange={(e) => setN(Number(e.target.value))} className={sel}>
+            <select aria-label="Show top" value={n} onChange={(e) => setN(Number(e.target.value))} className={sel}>
               {[25, 50, 100, 250, 500].map((v) => (
                 <option key={v} value={v}>
                   {v}

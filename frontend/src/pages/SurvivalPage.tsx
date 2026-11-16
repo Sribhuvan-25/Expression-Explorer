@@ -93,6 +93,7 @@ export function SurvivalPage() {
                     Dataset
                   </label>
                   <select
+                    aria-label="Dataset"
                     value={datasetId}
                     onChange={(e) => setDatasetId(e.target.value)}
                     className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -170,6 +171,7 @@ export function SurvivalPage() {
                     <div className="flex items-center gap-2 text-[12px] text-ink-soft">
                       <span>High</span>
                       <input
+                        aria-label="High cutoff percent"
                         type="number"
                         min={1}
                         max={99}
@@ -179,6 +181,7 @@ export function SurvivalPage() {
                       />
                       <span>% · Low</span>
                       <input
+                        aria-label="Low cutoff percent"
                         type="number"
                         min={1}
                         max={99}
