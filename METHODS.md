@@ -1360,6 +1360,24 @@ reordering `/datasets/compare-multi` below the dynamic
 `/datasets/{dataset_id}` route failed the shadowing test. Both restored
 cleanly.
 
+### 9.1a Tests cannot reach the network
+**Decided (2026-11-15).** `backend/tests/conftest.py` refuses every
+non-loopback connection and DNS lookup for every test.
+
+CLAUDE.md already said tests must not hit the network; nothing enforced
+it. `GET /datasets` loads every registered dataset that is not warming
+and swallows load failures by design (§7.9), so
+`test_dataset_listing_includes_provenance` downloaded every real cohort
+whenever the machine had network access: ~1,150 s of a ~1,230 s CI run
+(measured with Python 3.12 and an empty cache), with no failure to show
+for it. Main's CI had been taking 10–20 minutes for this reason. With the
+guard, those loaders fail in milliseconds, the endpoint's behaviour under
+test is unchanged, and the full suite runs in ~7 s on an empty cache.
+`tests/test_network_guard.py` proves the guard refuses outbound HTTP and
+raw sockets and keeps loopback working (it fails with the guard
+disabled). A future test that needs real data must use a vendored
+fixture, as the contrast tests do.
+
 ### 9.2 What is deliberately not covered
 - **Ingest loaders** (33–67%) hit the network and download large files.
   Their parsing logic is covered by `test_aux_ingest.py` against
@@ -1760,3 +1778,4 @@ small, since the variance prior is doing much of the work.
 | 2026-11-15 | §5.7 export audit — every PNG export in the app exported and inspected in the browser (Compare box plot, Perturbation Contrasts panel, Correlation scatter, PCA, Survival). Found and fixed, each with a test validated by reintroducing the defect: PCA coloured its first and third groups in two near-identical blues (`--accent` #2455A4 vs `--cool` #2C6E9B), so GSE66586's non-amplified and non-malignant lines were indistinguishable on screen and in the export — palette reordered (blue, red, amber, …); PCA and Survival PNGs had no legend (HTML legends are not part of the image), so the image did not say which colour was which group or which curve was HIGH — a text colour key is now written into the image; Correlation, PCA and Survival PNG titles did not name the dataset — now do, with the pooled-experiments note for designed datasets; Compare PNGs printed p = 0.0952 with no small-sample floor — the floor is now in the image; long titles and notes ran off the image edge — wrapped. Frontend 51 passed, tsc and build clean. |
 | 2026-11-15 | Remaining usability/identity gaps closed, each verified in the browser and pinned by a test validated by reintroducing the defect. Signature Score listed bare GSM ids; it now reads the same scores from `/rank-signature` (identical to `/signature-score` on all 5 datasets, max difference 0.0, both methods) and shows each sample's cell line and groups. A renamed gene (C1orf112, now FIRRM) returned a bare "not found" on GSE324984: the gene-annotation panel, which already knew the current symbol from MyGene.info, now says the searched name is a previous one and offers "Search FIRRM instead" — an explicit choice, never a silent re-query (§7.4). Compare's skipped-dataset line printed a double full stop. Differential and Sample Ranking CSVs did not name their dataset (same group pair from two datasets overwrote one file): dataset id now in filename and every row; differential CSV carries the exact-test floor. Differential, Sample Ranking, panel and top-genes CSVs and every PNG export checked against the API (corrected: the co-expression CSV was not yet checked at this point — see next line). Backend 260 passed (1 skipped), frontend 56 passed, tsc and build clean, 107-check API sweep clean. |
 | 2026-11-15 | Co-expression network CSV — the one CSV export not yet checked — exported in the browser: matched the API on all 20 rows but carried no dataset in its filename or rows (one gene's network from two datasets overwrote one file); fixed like the others, with a test validated by reverting the fix. The app has exactly five CSV exports (Compare differential, Perturbation Contrasts panel and top genes, Sample Ranking, co-expression), all now verified value-for-value against the API; Correlation scatter, PCA and Survival export PNG only, all verified. §7.1 and §8.2 now lead with the values the running app serves (Mann–Whitney on GDS4299; post-§8.6a DTX1/MYCN), the earlier figures kept as dated history. Frontend 57 passed, backend 260 passed. |
+| 2026-11-15 | §9.1a: backend tests are now network-free by construction (`tests/conftest.py` refuses non-loopback connections). Found while waiting on PR #1's CI: one listing test was silently downloading every real cohort, ~19 of CI's ~20 minutes. Suite on an empty cache: 264 passed, 1 skipped in ~7 s. |
