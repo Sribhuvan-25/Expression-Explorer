@@ -186,6 +186,7 @@ export function DatasetPanel({
         )}
         {pairwise.length > 0 ? (
           <DataTable
+            label={`Pairwise tests, ${result.display_name}`}
             columns={[
               { key: "pair", label: "Comparison" },
               { key: "n", label: "n (a / b)", align: "right" },

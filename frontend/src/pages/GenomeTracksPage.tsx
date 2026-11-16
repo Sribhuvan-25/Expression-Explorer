@@ -62,6 +62,7 @@ export function GenomeTracksPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const browserRef = useRef<any>(null);
+  const igvLabelTimer = useRef<number | undefined>(undefined);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "too-narrow">("loading");
   const [errorMsg, setErrorMsg] = useState("");
   // "" once the user has moved away from every preset inside IGV.
@@ -154,6 +155,32 @@ export function GenomeTracksPage() {
           return;
         }
         browserRef.current = browser;
+        // igv.js leaves its chromosome menu and zoom slider unlabelled
+        // (axe: select-name, label); name them for screen readers.
+        // Its widgets live inside a shadow root and appear only once the
+        // genome has loaded, so label them on each locus change and on a
+        // few early ticks.
+        const labelIgvWidgets = () => {
+          // From the document: the container node React holds is not
+          // always the one igv.js ends up rendering into.
+          const roots: ParentNode[] = [document];
+          document.querySelectorAll(".igv-container").forEach((el) => el.shadowRoot && roots.push(el.shadowRoot));
+          let labelled = 0;
+          for (const root of roots) {
+            const select = root.querySelector('select[name="chromosome-select-widget"]');
+            if (select) { select.setAttribute("aria-label", "Chromosome"); labelled++; }
+            root.querySelectorAll('input[type="range"]').forEach((el) => { el.setAttribute("aria-label", "Zoom level"); labelled++; });
+          }
+          return labelled >= 2;
+        };
+        browser.on("locuschange", labelIgvWidgets);
+        // igv.js attaches its shadow root and widgets only after the genome
+        // loads (~20 s from NCBI), so check every half second until both
+        // are labelled, for up to a minute.
+        let ticks = 0;
+        igvLabelTimer.current = window.setInterval(() => {
+          if (labelIgvWidgets() || ++ticks > 120) window.clearInterval(igvLabelTimer.current);
+        }, 500);
         // Panning, zooming or searching inside IGV leaves the preset
         // locus: un-highlight the preset button, which stayed "MYB" while
         // IGV showed MYCN. Changes right after a preset jump are the jump.
@@ -171,6 +198,7 @@ export function GenomeTracksPage() {
 
     return () => {
       cancelled = true;
+      window.clearInterval(igvLabelTimer.current);
       if (browserRef.current) {
         igv.removeBrowser(browserRef.current);
         browserRef.current = null;

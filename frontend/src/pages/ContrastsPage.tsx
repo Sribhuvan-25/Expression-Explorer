@@ -607,7 +607,8 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
             </Panel>
 
             <Panel title="Per-gene statistics" action={<CsvButton onClick={exportCsv} />}>
-              <div className="max-h-[70vh] overflow-auto rounded-[3px] border border-rule">
+              {/* Scrolls both ways: focusable so keyboard users can reach every row. */}
+              <div tabIndex={0} role="region" aria-label="Per-gene statistics" className="max-h-[70vh] overflow-auto rounded-[3px] border border-rule">
                 <table className="w-full min-w-[56rem] border-collapse text-[12.5px]">
                   <thead>
                     <tr>
@@ -826,7 +827,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
             <Stat label={data.direction === "up" ? "Up genes with q < 0.05" : data.direction === "down" ? "Down genes with q < 0.05" : "Genes with q < 0.05"} value={isNum(data.n_significant_q05) ? data.n_significant_q05.toLocaleString() : "—"} tone="accent" />
             <Stat label="Genes tested" value={isNum(c.n_genes_tested) ? c.n_genes_tested.toLocaleString() : "—"} />
           </div>
-          <div className="max-h-[70vh] overflow-auto rounded-[3px] border border-rule">
+          <div tabIndex={0} role="region" aria-label="Top genes" className="max-h-[70vh] overflow-auto rounded-[3px] border border-rule">
             <table className="w-full min-w-[40rem] border-collapse text-[12.5px]">
               <thead>
                 <tr>
