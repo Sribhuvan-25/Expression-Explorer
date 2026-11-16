@@ -321,7 +321,7 @@ function SingleGeneCompareTab() {
                 ))}
               </select>
             </div>
-            <PrimaryButton onClick={run} loading={isFetching} disabled={!groupColumn || effectiveSelected.size === 0}>
+            <PrimaryButton onClick={run} loading={isFetching} disabled={!geneInput.trim() || !groupColumn || effectiveSelected.size === 0}>
               Run comparison
             </PrimaryButton>
           </div>
