@@ -231,7 +231,8 @@ function FoldChangeChart({
         ),
       )}
       <text x={(plotX0 + plotX1) / 2} y={H - 8} textAnchor="middle" fontSize={10} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
-        LOG2 FOLD-CHANGE (TREATMENT − REFERENCE) · SOLID = q &lt; 0.05 · BARS BEYOND ±{L} TRUNCATED
+        LOG2 FOLD-CHANGE (TREATMENT − REFERENCE) · SOLID = q &lt; 0.05
+        {maxAbs > L ? ` · BARS BEYOND ±${L} TRUNCATED (›), VALUE PRINTED` : ""}
       </text>
     </svg>
   );
@@ -959,7 +960,7 @@ export function ContrastsPage() {
               {` · ${formatUnit(dataset.expression_unit)}`}
               {` · ${dataset.n_contrasts} contrasts`}
             </p>
-            {dataset.notes && <p className="mt-2 text-[11.5px] leading-relaxed text-ink-soft">{dataset.notes}</p>}
+            {dataset.notes && <DatasetNotes notes={dataset.notes} />}
           </Panel>
         )}
         {contrastError && <ErrorState message={(contrastError as Error).message} />}
@@ -995,5 +996,42 @@ export function ContrastsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A dataset's notes, first sentence visible and the rest behind "More".
+ * GSE324984's notes run to ~200 words; shown in full they pushed the
+ * controls below the fold on every visit. Exported for tests.
+ */
+export function DatasetNotes({ notes }: { notes: string }) {
+  const [open, setOpen] = useState(false);
+  // Whole sentences until ~120 characters: "PMID 42001796." alone says
+  // nothing; the design sentence after it is what a reader needs.
+  const sentences = notes.match(/[^.]+(\.(\s|$)|$)/g) ?? [notes];
+  let first = "";
+  for (const sentence of sentences) {
+    first += sentence;
+    if (first.trim().length >= 120) break;
+  }
+  first = first.trim();
+  const rest = notes.slice(notes.indexOf(first) + first.length).trim();
+  return (
+    <p data-testid="dataset-notes" className="mt-2 text-[11.5px] leading-relaxed text-ink-soft">
+      {first}
+      {rest && (
+        <>
+          {open && <> {rest}</>}{" "}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="font-mono text-[11px] text-accent underline-offset-2 hover:underline"
+          >
+            {open ? "Less" : "More about this dataset"}
+          </button>
+        </>
+      )}
+    </p>
   );
 }
