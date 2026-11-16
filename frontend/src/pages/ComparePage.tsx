@@ -549,6 +549,16 @@ export function DifferentialGenesTab() {
       <QueryPanel
         done={!!data && !!query}
         runKey={query}
+        // The context bar can change the dataset under a collapsed panel;
+        // reopen it then, as every other analysis does.
+        dirty={
+          !!query &&
+          !!data &&
+          (query.datasetId !== datasetId ||
+            query.groupColumn !== groupColumn ||
+            query.groupA !== groupA ||
+            query.groupB !== groupB)
+        }
         summary={
           query && (
             <SummaryParts
