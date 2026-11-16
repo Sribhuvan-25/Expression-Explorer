@@ -613,6 +613,31 @@ positives on a working configuration.
   configurations including the new tie order (log-rank, HR, CI identical
   to R `survival`), and log-scale PCA on both TPM datasets (prcomp, ≤ 1e-14).
 
+### 5.10 Workbench layout
+**Decided (2026-11-16).** The interface is the "Workbench" design, chosen
+from three alternatives built by separate design agents and compared with
+the previous design on seven tasks by four researcher personas
+(wet-lab biologist, bioinformatician, clinician-scientist, first-year
+student; Workbench 7.2/10 overall vs 5.0 for the previous design). It is
+a frontend change only: no endpoint, statistic or default analysis
+changed.
+- *Context bar.* A dataset and gene list set once at the top seed every
+  analysis's own inputs (`frontend/src/lib/workbench.tsx`). It only
+  fills the visible inputs; what is sent to the API is still exactly what
+  those inputs show, and a pane can override it. A query panel that
+  collapsed after a run reopens whenever its inputs stop matching that
+  run, so a result is never shown under a summary of a different query;
+  the summary line always describes the query that ran.
+- *Collapsing queries, statistics beside the chart.* After a run the
+  query folds to one line with Edit; on wide panes the statistics sit
+  beside the figure.
+- *Type.* IBM Plex Sans and IBM Plex Mono throughout, tabular numerals,
+  sentence-case field labels (replacing Space Grotesk, JetBrains Mono and
+  uppercase mono labels).
+- *Verified on the running app after the merge* (Playwright driving the
+  real UI, every number on screen checked against the API response it
+  came from): every number shown matched its API response (Compare 36/36 including all 15 correlation runs, network and PCA 10/10, signature and ranking 15/15, multi-omics, contrasts and context bar 9/9) and the values previously verified against R were unchanged (Kruskal–Wallis p 2.89e-8; survival log-rank p 2.53e-14, HR 23.504; correlation r −0.847; CRISPR r −0.652). Every export works, axe reports no violations, Alt+1–8, Delete and / work, and nothing overflows at 390 px. Merged as PR #7, with the accessibility fixes in a follow-up.
+
 ---
 
 ## 6. Reporting and transparency
