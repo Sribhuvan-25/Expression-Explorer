@@ -30,3 +30,15 @@ describe("scatter group colours", () => {
     expect(GROUP_COLORS).not.toContain(NO_GROUP_COLOR);
   });
 });
+
+describe("correlation colouring default", () => {
+  it("picks a grouping with 2-8 groups among the plotted samples", async () => {
+    const { pickColorColumn } = await import("../../pages/CorrelationPage");
+    const pts = Array.from({ length: 12 }, (_, i) => ({
+      group_columns: { lineage: "Lymphoid", subtype: ["A", "B", "C"][i % 3], cell_line_name: `L${i}` },
+    }));
+    expect(pickColorColumn(["lineage", "subtype", "cell_line_name"], pts)).toBe("subtype");
+    expect(pickColorColumn(["lineage", "subtype"], pts, "etp_status")).toBe("subtype");
+    expect(pickColorColumn(["lineage", "cell_line_name"], pts)).toBe("");
+  });
+});

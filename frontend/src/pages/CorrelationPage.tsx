@@ -20,6 +20,25 @@ const POOLED_EXPORT_NOTE =
 
 /** Exported for tests. Shown (and printed in the PNG) whenever the
  * points span more than one group of the colouring column. */
+/**
+ * The grouping worth colouring by: the first column with 2-8 groups among
+ * the plotted samples. DepMap's first column, lineage, is one group (all
+ * Lymphoid), so its default colouring showed nothing; cell_line_name is
+ * one group per sample. With none, no colouring.
+ */
+export function pickColorColumn(
+  columns: string[],
+  points: { group_columns?: Record<string, string | null> }[],
+  preferred?: string,
+): string {
+  const usable = (col: string) => {
+    const n = new Set(points.map((p) => p.group_columns?.[col]).filter((v) => v != null)).size;
+    return n >= 2 && n <= 8;
+  };
+  if (preferred && columns.includes(preferred) && usable(preferred)) return preferred;
+  return columns.find(usable) ?? "";
+}
+
 export function poolsGroupsNote(n: number, nGroups: number, column: string): string {
   return `r is computed across all ${n} samples together, spanning ${nGroups} ${column} groups. A difference between groups alone can produce a strong r; check whether the trend also holds within each colour.`;
 }
@@ -49,6 +68,13 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
     queryFn: () => api.correlation(query!.datasetId, query!.geneA, query!.geneB, query!.method),
     enabled: !!query,
   });
+  // Until the user picks a colouring, choose one that separates the
+  // plotted samples (see pickColorColumn).
+  const colorChosen = useRef(false);
+  useEffect(() => {
+    if (!data || !activeDataset || colorChosen.current) return;
+    setColorBy(pickColorColumn(activeDataset.group_columns, data.points));
+  }, [data, activeDataset]);
 
   const run = () => {
     const a = geneA.trim().toUpperCase();
@@ -130,7 +156,10 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               <select
                 aria-label="Color by"
                 value={colorBy}
-                onChange={(e) => setColorBy(e.target.value)}
+                onChange={(e) => {
+                  colorChosen.current = true;
+                  setColorBy(e.target.value);
+                }}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
               >
                 <option value="">None</option>
@@ -414,6 +443,11 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
     queryFn: () => api.pca(query!.datasetId, query!.genes),
     enabled: !!query,
   });
+  const colorChosen = useRef(false);
+  useEffect(() => {
+    if (!data || !activeDataset || colorChosen.current) return;
+    setColorBy(pickColorColumn(activeDataset.group_columns, data.points, "etp_status"));
+  }, [data, activeDataset]);
 
   const run = () => {
     if (genes.length >= 2 && datasetId) setQuery({ datasetId, genes });
@@ -463,7 +497,10 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
               <select
                 aria-label="Color by"
                 value={colorBy}
-                onChange={(e) => setColorBy(e.target.value)}
+                onChange={(e) => {
+                  colorChosen.current = true;
+                  setColorBy(e.target.value);
+                }}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
               >
                 <option value="">None</option>

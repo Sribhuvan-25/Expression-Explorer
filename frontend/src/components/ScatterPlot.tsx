@@ -101,9 +101,12 @@ export function ScatterPlot({
     // the axis line.
     const xPad = (Math.max(...xs) - Math.min(...xs)) * 0.06 || 1;
     const yPad = (Math.max(...ys) - Math.min(...ys)) * 0.06 || 1;
+    // Non-negative data (log2(TPM+1), TPM) keeps its axis at 0: padding
+    // put DepMap MYCN's axis at -2, a value no sample can have.
+    const low = (vals: number[], pad: number) => (Math.min(...vals) >= 0 ? Math.max(0, Math.min(...vals) - pad) : Math.min(...vals) - pad);
     return {
-      xTicks: niceTicks(Math.min(...xs) - xPad, Math.max(...xs) + xPad, 5),
-      yTicks: niceTicks(Math.min(...ys) - yPad, Math.max(...ys) + yPad, 5),
+      xTicks: niceTicks(low(xs, xPad), Math.max(...xs) + xPad, 5),
+      yTicks: niceTicks(low(ys, yPad), Math.max(...ys) + yPad, 5),
     };
   }, [points]);
   const xMin = xTicks[0];
