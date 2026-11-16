@@ -66,6 +66,129 @@ def test_download_star_counts_does_not_retry_http_error(monkeypatch):
     assert calls["n"] == 1
 
 
+def _file(file_id, case_id, sample_type):
+    return {
+        "file_id": file_id,
+        "cases": [{"submitter_id": case_id, "samples": [{"sample_type": sample_type}]}],
+    }
+
+
+def test_select_one_file_per_case_prefers_primary_over_recurrent():
+    """Reproduces the data-accuracy bug found in production: a case with
+    both a Primary and a Recurrent RNA-seq file must resolve to the
+    Primary sample deterministically, not whichever file GDC happens to
+    list first (56/469 real TARGET-ALL-P2 cases hit this)."""
+    files = [
+        _file("f-recurrent", "CASE_A", "Recurrent Blood Derived Cancer - Bone Marrow"),
+        _file("f-primary", "CASE_A", "Primary Blood Derived Cancer - Bone Marrow"),
+    ]
+    selected = gdc_target.select_one_file_per_case(files)
+    assert len(selected) == 1
+    assert selected[0]["file_id"] == "f-primary"
+
+    # Order in the input list must not matter.
+    reversed_files = list(reversed(files))
+    selected2 = gdc_target.select_one_file_per_case(reversed_files)
+    assert selected2[0]["file_id"] == "f-primary"
+
+
+def test_select_one_file_per_case_prefers_bone_marrow_over_peripheral_blood():
+    files = [
+        _file("f-blood", "CASE_B", "Primary Blood Derived Cancer - Peripheral Blood"),
+        _file("f-marrow", "CASE_B", "Primary Blood Derived Cancer - Bone Marrow"),
+    ]
+    selected = gdc_target.select_one_file_per_case(files)
+    assert selected[0]["file_id"] == "f-marrow"
+
+
+def test_select_one_file_per_case_falls_back_to_recurrent_when_no_primary_exists():
+    """1 real TARGET-ALL-P2 case has only Recurrent files -- must still
+    resolve to a file, not disappear from the cohort."""
+    files = [
+        _file("f-r2", "CASE_C", "Recurrent Blood Derived Cancer - Bone Marrow"),
+        _file("f-r1", "CASE_C", "Recurrent Blood Derived Cancer - Peripheral Blood"),
+    ]
+    selected = gdc_target.select_one_file_per_case(files)
+    assert len(selected) == 1
+    assert selected[0]["file_id"] == "f-r2"  # bone marrow preferred among same-tier options
+
+
+def test_select_one_file_per_case_breaks_true_duplicate_ties_deterministically():
+    """8 real TARGET-ALL-P2 cases have two files of the identical
+    sample_type -- a genuine duplicate upload, not a second timepoint.
+    Must resolve to the same file on every run (lowest file_id), not an
+    arbitrary one."""
+    files = [
+        _file("f-zzz", "CASE_D", "Primary Blood Derived Cancer - Bone Marrow"),
+        _file("f-aaa", "CASE_D", "Primary Blood Derived Cancer - Bone Marrow"),
+    ]
+    selected = gdc_target.select_one_file_per_case(files)
+    assert len(selected) == 1
+    assert selected[0]["file_id"] == "f-aaa"
+
+    # Stable regardless of input order.
+    selected2 = gdc_target.select_one_file_per_case(list(reversed(files)))
+    assert selected2[0]["file_id"] == "f-aaa"
+
+
+def test_select_one_file_per_case_leaves_single_file_cases_untouched():
+    files = [_file("f-only", "CASE_E", "Primary Blood Derived Cancer - Bone Marrow")]
+    selected = gdc_target.select_one_file_per_case(files)
+    assert selected == files
+
+
+def test_load_uses_one_file_per_case_selection(tmp_path, monkeypatch):
+    """End-to-end: load() must never assemble two columns for the same
+    case. Before the fix, whichever file GDC listed first silently won
+    (see the removed `if sample_path.exists(): continue` skip) --
+    reintroducing that behaviour by returning both files unfiltered from
+    list_open_rna_files and skipping select_one_file_per_case would make
+    this test's `fetch_calls` assertion fail (both files get downloaded,
+    not just the Primary one)."""
+    monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    def fake_list_open_rna_files(client):
+        return [
+            _file("f-recurrent", "CASE_A", "Recurrent Blood Derived Cancer - Bone Marrow"),
+            _file("f-primary", "CASE_A", "Primary Blood Derived Cancer - Bone Marrow"),
+        ]
+
+    fetch_calls = []
+
+    def fake_download_star_counts(client, file_id):
+        fetch_calls.append(file_id)
+        tpm = 1.0 if file_id == "f-primary" else 99.0
+        return pd.DataFrame(
+            {"gene_name": ["GENE1"], "tpm_unstranded": [tpm]},
+            index=["ENSG1"],
+        )
+
+    def fake_fetch_clinical(client):
+        return pd.DataFrame(
+            {
+                "sample_id": ["CASE_A"],
+                "vital_status": ["Alive"],
+                "days_to_death": [None],
+                "days_to_last_follow_up": [200],
+            }
+        )
+
+    monkeypatch.setattr(gdc_target, "list_open_rna_files", fake_list_open_rna_files)
+    monkeypatch.setattr(gdc_target, "_download_star_counts", fake_download_star_counts)
+    monkeypatch.setattr(gdc_target, "fetch_clinical", fake_fetch_clinical)
+    monkeypatch.setattr(gdc_target, "load_etp_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "load_mrd_status", lambda: pd.Series(dtype=str))
+    monkeypatch.setattr(gdc_target, "_client", lambda: _NullContextClient())
+
+    dataset = gdc_target.load(use_cache=True, with_aux=False)
+
+    # Exactly one column for CASE_A -- no patient appears twice.
+    assert list(dataset.matrix.columns) == ["CASE_A"]
+    assert fetch_calls == ["f-primary"]
+    assert dataset.matrix.loc["ENSG1", "CASE_A"] == 1.0
+
+
 def test_load_skips_samples_already_downloaded(tmp_path, monkeypatch):
     monkeypatch.setattr(gdc_target, "CACHE_DIR", tmp_path)
     tmp_path.mkdir(parents=True, exist_ok=True)

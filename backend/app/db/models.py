@@ -113,6 +113,9 @@ class DatasetRow(Base):
     aux_layers: Mapped[list["AuxLayerRow"]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan"
     )
+    contrasts: Mapped[list["ContrastRow"]] = relationship(
+        back_populates="dataset", cascade="all, delete-orphan"
+    )
 
 
 class SampleRow(Base):
@@ -215,3 +218,41 @@ class AuxLayerRow(Base):
     features_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     dataset: Mapped[DatasetRow] = relationship(back_populates="aux_layers")
+
+
+class ContrastRow(Base):
+    """A pre-specified design contrast (METHODS.md 11.1) and where its
+    genome-wide result table lives.
+
+    The statistics are computed once, at ingest, from the dataset's raw
+    counts -- the same reasoning as matrices: a dense per-gene table is a
+    parquet file, and this row is its description. Storing the result
+    rather than recomputing per request also means every page that shows
+    a contrast's numbers reads the same numbers.
+
+    A new table rather than new columns on `datasets`, so that existing
+    databases gain it via `create_all()` with no ALTER on a populated
+    table (an alembic migration is provided for Postgres as well).
+    """
+
+    __tablename__ = "contrasts"
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "contrast_id", name="uq_contrast_per_dataset"),
+        Index("ix_contrasts_dataset", "dataset_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("datasets.dataset_id", ondelete="CASCADE")
+    )
+    contrast_id: Mapped[str] = mapped_column(String(64))
+    # The ContrastSpec, verbatim (label, group column, reference/treatment
+    # values, stratum, method, direction note).
+    spec: Mapped[dict] = mapped_column(JSON)
+    reference_samples: Mapped[list] = mapped_column(JSON)
+    treatment_samples: Mapped[list] = mapped_column(JSON)
+    # Fit diagnostics: genes in/tested, prior df, TMM factors.
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    results_uri: Mapped[str] = mapped_column(String(1024))
+
+    dataset: Mapped[DatasetRow] = relationship(back_populates="contrasts")

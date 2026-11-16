@@ -50,6 +50,20 @@ const SOURCES: Source[] = [
     url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE225559",
   },
   {
+    name: "GSE324984 (GEO)",
+    kind: "dataset",
+    identifier: "GSE324984 · PMID 42001796",
+    detail: "MYCL overexpression (C4-2B) and knockdown (NCI-H660), RNA-seq, n=2 per arm",
+    url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE324984",
+  },
+  {
+    name: "GSE66586 (GEO)",
+    kind: "dataset",
+    identifier: "GSE66586 · Gu et al. 2016, PMID 26844271",
+    detail: "10 neuroblastoma / control cell lines, MYCN status, Affymetrix HuGene 1.0 ST",
+    url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE66586",
+  },
+  {
     name: "Liu et al., Nat Genet 2017",
     kind: "paper",
     identifier: "10.1038/ng.3909",

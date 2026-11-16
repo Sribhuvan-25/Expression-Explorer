@@ -27,6 +27,12 @@ export interface DatasetSummary {
   // a different thing from missing or broken, and the UI says so rather
   // than showing an unexplained empty picker.
   warming?: boolean;
+  // Present for loaded datasets. n_contrasts > 0 means the dataset declares
+  // precomputed design contrasts (count-based limma-trend per experiment,
+  // METHODS.md) and the Perturbation Contrasts pane can use it. Optional:
+  // older backends and still-warming datasets omit both.
+  n_contrasts?: number;
+  expression_unit?: string;
 }
 
 export interface GeneInfo {
@@ -67,6 +73,16 @@ export interface PairwiseTest {
   u_stat: number;
   p_value: number;
   q_value?: number;
+  // Smallest two-sided p an exact Mann-Whitney can produce for these group
+  // sizes (0.333 for 2 vs 2). Above 0.05 means the test cannot reach
+  // significance whatever the data -- "p >= 0.05" is then not evidence of
+  // no difference. Optional: older responses lack it.
+  min_p_achievable?: number | null;
+  // Non-null when the two groups differ on a stratum the dataset declares
+  // (e.g. GSE324984 by `arm`: C4-2B OE vs NCI-H660 shCtrl crosses
+  // cell_line) -- the difference then mostly reflects the stratum, not
+  // the perturbation. Optional: older responses lack it.
+  crosses_stratum?: { column: string; group_a: string; group_b: string } | null;
 }
 
 export interface CompareResult {
@@ -84,6 +100,8 @@ export interface CompareResult {
   // excluded (previously always a string, even claiming an exclusion
   // reason on a 100%-covered grouping column).
   exclusion_reason: string | null;
+  // Plain-language warning when some pairs cross a stratum; null otherwise.
+  stratum_caveat?: string | null;
 }
 
 export interface CompareMultiDatasetResult {
@@ -99,6 +117,7 @@ export interface CompareMultiDatasetResult {
   points?: ComparePoint[];
   pairwise_tests?: PairwiseTest[];
   kruskal_wallis?: { h_stat: number | null; p_value: number | null };
+  stratum_caveat?: string | null;
 }
 
 export interface CompareMultiResult {
@@ -236,7 +255,134 @@ export interface DifferentialResult {
   n_b: number;
   n_genes_tested: number;
   top_n: number;
+  // See PairwiseTest.min_p_achievable. Optional: older responses lack it.
+  min_p_achievable?: number | null;
   genes: DifferentialGeneRow[];
+}
+
+// --- Design contrasts (Perturbation Contrasts pane)
+// A contrast is one precomputed within-experiment differential test (e.g.
+// C4-2B MYCL overexpression vs empty vector), fitted on the complete
+// counts with limma-trend. log2_fc = treatment minus reference; q_value is
+// BH across every gene tested in THAT experiment (genome-wide), so it is
+// the same number wherever the gene is shown.
+
+export interface ContrastSummary {
+  contrast_id: string;
+  label: string;
+  group_column: string;
+  reference: string;
+  treatment: string;
+  stratum_column: string | null;
+  stratum_value: string | null;
+  method: string;
+  direction_note: string;
+  n_reference: number;
+  n_treatment: number;
+  reference_samples: string[];
+  treatment_samples: string[];
+  n_genes_input: number;
+  n_genes_tested: number;
+  // Sample accounting (CLAUDE.md): a contrast uses only its own arms, so
+  // n_excluded is the rest of the dataset, with the reason. Optional:
+  // older responses lack them.
+  n_dataset_total?: number;
+  n_excluded?: number;
+  exclusion_reason?: string | null;
+  details?: {
+    df_prior?: number;
+    df_residual?: number;
+    norm_factors?: Record<string, number>;
+    [key: string]: unknown;
+  };
+}
+
+export interface ContrastListResult {
+  dataset_id: string;
+  expression_unit: string;
+  contrasts: ContrastSummary[];
+}
+
+export interface ContrastArm {
+  label: string;
+  // null when the gene has no value in the expression matrix (e.g. a
+  // truncated submitter TPM file) even though the count-based test ran.
+  mean_expression: number | null;
+  values: { sample_id: string; value: number | null }[];
+  // TMM-normalised CPM from the counts the test was fitted on -- the scale
+  // log2_fc actually describes. Empty / null when the gene was not tested.
+  mean_norm_cpm?: number | null;
+  norm_cpm?: { sample_id: string; value: number | null }[];
+}
+
+export interface ContrastPanelCell {
+  contrast_id: string;
+  in_contrast_table: boolean;
+  tested: boolean;
+  not_tested_reason: string | null;
+  log2_fc: number | null;
+  ave_log_cpm: number | null;
+  t: number | null;
+  p_value: number | null;
+  q_value: number | null;
+  // false when the displayed TPM means move opposite to log2_fc (TPM and
+  // the count model can disagree for low/variable genes); null = untested.
+  display_direction_agrees?: boolean | null;
+  reference: ContrastArm;
+  treatment: ContrastArm;
+}
+
+export interface ContrastPanelRow {
+  gene: string;
+  symbol: string;
+  feature_id: string;
+  aliases: string[];
+  alias_note: string | null;
+  // Optional identity fields (newer responses). in_expression_matrix false
+  // = the gene exists only in the counts (no expression values, stats
+  // present); n_loci_with_name > 1 = the name is shared by several loci.
+  gene_name?: string | null;
+  in_expression_matrix?: boolean;
+  n_loci_with_name?: number;
+  identity_notes?: string[];
+  contrasts: ContrastPanelCell[];
+}
+
+export interface ContrastPanelResult {
+  dataset_id?: string;
+  expression_unit: string;
+  contrasts: ContrastSummary[];
+  rows: ContrastPanelRow[];
+  missing: { gene: string; reason: string }[];
+}
+
+export type ContrastDirection = "both" | "up" | "down";
+
+export interface ContrastTopGene {
+  feature_id: string;
+  symbol: string;
+  log2_fc: number;
+  ave_log_cpm: number;
+  p_value: number;
+  q_value: number;
+  in_expression_matrix: boolean;
+  mean_reference: number | null;
+  mean_treatment: number | null;
+  mean_norm_cpm_reference?: number | null;
+  mean_norm_cpm_treatment?: number | null;
+  // For secondary loci of a shared name, `symbol` is the Ensembl id and
+  // gene_name carries the name.
+  gene_name?: string | null;
+  n_loci_with_name?: number;
+  display_direction_agrees?: boolean | null;
+}
+
+export interface ContrastTopResult {
+  expression_unit: string;
+  contrast: ContrastSummary;
+  direction: ContrastDirection;
+  n_significant_q05: number;
+  genes: ContrastTopGene[];
 }
 
 // --- Auxiliary measurement layers (CRISPR / drug sensitivity / mutations)
@@ -438,6 +584,16 @@ export const api = {
   differential: (datasetId: string, groupColumn: string, groupA: string, groupB: string, topN: number = 50) =>
     request<DifferentialResult>(
       `/datasets/${datasetId}/differential?group_column=${encodeURIComponent(groupColumn)}&group_a=${encodeURIComponent(groupA)}&group_b=${encodeURIComponent(groupB)}&top_n=${topN}`,
+    ),
+  contrasts: (datasetId: string) => request<ContrastListResult>(`/datasets/${datasetId}/contrasts`),
+  contrastPanel: (datasetId: string, genes: string[], contrastIds?: string[]) =>
+    request<ContrastPanelResult>(`/datasets/${datasetId}/contrast-panel`, {
+      method: "POST",
+      body: JSON.stringify(contrastIds ? { genes, contrast_ids: contrastIds } : { genes }),
+    }),
+  contrastTop: (datasetId: string, contrastId: string, n: number = 50, direction: ContrastDirection = "both") =>
+    request<ContrastTopResult>(
+      `/datasets/${datasetId}/contrasts/${encodeURIComponent(contrastId)}/top?n=${n}&direction=${direction}`,
     ),
   groupValues: (datasetId: string, groupColumn: string) =>
     request<{

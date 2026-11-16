@@ -7,6 +7,7 @@ import { DatasetStatus } from "./DatasetStatus";
 
 const NAV_ITEMS: { type: PaneType; hint: string }[] = [
   { type: "compare", hint: "Gene across groups" },
+  { type: "contrasts", hint: "Designed experiments, per gene" },
   { type: "signature", hint: "Gene set, ranked" },
   { type: "rank", hint: "Pick candidates" },
   { type: "survival", hint: "Kaplan–Meier + Cox" },
@@ -45,6 +46,9 @@ const NAV_ICONS: Record<PaneType, React.ReactNode> = {
       <circle cx="11" cy="16" r="2.2" stroke="currentColor" strokeWidth="1.5" />
       <path d="M7.6 7.7L9.6 14M14.4 7.7L12.4 14M8.2 6h5.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </>
+  ),
+  contrasts: (
+    <path d="M11 3V19M6 7H11M11 11H17M8 15H11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
   ),
   "genome-tracks": (
     <>

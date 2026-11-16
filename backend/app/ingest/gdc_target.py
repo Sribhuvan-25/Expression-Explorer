@@ -45,12 +45,63 @@ def list_open_rna_files(client: httpx.Client) -> list[dict]:
                 {"op": "in", "content": {"field": "access", "value": ["open"]}},
             ],
         },
-        "fields": "file_id,file_name,cases.submitter_id,cases.case_id",
+        "fields": "file_id,file_name,cases.submitter_id,cases.case_id,cases.samples.sample_type",
         "size": 1000,
     }
     resp = client.post("/files", json=payload)
     resp.raise_for_status()
     return resp.json()["data"]["hits"]
+
+
+def select_one_file_per_case(files: list[dict]) -> list[dict]:
+    """Pick exactly one RNA-seq file per case (patient), so `sample_id`
+    (== case.submitter_id, patient-level) never collides.
+
+    56 of 469 TARGET-ALL-P2 cases have more than one open RNA-seq file:
+    48 carry both a Primary and a Recurrent sample (a real second
+    disease timepoint, not a technical duplicate), 8 carry two files of
+    the *same* sample_type (a true duplicate upload), and 1 case has
+    only Recurrent files. Left unresolved, GDC's return order picked
+    whichever file happened to sort first -- non-deterministic across
+    ingests and silently mixing relapse-timepoint expression into what
+    every downstream consumer (survival, group comparison, differential
+    expression) treats as one baseline-disease sample per patient.
+
+    Every grouping/clinical column (vital_status, etp_status,
+    mrd_status) and the mutation aux layer (target_mutations.py) are
+    keyed the same way, at the same patient level -- duplicating a
+    case's row would double-count that patient's survival event and
+    give them double weight in every comparison, not just expression.
+    One row per patient is a hard downstream requirement, not a
+    convenience, so this picks rather than exposes both. See
+    METHODS.md 8.6a.
+
+    Preference order: Primary tumor sample over Recurrent (matches how
+    published TARGET-ALL-P2 analyses treat this cohort -- baseline
+    disease state, not relapse); Bone Marrow over Peripheral Blood
+    (bone marrow is this project's dominant, most-represented specimen
+    site); then the lowest file_id, so a true same-type duplicate
+    resolves the same way on every ingest.
+    """
+
+    def sample_type(f: dict) -> str:
+        case = (f.get("cases") or [{}])[0]
+        samples = case.get("samples") or [{}]
+        return samples[0].get("sample_type") or ""
+
+    def rank(f: dict) -> tuple[int, int, str]:
+        st = sample_type(f)
+        primary_rank = 0 if st.startswith("Primary") else 1
+        site_rank = 0 if st.endswith("Bone Marrow") else 1
+        return (primary_rank, site_rank, f["file_id"])
+
+    by_case: dict[str, list[dict]] = {}
+    for f in files:
+        case = (f.get("cases") or [{}])[0]
+        case_id = case.get("submitter_id", f["file_id"])
+        by_case.setdefault(case_id, []).append(f)
+
+    return [min(case_files, key=rank) for case_files in by_case.values()]
 
 
 def fetch_clinical(client: httpx.Client) -> pd.DataFrame:
@@ -190,6 +241,7 @@ def load(limit: int | None = None, use_cache: bool = True, with_aux: bool = True
                 samples_dir.mkdir(parents=True, exist_ok=True)
                 with _client() as client:
                     files = list_open_rna_files(client)
+                    files = select_one_file_per_case(files)
                     if limit:
                         files = files[:limit]
 

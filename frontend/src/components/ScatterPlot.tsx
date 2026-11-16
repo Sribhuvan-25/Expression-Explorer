@@ -1,6 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const GROUP_COLORS = ["var(--accent)", "var(--hot)", "var(--cool)", "var(--warn)", "#8B6DBF", "#5C8A6B"];
+// Ordered so the first groups are clearly distinct. --cool used to sit
+// third, right after --accent: two near-identical blues (#2455A4 vs
+// #2C6E9B), so GSE66586's non-amplified and non-malignant lines were
+// indistinguishable in PCA. Names are used for the text colour key in
+// exported PNGs, which do not include the HTML legend.
+export const GROUP_COLORS = ["var(--accent)", "var(--hot)", "var(--warn)", "#8B6DBF", "#5C8A6B", "var(--cool)"];
+const GROUP_COLOR_NAMES = ["blue", "red", "amber", "purple", "green", "teal"];
+
+/** Groups in plotting order (sorted), as ScatterPlot assigns colours. */
+export function scatterGroups(points: { group?: string | null }[]): string[] {
+  const seen = new Set<string>();
+  for (const p of points) if (p.group != null) seen.add(p.group);
+  return Array.from(seen).sort();
+}
+
+/** "blue = A, red = B, ..." -- the legend, as text, for exported images. */
+export function scatterColorKey(points: { group?: string | null }[]): string | null {
+  const groups = scatterGroups(points);
+  if (groups.length === 0) return null;
+  return groups.map((g, i) => `${GROUP_COLOR_NAMES[i % GROUP_COLOR_NAMES.length]} = ${g}`).join(", ");
+}
 
 interface PlottablePoint {
   sample_id: string;
@@ -29,11 +49,7 @@ export function ScatterPlot({
 }) {
   const [hover, setHover] = useState<{ x: number; y: number; sampleId: string; xv: number; yv: number } | null>(null);
 
-  const groups = useMemo(() => {
-    const seen = new Set<string>();
-    for (const p of points) if (p.group != null) seen.add(p.group);
-    return Array.from(seen).sort();
-  }, [points]);
+  const groups = useMemo(() => scatterGroups(points), [points]);
   const colorFor = (group: string | null | undefined) =>
     group == null ? "var(--accent)" : GROUP_COLORS[groups.indexOf(group) % GROUP_COLORS.length];
 

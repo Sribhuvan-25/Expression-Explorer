@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IWatermarkPanelProps } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import { PANE_COMPONENTS, PANE_LABELS, type PaneType } from "../panes/registry";
+import { OPEN_PANE_EVENT } from "../lib/paneEvents";
 
 const STORAGE_KEY = "expression-explorer:workspace-layout";
 let paneCounter = 0;
@@ -141,6 +142,18 @@ export function Workspace({ onApiReady }: { onApiReady?: (api: DockviewApi) => v
       observer.disconnect();
       window.removeEventListener("resize", relayout);
     };
+  }, []);
+
+  // Pages ask for another pane (e.g. Compare pointing at Perturbation
+  // Contrasts) through a window event rather than holding the dockview
+  // API themselves -- see lib/paneEvents.ts.
+  useEffect(() => {
+    const onRequest = (e: Event) => {
+      const type = (e as CustomEvent<{ type?: string }>).detail?.type;
+      if (apiRef.current && type && type in PANE_COMPONENTS) openPane(apiRef.current, type as PaneType);
+    };
+    window.addEventListener(OPEN_PANE_EVENT, onRequest);
+    return () => window.removeEventListener(OPEN_PANE_EVENT, onRequest);
   }, []);
 
   return (

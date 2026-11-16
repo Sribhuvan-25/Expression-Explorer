@@ -20,6 +20,7 @@ from app.analysis.aux_analysis import (
     most_mutated_genes,
 )
 from app.analysis.compare import expression_by_group, kruskal_wallis, pairwise_tests
+from app.analysis.contrast import contrast_gene_stats, top_contrast_genes
 from app.analysis.correlation import co_expression_network, gene_correlation
 from app.analysis.differential import top_differential_genes
 from app.analysis.dimensionality import pca
@@ -87,13 +88,122 @@ def _resolve_gene(ds: Dataset, gene: str) -> str:
     """
     if gene in ds.matrix.index:
         return gene
-    gene = gene.strip().upper()
+    stripped = gene.strip()
+    if stripped in ds.matrix.index:
+        return stripped
+    gene = stripped.upper()
     if gene in ds.matrix.index:
         return gene
-    matches = ds.features[ds.features["symbol"] == gene]
+    symbols = ds.features["symbol"]
+    matches = ds.features[symbols == stripped]
     if matches.empty:
+        matches = ds.features[symbols == gene]
+    if matches.empty:
+        # Case-insensitive last resort, for symbols that are not all
+        # upper-case (C1orf112, the "orf" family): upper-casing the query
+        # alone could never match them on an Ensembl-indexed dataset, so
+        # `?gene=C1orf112` 404'd on TARGET and GSE324984 while the gene was
+        # present. Only an unambiguous hit resolves.
+        folded = symbols.astype(str).str.upper() == gene
+        hits = sorted(set(symbols[folded]))
+        if len(hits) > 1:
+            raise HTTPException(
+                422, f"'{stripped}' matches several symbols differing only by case ({', '.join(hits)}) -- use the exact symbol."
+            )
+        matches = ds.features[folded]
+    if matches.empty:
+        # A legacy symbol this dataset records as an alias (e.g. KIAA1524
+        # for CIP2A) is named in the error rather than silently matched:
+        # alias *resolution* is still undecided (METHODS.md 7.4), but a bare
+        # "not found" for a gene that is present under its current name
+        # reads as a coverage claim and is wrong.
+        current = _current_symbols_for_alias(ds, gene)
+        if current:
+            raise HTTPException(
+                404,
+                f"Gene '{gene}' not found in dataset under that name; this dataset records it "
+                f"as an older name for {', '.join(current)} -- search for that instead.",
+            )
+        count_only = _contrast_only_feature(ds, stripped)
+        if count_only is not None:
+            raise HTTPException(
+                404,
+                f"Gene '{stripped}' ({count_only}) is in this dataset's counts but has no value in its "
+                f"expression matrix ({ds.source.expression_unit}) -- see the dataset notes. Its "
+                "statistics are in the design contrasts (Perturbation Contrasts).",
+            )
         raise HTTPException(404, f"Gene '{gene}' not found in dataset.")
     return matches["feature_id"].iloc[0]
+
+
+def _contrast_only_feature(ds: Dataset, gene: str) -> str | None:
+    """A feature present in a design-contrast table but not in the
+    expression matrix (GSE324984: genes past the TPM file's truncation),
+    matched by id or by its displayed symbol, case-insensitively and only
+    if unambiguous. None if there is no such feature."""
+    for contrast in ds.contrasts.values():
+        table = contrast.table
+        if gene in table.index and gene not in ds.matrix.index:
+            return gene
+        if "symbol" in table.columns:
+            hits = table.index[table["symbol"].astype(str).str.upper() == gene.upper()]
+            hits = [h for h in hits if h not in ds.matrix.index]
+            if len(hits) == 1:
+                return hits[0]
+    return None
+
+
+def _current_symbols_for_alias(ds: Dataset, alias: str) -> list[str]:
+    if "aliases" not in ds.features.columns:
+        return []
+    folded = alias.strip().upper()
+    hits = ds.features[ds.features["aliases"].apply(
+        lambda a: isinstance(a, (list, tuple)) and folded in {str(x).upper() for x in a}
+    )]
+    # No filtering on symbol == feature_id: symbol-indexed datasets
+    # (GSE66586, GDS4299, DepMap) have that for every row. GSE324984's
+    # duplicate-symbol secondary rows carry the shared name as an alias,
+    # but that name is always some primary row's symbol, so a query for it
+    # resolves above and never reaches this lookup.
+    return sorted(set(hits["symbol"]))
+
+
+def _annotate_strata(ds: Dataset, df, tests: list[dict]) -> str | None:
+    """Mark pairwise tests whose two groups sit in different sub-experiments.
+
+    A dataset with design contrasts names the column separating its
+    experiments (GSE324984: `cell_line`). A C4-2B arm vs an NCI-H660 arm is
+    a valid test of *something*, but mostly of the cell line, not the
+    perturbation -- and Compare showed those p-values beside the
+    within-line ones with nothing to tell them apart (METHODS.md 11.1).
+    Each test gets `crosses_stratum` ({column, group_a, group_b} or None);
+    returns a one-line caveat, or None when nothing crosses.
+    """
+    columns = sorted({c.spec.stratum_column for c in ds.contrasts.values() if c.spec.stratum_column})
+    for t in tests:
+        t["crosses_stratum"] = None
+    crossed = False
+    for column in columns:
+        if column in ds.samples.columns:
+            strata = ds.samples[column]
+        else:
+            strata = ds.samples["group_columns"].apply(lambda d: d.get(column))
+        by_group = (
+            df.assign(_stratum=strata.reindex(df["sample_id"]).to_numpy())
+            .groupby("group")["_stratum"]
+            .agg(lambda v: set(v.dropna()))
+        )
+        for t in tests:
+            sa, sb = by_group.get(t["group_a"], set()), by_group.get(t["group_b"], set())
+            if len(sa) == 1 and len(sb) == 1 and sa != sb:
+                t["crosses_stratum"] = {"column": column, "group_a": next(iter(sa)), "group_b": next(iter(sb))}
+                crossed = True
+    if not crossed:
+        return None
+    return (
+        f"Some pairs compare groups from different {' / '.join(columns)} -- those differences "
+        "mostly reflect that, not the perturbation. Use the design contrasts for perturbation effects."
+    )
 
 
 def _resolve_aux_feature(aux: AuxMatrix, feature: str) -> str:
@@ -212,6 +322,10 @@ def list_datasets():
             # endpoint this would have come from, so a real, correctly-computed
             # warning sat in the API response with no UI ever reading it.
             entry["notes"] = source.notes
+            entry["expression_unit"] = source.expression_unit
+            # Lets the UI offer the design-contrast pane only where it
+            # applies, without probing every dataset (METHODS.md 11.1).
+            entry["n_contrasts"] = len(_get_dataset(d.dataset_id).contrasts)
         except Exception:
             # A dataset that fails to load should still be listed (so the
             # UI can show it exists) rather than taking down the whole
@@ -255,10 +369,15 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
         ds = _get_dataset(d.dataset_id)
         try:
             feature_id = _resolve_gene(ds, gene)
-        except HTTPException:
+        except HTTPException as exc:
+            # Pass the resolver's own message through (legacy-symbol hint,
+            # count-only gene, case ambiguity) rather than flattening it to
+            # "not found" -- the Compare page reads this endpoint, so a
+            # flattened reason hid exactly the explanations /compare gives.
+            reason = exc.detail
             results.append(
                 {"dataset_id": d.dataset_id, "display_name": d.display_name, "skipped": True,
-                 "skip_reason": f"gene '{gene}' not found in this dataset"}
+                 "skip_reason": reason}
             )
             continue
         df = expression_by_group(ds.matrix, ds.samples, feature_id, group_column)
@@ -270,6 +389,8 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
             continue
         n_total = len(ds.samples)
         n_excluded = n_total - len(df)
+        tests = pairwise_tests(df).to_dict("records")
+        stratum_caveat = _annotate_strata(ds, df, tests)
         results.append({
             "dataset_id": d.dataset_id,
             "display_name": d.display_name,
@@ -285,7 +406,8 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
             # happened. Caught in QA, not by a user, but a real defect.
             "exclusion_reason": f"no value recorded for '{group_column}'" if n_excluded > 0 else None,
             "points": df.to_dict("records"),
-            "pairwise_tests": pairwise_tests(df).to_dict("records"),
+            "pairwise_tests": tests,
+            "stratum_caveat": stratum_caveat,
             "kruskal_wallis": kruskal_wallis(df),
         })
     return {"gene": gene, "group_column": group_column, "datasets": results}
@@ -361,6 +483,8 @@ def compare(dataset_id: str, gene: str, group_column: str):
     # left out rather than only what was included.
     n_total = len(ds.samples)
     n_excluded = n_total - len(df)
+    tests = pairwise_tests(df).to_dict("records")
+    stratum_caveat = _annotate_strata(ds, df, tests)
     return {
         "gene": gene,
         "group_column": group_column,
@@ -370,7 +494,8 @@ def compare(dataset_id: str, gene: str, group_column: str):
         # above for why this can't be an unconditional string.
         "exclusion_reason": f"no value recorded for '{group_column}'" if n_excluded > 0 else None,
         "points": df.to_dict("records"),
-        "pairwise_tests": pairwise_tests(df).to_dict("records"),
+        "pairwise_tests": tests,
+        "stratum_caveat": stratum_caveat,
         "kruskal_wallis": kruskal_wallis(df),
     }
 
@@ -400,6 +525,182 @@ def differential(dataset_id: str, group_column: str, group_a: str, group_b: str,
     for gene in result["genes"]:
         gene["symbol"] = symbol_by_feature.get(gene["feature_id"], gene["feature_id"])
     return result
+
+
+# --------------------------------------------------------------------------
+# Pre-specified design contrasts (METHODS.md 11)
+# --------------------------------------------------------------------------
+
+def _require_contrast(ds: Dataset, contrast_id: str):
+    if contrast_id not in ds.contrasts:
+        available = ", ".join(sorted(ds.contrasts)) or "none"
+        raise HTTPException(
+            404, f"No contrast '{contrast_id}' on {ds.source.display_name} (available: {available})."
+        )
+    return ds.contrasts[contrast_id]
+
+
+@app.get("/datasets/{dataset_id}/contrasts")
+def list_contrasts(dataset_id: str):
+    """The design contrasts this dataset declares -- empty for cohort
+    datasets, which compare whatever groups the user picks."""
+    ds = _get_dataset(dataset_id)
+    return {
+        "dataset_id": dataset_id,
+        "expression_unit": ds.source.expression_unit,
+        "contrasts": [_contrast_summary(ds, c) for c in ds.contrasts.values()],
+    }
+
+
+class ContrastPanelRequest(BaseModel):
+    genes: list[str]
+    contrast_ids: list[str] | None = None
+
+
+def _resolve_panel_gene(ds: Dataset, gene: str) -> tuple[str, str | None]:
+    """(feature_id, alias_note). Exact symbol/id first, via `_resolve_gene`.
+
+    Unlike every other endpoint, the panel then accepts a legacy symbol the
+    dataset itself records as an alias (KIAA1524 -> CIP2A) -- and says so on
+    that row. A researcher's gene list is written in whichever names they
+    learned; rejecting the whole 25-gene panel over a rename, or dropping
+    the gene, would both be worse than a disclosed resolution. Scoped to
+    this endpoint deliberately: METHODS.md 7.4's question (should alias
+    matching change *which gene a query hits* everywhere) is still open.
+    """
+    try:
+        return _resolve_gene(ds, gene), None
+    except HTTPException:
+        current = _current_symbols_for_alias(ds, gene)
+        if len(current) == 1:
+            # Same row `_resolve_gene` would pick for that symbol.
+            fid = _resolve_gene(ds, current[0])
+            return fid, f"'{gene.strip()}' is an older name for {current[0]}"
+        # A gene with statistics but no expression-matrix row (beyond the
+        # truncated TPM file) is still a valid panel row -- its numbers
+        # exist; only the TPM column is empty, and the row says why.
+        count_only = _contrast_only_feature(ds, gene.strip())
+        if count_only is not None:
+            return count_only, None
+        raise
+
+
+def _feature_identity(ds: Dataset, feature_id: str, contrasts) -> dict:
+    """symbol / gene_name / aliases / shared-name and matrix-presence notes
+    for one panel row -- the same identity the top-genes list shows."""
+    in_matrix = feature_id in ds.matrix.index
+    row = next((c.table.loc[feature_id] for c in contrasts if feature_id in c.table.index), None)
+    symbol = ds.features.loc[feature_id, "symbol"] if in_matrix else (row["symbol"] if row is not None else feature_id)
+    gene_name = str(row["gene_name"]) if row is not None and "gene_name" in row.index else symbol
+    n_loci = int(row["n_loci_with_name"]) if row is not None and "n_loci_with_name" in row.index else 1
+    notes = []
+    if not in_matrix:
+        notes.append(
+            f"No {ds.source.expression_unit} value: this gene is absent from the dataset's expression "
+            "matrix (see dataset notes); statistics come from the counts."
+        )
+    if n_loci > 1:
+        notes.append(
+            f"The name {gene_name} is shared by {n_loci} loci; "
+            + (
+                "this is the most-expressed one (mean TPM, or mean count where a copy has no TPM), which a search for the name reaches."
+                if symbol == gene_name
+                else f"this is a secondary locus, shown by its Ensembl id."
+            )
+            + " Reads can be split arbitrarily between copies (e.g. PAR X/Y), so read its fold-change with care."
+        )
+    return {
+        "symbol": symbol,
+        "gene_name": gene_name,
+        "aliases": list(ds.features.loc[feature_id, "aliases"] or []) if in_matrix else [],
+        "in_expression_matrix": in_matrix,
+        "n_loci_with_name": n_loci,
+        "identity_notes": notes,
+    }
+
+
+def _contrast_summary(ds: Dataset, contrast) -> dict:
+    """Contrast description plus the sample accounting CLAUDE.md requires:
+    a contrast runs on 4 of GSE324984's 8 samples, by design."""
+    summary = contrast.summary()
+    n_total = len(ds.samples)
+    used = summary["n_reference"] + summary["n_treatment"]
+    spec = contrast.spec
+    summary.update(
+        n_dataset_total=n_total,
+        n_excluded=n_total - used,
+        exclusion_reason=(
+            f"By design: only the '{spec.reference}' and '{spec.treatment}' samples"
+            + (f" ({spec.stratum_column} = {spec.stratum_value})" if spec.stratum_value else "")
+            + " enter this contrast; the other samples belong to other arms."
+            if n_total > used else None
+        ),
+    )
+    return summary
+
+
+@app.post("/datasets/{dataset_id}/contrast-panel")
+def contrast_panel(dataset_id: str, body: ContrastPanelRequest):
+    """A gene list x the dataset's design contrasts: stored log2FC / p / q
+    per gene per contrast, with each replicate's expression value.
+
+    Genes that cannot be found are listed in `missing` with the reason,
+    not silently dropped and not fatal -- each row is independent, unlike
+    a signature score where one missing gene changes everyone's number
+    (METHODS.md 2.5, 11.4)."""
+    genes = [g for g in (s.strip() for s in body.genes) if g]
+    if not genes:
+        raise HTTPException(422, "At least one gene is required.")
+    if len(genes) > 200:
+        raise HTTPException(422, "At most 200 genes per panel.")
+    ds = _get_dataset(dataset_id)
+    if not ds.contrasts:
+        raise HTTPException(
+            422, f"{ds.source.display_name} declares no design contrasts; use Compare instead."
+        )
+    contrast_ids = body.contrast_ids or list(ds.contrasts)
+    contrasts = [_require_contrast(ds, cid) for cid in contrast_ids]
+
+    rows, missing, seen = [], [], set()
+    for gene in genes:
+        try:
+            feature_id, alias_note = _resolve_panel_gene(ds, gene)
+        except HTTPException as exc:
+            missing.append({"gene": gene, "reason": exc.detail})
+            continue
+        if feature_id in seen:
+            missing.append({"gene": gene, "reason": "Duplicate of a gene already in the panel."})
+            continue
+        seen.add(feature_id)
+        rows.append(
+            {
+                "gene": gene,
+                "feature_id": feature_id,
+                "alias_note": alias_note,
+                **_feature_identity(ds, feature_id, contrasts),
+                "contrasts": [contrast_gene_stats(ds.matrix, c, feature_id) for c in contrasts],
+            }
+        )
+    return {
+        "dataset_id": dataset_id,
+        "expression_unit": ds.source.expression_unit,
+        "contrasts": [_contrast_summary(ds, c) for c in contrasts],
+        "rows": rows,
+        "missing": missing,
+    }
+
+
+@app.get("/datasets/{dataset_id}/contrasts/{contrast_id}/top")
+def contrast_top_genes(
+    dataset_id: str, contrast_id: str, n: int = 50, direction: Literal["both", "up", "down"] = "both"
+):
+    if not (1 <= n <= 500):
+        raise HTTPException(422, "n must be between 1 and 500.")
+    ds = _get_dataset(dataset_id)
+    contrast = _require_contrast(ds, contrast_id)
+    result = top_contrast_genes(ds.matrix, contrast, n=n, direction=direction)
+    result["contrast"] = _contrast_summary(ds, contrast)
+    return {"expression_unit": ds.source.expression_unit, **result}
 
 
 class SignatureRequest(BaseModel):
@@ -696,11 +997,13 @@ def dataset_pca(dataset_id: str, body: PCARequest):
     ds = _get_dataset(dataset_id)
     feature_ids = []
     missing_input_genes = []
+    missing_reasons = {}
     for g in body.genes:
         try:
             feature_ids.append(_resolve_gene(ds, g))
-        except HTTPException:
+        except HTTPException as exc:
             missing_input_genes.append(g)
+            missing_reasons[g] = exc.detail
     # If too few genes resolved at all, say so in terms of what the user
     # actually typed (e.g. "1 of 2 genes you entered"), not pca()'s own
     # "1 of 1" -- pca() only ever sees the genes that already resolved, so
@@ -724,6 +1027,9 @@ def dataset_pca(dataset_id: str, body: PCARequest):
     # "missing" a caller needs to see, so both lists are surfaced rather
     # than the input-level failures being silently swallowed.
     result["genes_unrecognized"] = missing_input_genes
+    # Why each one failed, in the resolver's words (e.g. "older name for
+    # CIP2A"), so PCA explains what /compare already explains.
+    result["genes_unrecognized_reasons"] = missing_reasons
     return result
 
 

@@ -33,10 +33,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import settings
-from app.db.models import AuxLayerRow, DatasetRow, FeatureRow, SampleRow
+from app.db.models import AuxLayerRow, ContrastRow, DatasetRow, FeatureRow, SampleRow
 from app.db.session import create_all, session_scope
 from app.models.contract import Dataset
-from app.registry import ensure_loaded, get_descriptor, list_descriptors
+from app.registry import code_descriptor_ids, ensure_loaded, get_code_descriptor, list_descriptors
 
 # Columns that live on `samples` for bookkeeping rather than as clinical
 # facts about the sample -- excluded from the attributes blob so it stays
@@ -85,7 +85,7 @@ def _sample_attributes(dataset: Dataset) -> list[dict]:
 
 
 def ingest(dataset_id: str, dry_run: bool = False) -> None:
-    descriptor = get_descriptor(dataset_id)
+    descriptor = get_code_descriptor(dataset_id)
     print(f"[ingest] {dataset_id}: loading via {descriptor.loader.__module__}...", flush=True)
     start = time.monotonic()
     dataset = descriptor.loader()
@@ -128,6 +128,24 @@ def ingest(dataset_id: str, dry_run: bool = False) -> None:
         )
         print(f"[ingest] {dataset_id}: aux '{layer.value}' -> {layer_uri}", flush=True)
 
+    # Design contrasts (METHODS.md 11.1): the result table is written like
+    # a matrix, before the row is marked ready, for the same reason.
+    contrast_records = []
+    for contrast_id, contrast in dataset.contrasts.items():
+        results_uri = _write_parquet(contrast.table, target_dir / f"contrast_{contrast_id}.parquet")
+        contrast_records.append(
+            ContrastRow(
+                dataset_id=dataset_id,
+                contrast_id=contrast_id,
+                spec=contrast.spec.model_dump(),
+                reference_samples=contrast.reference_samples,
+                treatment_samples=contrast.treatment_samples,
+                details=contrast.details,
+                results_uri=results_uri,
+            )
+        )
+        print(f"[ingest] {dataset_id}: contrast '{contrast_id}' -> {results_uri}", flush=True)
+
     source = dataset.source
     with session_scope() as session:
         # Replace wholesale rather than diffing: re-ingesting is how a
@@ -166,12 +184,13 @@ def ingest(dataset_id: str, dry_run: bool = False) -> None:
             for rec in dataset.features.to_dict(orient="records")
         ]
         row.aux_layers = aux_records
+        row.contrasts = contrast_records
         session.add(row)
 
     print(
         f"[ingest] {dataset_id}: recorded "
         f"({len(dataset.samples)} samples, {len(dataset.features)} features, "
-        f"{len(aux_records)} aux layers)",
+        f"{len(aux_records)} aux layers, {len(contrast_records)} contrasts)",
         flush=True,
     )
 
@@ -193,7 +212,16 @@ def main() -> int:
         return 0
 
     if args.all:
-        targets = [d.dataset_id for d in list_descriptors()]
+        # Only ids with a real code loader can be (re-)ingested from
+        # source -- a dataset that exists purely as a database row (no
+        # ingest/<name>.py) has nothing to re-fetch, and would otherwise
+        # surface as a bare KeyError indistinguishable from a real
+        # failure. list_descriptors() (database-first) is still used for
+        # --list, where showing every servable dataset is the point.
+        db_only = [d.dataset_id for d in list_descriptors() if d.dataset_id not in code_descriptor_ids()]
+        if db_only:
+            print(f"[ingest] skipping database-only dataset(s), nothing to re-ingest: {', '.join(db_only)}")
+        targets = list(code_descriptor_ids())
     elif args.dataset_id:
         targets = [args.dataset_id]
     else:

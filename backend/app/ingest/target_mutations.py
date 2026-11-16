@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from app.config import settings
+from app.ingest.gdc_target import select_one_file_per_case
 from app.models.contract import AuxLayer, AuxMatrix
 
 GDC_API = "https://api.gdc.cancer.gov"
@@ -79,7 +80,7 @@ def _list_maf_files(client: httpx.Client) -> list[dict]:
                 {"op": "in", "content": {"field": "access", "value": ["open"]}},
             ],
         },
-        "fields": "file_id,cases.submitter_id",
+        "fields": "file_id,cases.submitter_id,cases.samples.sample_type",
         "size": 2000,
     }
     resp = client.post("/files", json=payload)
@@ -134,6 +135,7 @@ def load_mutations(use_cache: bool = True, limit: int | None = None) -> AuxMatri
     else:
         with httpx.Client(base_url=GDC_API, timeout=60.0) as client:
             files = _list_maf_files(client)
+            files = select_one_file_per_case(files)
             if limit:
                 files = files[:limit]
 

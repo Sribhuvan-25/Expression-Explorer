@@ -7,6 +7,7 @@ import { ExportButton } from "../components/ExportButton";
 import { GroupFilter, useGroupFilter } from "../components/GroupFilter";
 import { GeneAnnotation } from "../components/GeneAnnotation";
 import { exportRowsAsCsv } from "../lib/exportTable";
+import { MinPNotice, underpoweredSizes } from "../components/MinPNotice";
 
 // Every group-by column any registered dataset has ever declared, so the
 // "Group by" dropdown offers a column even before a dataset exposing it is
@@ -28,7 +29,18 @@ function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
 // Exported for tests: the export-identity contract (METHODS.md 5.7) lives
 // in what this passes to ExportButton, not in ExportButton itself, so it
 // has to be asserted here or a regression goes unnoticed.
-export function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResult; gene: string }) {
+export function DatasetPanel({
+  result,
+  gene,
+  hasContrasts = false,
+}: {
+  result: CompareMultiDatasetResult;
+  gene: string;
+  // The dataset declares design contrasts -- the notice below then points
+  // at the Perturbation Contrasts pane, which has a test that can actually
+  // reach significance at these sample sizes.
+  hasContrasts?: boolean;
+}) {
   // One ref per panel, not a ref shared across every dataset's chart --
   // each DatasetPanel mounts its own BoxPlot, and a shared ref would just
   // get overwritten by whichever panel mounts last, silently breaking
@@ -45,7 +57,11 @@ export function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResu
   if (result.skipped) {
     return (
       <Panel title={result.display_name}>
-        <p className="text-[12.5px] text-ink-mute">Skipped — {result.skip_reason}.</p>
+        {/* skip_reason now passes the resolver's own sentence through, which
+            already ends in a full stop -- don't add a second one. */}
+        <p className="text-[12.5px] text-ink-mute">
+          Skipped — {(result.skip_reason ?? "").replace(/[.\s]+$/, "")}.
+        </p>
       </Panel>
     );
   }
@@ -76,7 +92,13 @@ export function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResu
               }`,
               ...pairwise.map(
                 (t) =>
-                  `${t.group_a} vs ${t.group_b}: p = ${t.p_value < 0.001 ? t.p_value.toExponential(2) : t.p_value.toFixed(4)}`,
+                  `${t.group_a} vs ${t.group_b}: p = ${t.p_value < 0.001 ? t.p_value.toExponential(2) : t.p_value.toFixed(4)}${
+                    // An exported figure travels without the on-page notice,
+                    // so a p that cannot reach 0.05 must say so in the image.
+                    typeof t.min_p_achievable === "number" && t.min_p_achievable > 0.05
+                      ? ` (smallest possible p at n = ${t.n_a} vs ${t.n_b}: ${t.min_p_achievable.toPrecision(2)})`
+                      : ""
+                  }${t.crosses_stratum ? ` [different ${t.crosses_stratum.column}]` : ""}`,
               ),
             ]}
           />
@@ -108,6 +130,22 @@ export function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResu
             tone={result.kruskal_wallis?.p_value != null && result.kruskal_wallis.p_value < 0.05 ? "hot" : "neutral"}
           />
         </div>
+        <MinPNotice
+          tests={pairwise}
+          hasContrasts={hasContrasts}
+          partial={
+            underpoweredSizes(pairwise).length > 0 &&
+            pairwise.some((t) => typeof t.min_p_achievable === "number" && t.min_p_achievable <= 0.05)
+          }
+        />
+        {result.stratum_caveat && (
+          <p
+            data-testid="stratum-caveat"
+            className="mb-3 rounded-[3px] border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12.5px] text-ink"
+          >
+            {result.stratum_caveat}
+          </p>
+        )}
         {pairwise.length > 0 ? (
           <DataTable
             columns={[
@@ -117,7 +155,22 @@ export function DatasetPanel({ result, gene }: { result: CompareMultiDatasetResu
               { key: "q", label: "FDR q", align: "right" },
             ]}
             rows={pairwise.map((t) => ({
-              pair: `${t.group_a} vs ${t.group_b}`,
+              // A pair that crosses a declared stratum (e.g. two cell
+              // lines) is kept but muted and tagged: its difference mostly
+              // reflects the stratum, not the grouping being compared.
+              pair: t.crosses_stratum ? (
+                <span data-testid="crosses-stratum" className="text-ink-mute">
+                  {t.group_a} vs {t.group_b}
+                  <span
+                    className="ml-1.5 whitespace-nowrap rounded-[2px] border border-warn/40 px-1 font-mono text-[10px] text-warn"
+                    title={`${t.group_a} is ${t.crosses_stratum.column} ${t.crosses_stratum.group_a}; ${t.group_b} is ${t.crosses_stratum.column} ${t.crosses_stratum.group_b}`}
+                  >
+                    different {t.crosses_stratum.column} ({t.crosses_stratum.group_a} vs {t.crosses_stratum.group_b})
+                  </span>
+                </span>
+              ) : (
+                `${t.group_a} vs ${t.group_b}`
+              ),
               n: `${t.n_a} / ${t.n_b}`,
               p: t.p_value < 0.001 ? t.p_value.toExponential(2) : t.p_value.toFixed(4),
               q: t.q_value != null ? (t.q_value < 0.001 ? t.q_value.toExponential(2) : t.q_value.toFixed(4)) : "—",
@@ -304,7 +357,13 @@ function SingleGeneCompareTab() {
               {/* Keyed off the RUN query's gene, not the live input -- an
                   annotation lookup on every keystroke would be wasteful and
                   would flicker between genes as the user types. */}
-              <GeneAnnotation gene={query!.gene} />
+              <GeneAnnotation
+                gene={query!.gene}
+                onUseSymbol={(symbol) => {
+                  setGeneInput(symbol);
+                  setQuery({ ...query!, gene: symbol.toUpperCase() });
+                }}
+              />
               {runnable.length === 0 && skipped.length > 0 && (
                 <EmptyState
                   icon={
@@ -317,7 +376,12 @@ function SingleGeneCompareTab() {
                 />
               )}
               {shownResults.map((r) => (
-                <DatasetPanel key={r.dataset_id} result={r} gene={data.gene} />
+                <DatasetPanel
+                  key={r.dataset_id}
+                  result={r}
+                  gene={data.gene}
+                  hasContrasts={(datasets.find((d) => d.dataset_id === r.dataset_id)?.n_contrasts ?? 0) > 0}
+                />
               ))}
             </div>
           </>
@@ -520,15 +584,25 @@ export function DifferentialGenesTab() {
               type="button"
               onClick={() =>
                 exportRowsAsCsv(
-                  `${data.group_a}-vs-${data.group_b}-differential`,
+                  // Dataset in the name and in every row: the same group pair
+                  // exported from two datasets used to overwrite one file and
+                  // the CSV did not say where it came from (METHODS.md 5.7).
+                  `${query!.datasetId}-${data.group_a}-vs-${data.group_b}-differential`,
                   [
+                    { key: "dataset_id", label: "dataset_id" },
                     { key: "rank", label: "#" },
                     { key: "symbol", label: "gene" },
                     { key: "p_value", label: "p-value" },
                     { key: "q_value", label: "FDR q" },
+                    { key: "min_p", label: "smallest possible p (exact test)" },
                     { key: "median_diff", label: `median(${data.group_a}) - median(${data.group_b})` },
                   ],
-                  data.genes.map((g, i) => ({ ...g, rank: i + 1 })),
+                  data.genes.map((g, i) => ({
+                    ...g,
+                    rank: i + 1,
+                    dataset_id: query!.datasetId,
+                    min_p: data.min_p_achievable ?? "",
+                  })),
                 )
               }
               title="Download as CSV"
@@ -541,6 +615,11 @@ export function DifferentialGenesTab() {
             </button>
           }
         >
+          <MinPNotice
+            tests={[{ n_a: data.n_a, n_b: data.n_b, min_p_achievable: data.min_p_achievable }]}
+            smallestShownP={data.genes.length ? Math.min(...data.genes.map((g) => g.p_value)) : null}
+            hasContrasts={(datasets.find((d) => d.dataset_id === query?.datasetId)?.n_contrasts ?? 0) > 0}
+          />
           <p className="mb-3 text-[12px] text-ink-mute">
             n = {data.n_a} ({data.group_a}) vs {data.n_b} ({data.group_b}) · {data.n_genes_tested.toLocaleString()}{" "}
             genes tested, Mann–Whitney with genome-wide FDR correction.

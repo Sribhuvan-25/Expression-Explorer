@@ -10,7 +10,7 @@ const EXTERNAL_LINKS: { label: string; href: (info: { symbol: string; ensembl_ge
 // Standalone, dataset-independent annotation: a gene symbol means the same
 // thing everywhere, so this doesn't take a dataset id -- unlike every other
 // panel in this app, which is scoped to one dataset's own matrix.
-export function GeneAnnotation({ gene }: { gene: string }) {
+export function GeneAnnotation({ gene, onUseSymbol }: { gene: string; onUseSymbol?: (symbol: string) => void }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["gene-info", gene],
     queryFn: () => api.geneInfo(gene),
@@ -52,6 +52,25 @@ export function GeneAnnotation({ gene }: { gene: string }) {
         {data.name && <span className="truncate font-normal text-ink-mute">— {data.name}</span>}
       </summary>
       <div className="flex flex-col gap-2 border-t border-rule px-3 py-2.5">
+        {/* A renamed gene: datasets annotated with current HGNC symbols know
+            it only by the new name, so "C1orf112 not found" on GSE324984 is
+            a naming gap, not a coverage gap. Say so, and offer the switch --
+            explicitly, never by silently changing what was searched
+            (METHODS.md 7.4). */}
+        {typeof data.symbol === "string" && data.symbol.toUpperCase() !== gene.trim().toUpperCase() && (
+          <p data-testid="renamed-symbol" className="rounded-[3px] border-l-[3px] border-warn bg-warn-soft px-2.5 py-1.5 text-[12px] text-ink">
+            &lsquo;{gene}&rsquo; is a previous name: the current symbol is <strong>{data.symbol}</strong>. Datasets
+            annotated with current symbols list it only as {data.symbol}.
+            {onUseSymbol && (
+              <>
+                {" "}
+                <button type="button" onClick={() => onUseSymbol(data.symbol)} className="font-medium text-accent hover:underline">
+                  Search {data.symbol} instead
+                </button>
+              </>
+            )}
+          </p>
+        )}
         {data.summary && <p className="text-[12px] leading-relaxed text-ink-soft">{data.summary}</p>}
         {aliases.length > 0 && (
           <p className="text-[11px] text-ink-mute">
