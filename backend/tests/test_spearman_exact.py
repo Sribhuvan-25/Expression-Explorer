@@ -41,3 +41,17 @@ def test_correlation_endpoint_function_uses_it():
 
 R_8 = (0.85714285714285732, 0.010714285714285714)
 R_12 = 0.0023689303978236161
+
+
+def test_no_p_of_exactly_zero_where_the_edgeworth_series_breaks_down():
+    """AS 89's Edgeworth series clips to 0 far in the tail (R prints
+    p < 2.2e-16); n = 52, rho ~ -0.78 has an asymptotic p near 1e-11."""
+    from scipy import stats
+
+    rng = np.random.default_rng(4)
+    x = rng.normal(size=52)
+    y = -x + rng.normal(scale=0.55, size=52)
+    rho, p = spearman_test(x, y)
+    assert rho < -0.7
+    assert p > 0
+    assert p == pytest.approx(stats.spearmanr(x, y).pvalue)

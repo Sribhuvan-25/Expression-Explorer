@@ -70,4 +70,10 @@ def spearman_test(x, y) -> tuple[float, float]:
         p = _prho(n, round(q), lower_tail=False)
     else:
         p = _prho(n, round(q) + 2, lower_tail=True)
+    if p <= 0 and n > _EXACT_MAX_N:
+        # The Edgeworth series goes negative far in the tail and is
+        # clipped to 0 -- R then prints "p < 2.2e-16". A p of exactly 0
+        # is never right (GDS4299 MYCN vs RAG1, n = 52, rho = -0.78:
+        # R 0, asymptotic 1.3e-11), so use the t-approximation there.
+        return rho, float(stats.spearmanr(x, y).pvalue)
     return rho, min(2 * p, 1.0)

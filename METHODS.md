@@ -1015,7 +1015,11 @@ and every aux join with R on all five datasets; these are the changes.
   MYCL on GSE324984 moved across 0.05 (MYCL vs YBX2: 0.0465 served,
   0.0576 exact, now served). Ported (`app/analysis/spearman.py`); on 840
   random cases from n = 3 to 469 it matches `cor.test` to 7e-16. Ties
-  keep the t-approximation, as R does.
+  keep the t-approximation, as R does. One deliberate departure: far in
+  the tail the Edgeworth series goes negative and is clipped to exactly
+  0, which R prints as "p < 2.2e-16" (108 of the 840 cases; GDS4299
+  MYCN vs RAG1, n = 52, rho = −0.78, served "0.00e+0"). A p of 0 is never
+  right, so there the t-approximation is used (1.3e-11 for that pair).
 - *Constant genes.* A gene with one value in every sample (30,809 of
   GSE324984's genes, 2,445 of TARGET's) gave NaN r: `/correlation` and
   `/expression-vs-aux` returned 500 and `/co-expression` an empty
