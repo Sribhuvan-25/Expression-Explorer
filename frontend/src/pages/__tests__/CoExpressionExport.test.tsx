@@ -53,3 +53,22 @@ describe("co-expression caption", () => {
     expect(caption).toHaveTextContent("with 8 samples a high r is easily reached by chance");
   });
 });
+
+describe("co-expression caption placement", () => {
+  it("is not inside the CSV button", async () => {
+    vi.spyOn(api, "coExpression").mockResolvedValue({
+      gene: "MYCN", method: "pearson", direction: "positive", n: 10, value_unit: "log2_intensity",
+      network: [{ feature_id: "PPA1", symbol: "PPA1", coefficient: 0.97 }],
+    } as unknown as Awaited<ReturnType<typeof api.coExpression>>);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <NetworkTab datasetId="gse66586" />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /build network/i }));
+    const caption = await screen.findByTestId("network-caption");
+    expect(caption.closest("button")).toBeNull();
+    expect(screen.getByTitle("Download as CSV")).toHaveTextContent(/^CSV$/);
+  });
+});
