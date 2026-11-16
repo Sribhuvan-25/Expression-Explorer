@@ -146,7 +146,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               </span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${data.gene}-by-${data.mutated_gene}-mutation`}
+                filename={`${datasetId}-${data.gene}-by-${data.mutated_gene}-mutation`}
                 title={`${data.gene} by ${data.mutated_gene} mutation status`}
                 subtitle={`${data.n_mutated} mutated vs ${data.n_wildtype} wild-type`}
                 statLines={[
@@ -437,7 +437,7 @@ function AuxCorrelationTab({
               </span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${data.gene}-vs-${data.aux_feature_label}`}
+                filename={`${datasetId}-${data.gene}-vs-${data.aux_feature_label}`}
                 title={`${data.gene} vs ${data.aux_feature_label}`}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[

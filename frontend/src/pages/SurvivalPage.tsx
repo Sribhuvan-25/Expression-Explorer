@@ -287,7 +287,7 @@ export function SurvivalPage() {
                       </span>
                       <ExportButton
                         svgRef={chartRef}
-                        filename={`survival-${data.genes.join("-")}`}
+                        filename={`${datasetId}-survival-${data.genes.join("-")}`}
                         title={`Survival — ${data.genes.join(", ")}${
                           datasets.find((d) => d.dataset_id === datasetId)?.display_name
                             ? ` — ${datasets.find((d) => d.dataset_id === datasetId)!.display_name}`

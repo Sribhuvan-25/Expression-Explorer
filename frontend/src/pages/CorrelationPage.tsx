@@ -219,7 +219,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${data.gene_a}-vs-${data.gene_b}-correlation`}
+                filename={`${datasetId}-${data.gene_a}-vs-${data.gene_b}-correlation`}
                 title={`${data.gene_a} vs ${data.gene_b}${datasetName ? ` — ${datasetName}` : ""}`}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[
@@ -559,7 +559,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
               <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n_samples}</span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`pca-${data.genes_used.join("-")}`}
+                filename={`${datasetId}-pca-${data.genes_used.join("-")}`}
                 title={`PCA — ${data.genes_used.slice(0, 4).join(", ")}${
                   data.genes_used.length > 4 ? ` +${data.genes_used.length - 4} more` : ""
                 }${datasetName ? ` — ${datasetName}` : ""}`}

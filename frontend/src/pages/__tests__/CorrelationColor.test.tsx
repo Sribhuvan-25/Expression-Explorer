@@ -80,3 +80,15 @@ describe("correlation axes name the scale the points are on", () => {
     expect(await screen.findByText("MYCN (LOG2(TPM+1))")).toBeInTheDocument();
   });
 });
+
+describe("correlation PNG names the dataset", () => {
+  it("so the same pair from two datasets does not overwrite", async () => {
+    const exportFigure = await import("../../lib/exportFigure");
+    const spy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    setup();
+    await screen.findByDisplayValue("mycn_status");
+    await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /png/i }));
+    expect(spy.mock.calls.at(-1)![1]).toBe("gse66586-MYCN-vs-PPP2R5B-correlation");
+  });
+});
