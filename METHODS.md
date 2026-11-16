@@ -597,6 +597,21 @@ positives on a working configuration.
   a legacy one (§7.4). Pane tabs no longer nest a close button inside
   the focusable tab (axe nested-interactive); a focused tab closes with
   Delete. axe reports no violations.
+- *Fourth pass.* Every chart exported on every dataset (32 files): names
+  now carry the settings that change the result — survival cutoff and tie
+  policy, correlation method, network method, a tag for the gene panel —
+  after median and quartile (and Pearson and Spearman) exports were found
+  overwriting each other. At 390 px every view was screenshotted: charts
+  now lay out at the real width instead of shrinking to 67%, panel headers
+  wrap, and the fold-change chart keeps native size and scrolls sideways
+  (it had shrunk to unreadable ~3 px text). IGV zoom, drag-pan and typed
+  search work; the preset button un-highlights once IGV moves away.
+  Every calculation this audit changed was re-checked against R on the
+  served values: 15 correlations (5 datasets × 3 methods) and 3
+  expression-vs-CRISPR cases (|Δr| ≤ 4e-16, p relative ≤ 6e-14, one case
+  where R returns 0 and the app the t-approximation), 4 survival
+  configurations including the new tie order (log-rank, HR, CI identical
+  to R `survival`), and log-scale PCA on both TPM datasets (prcomp, ≤ 1e-14).
 
 ---
 
