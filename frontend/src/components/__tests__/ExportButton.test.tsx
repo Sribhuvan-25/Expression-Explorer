@@ -92,3 +92,21 @@ describe("ExportButton figure identity", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("ExportButton caption", () => {
+  it("hands the on-screen caption to the exporter", async () => {
+    function WithCaption() {
+      const ref = useRef<SVGSVGElement>(null);
+      return (
+        <>
+          <svg ref={ref} />
+          <ExportButton svgRef={ref} filename="f" title="t" statLines={[]} caption="Boxes show the median." />
+        </>
+      );
+    }
+    render(<WithCaption />);
+    await userEvent.click(screen.getByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][2]).toMatchObject({ caption: "Boxes show the median." });
+  });
+});

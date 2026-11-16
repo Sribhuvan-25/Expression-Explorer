@@ -13,6 +13,8 @@ interface ExportOptions {
   title: string;
   subtitle?: string;
   statLines: string[];
+  /** The figure caption shown under the chart on screen, printed below the statistics. */
+  caption?: string;
   scale?: number;
 }
 
@@ -118,11 +120,14 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
   const statFont = `600 11px ${monoFamily}`;
   const titleLines = wrapText(options.title, textW, measurer(titleFont));
   const statLines = options.statLines.flatMap((l) => wrapText(l, textW, measurer(statFont)));
+  const captionFont = `400 11px ${fontFamily}`;
+  const captionLines = options.caption ? wrapText(options.caption, textW, measurer(captionFont)) : [];
 
   const titleBlockH = titleLines.length * 22;
   const headerH = titleBlockH + (options.subtitle ? 18 : 0) + 28;
   const statsH = 20 + statLines.length * 18 + 12;
-  const totalH = headerH + chartHeight + statsH + footerH + padding * 2;
+  const captionH = captionLines.length ? captionLines.length * 16 + 10 : 0;
+  const totalH = headerH + chartHeight + statsH + captionH + footerH + padding * 2;
 
   const canvas = document.createElement("canvas");
   canvas.width = totalW * scale;
@@ -175,6 +180,16 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
   for (const line of statLines) {
     ctx.fillText(line, padding, statsY);
     statsY += 18;
+  }
+
+  if (captionLines.length) {
+    let captionY = statsY + 8;
+    ctx.fillStyle = inkMuteColor;
+    ctx.font = captionFont;
+    for (const line of captionLines) {
+      ctx.fillText(line, padding, captionY);
+      captionY += 16;
+    }
   }
 
   ctx.strokeStyle = ruleColor;

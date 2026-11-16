@@ -61,6 +61,20 @@ export function Panel({
 }
 
 /**
+ * The legend under a figure: what is plotted, n, the test, its sidedness
+ * and correction, what the marks mean. Plain text on purpose -- the same
+ * string is passed to ExportButton's `caption`, so the exported PNG
+ * carries exactly the caption shown on screen (METHODS.md 5.11).
+ */
+export function FigureCaption({ text, className = "" }: { text: string; className?: string }) {
+  return (
+    <p data-figure-caption className={`mt-2.5 max-w-[90ch] text-[12px] leading-[1.5] text-ink-soft ${className}`}>
+      {text}
+    </p>
+  );
+}
+
+/**
  * The query panel of an analysis. Once a run has produced a result it
  * collapses to a one-line summary of what ran, with an Edit control, so
  * the result gets the screen. The controls stay mounted while collapsed

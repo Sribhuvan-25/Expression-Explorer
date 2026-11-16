@@ -638,6 +638,20 @@ changed.
   real UI, every number on screen checked against the API response it
   came from): every number shown matched its API response (Compare 36/36 including all 15 correlation runs, network and PCA 10/10, signature and ranking 15/15, multi-omics, contrasts and context bar 9/9) and the values previously verified against R were unchanged (Kruskal–Wallis p 2.89e-8; survival log-rank p 2.53e-14, HR 23.504; correlation r −0.847; CRISPR r −0.652). Every export works, axe reports no violations, Alt+1–8, Delete and / work, and nothing overflows at 390 px. Merged as PR #7, with the accessibility fixes in a follow-up.
 
+### 5.11 Figure captions travel with the figure
+**Decided (2026-11-16), from the researcher-committee review of the
+Workbench design.** Reviewers found no figure captions: the test and the
+correction were only in the page subtitle, so a screenshot or exported
+PNG did not say what it showed. Every figure gets a caption under it that
+states what is plotted, n, the test with its sidedness and correction,
+and what the marks mean (box, whiskers, points, censoring ticks). The
+caption is one plain-text string (`FigureCaption` in
+`frontend/src/components/ui.tsx`); the same string is passed to
+`ExportButton`'s `caption`, and `exportSvgAsPng` prints it, wrapped,
+below the statistics — so the PNG carries exactly the caption on screen.
+A caption describes; it never adds a statistic the analysis did not
+compute.
+
 ---
 
 ## 6. Reporting and transparency
