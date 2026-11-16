@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type CompareMultiDatasetResult } from "../lib/api";
 import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
@@ -93,7 +94,7 @@ export function DatasetPanel({
             subtitle={`n = ${filteredPoints.length} · Mann–Whitney with FDR correction`}
             statLines={[
               `Kruskal-Wallis p = ${
-                result.kruskal_wallis?.p_value != null ? result.kruskal_wallis.p_value.toExponential(2) : "—"
+                formatP(result.kruskal_wallis?.p_value)
               }`,
               ...pairwise.map(
                 (t) =>
@@ -135,7 +136,7 @@ export function DatasetPanel({
         <div className="mb-3 flex gap-8">
           <Stat
             label="Kruskal-Wallis p"
-            value={result.kruskal_wallis?.p_value != null ? result.kruskal_wallis.p_value.toExponential(2) : "—"}
+            value={formatP(result.kruskal_wallis?.p_value)}
             tone={result.kruskal_wallis?.p_value != null && result.kruskal_wallis.p_value < 0.05 ? "hot" : "neutral"}
           />
         </div>

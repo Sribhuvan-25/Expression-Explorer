@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuxLayerSummary } from "../lib/api";
 import { EmptyState, ErrorState, PageHeader, Panel, PrimaryButton, Stat } from "../components/ui";
@@ -150,7 +151,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
                 subtitle={`${data.n_mutated} mutated vs ${data.n_wildtype} wild-type`}
                 statLines={[
                   `Mann-Whitney p = ${
-                    data.test.p_value != null ? data.test.p_value.toExponential(2) : "—"
+                    formatP(data.test.p_value)
                   }`,
                 ]}
               />
@@ -167,7 +168,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
             <Stat label="Wild-type" value={String(data.n_wildtype)} />
             <Stat
               label="Mann-Whitney p"
-              value={data.test.p_value != null ? data.test.p_value.toExponential(2) : "—"}
+              value={formatP(data.test.p_value)}
               tone={data.test.p_value != null && data.test.p_value < 0.05 ? "hot" : "neutral"}
             />
           </div>

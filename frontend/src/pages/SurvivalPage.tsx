@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type TiePolicy } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
@@ -295,9 +296,9 @@ export function SurvivalPage() {
                         subtitle={`n = ${data.n} · LOW/HIGH split by ${cutoffDescription}`}
                         statLines={[
                           `Curves: ${survivalColorKey(data.curves)}`,
-                          `Log-rank p = ${data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}`,
+                          `Log-rank p = ${formatP(data.logrank_p_value)}`,
                           ...(data.cox && !coxIsDegenerate
-                            ? [`Cox model p = ${data.cox.log_likelihood_p_value.toExponential(2)}`]
+                            ? [`Cox model p = ${formatP(data.cox.log_likelihood_p_value)}`]
                             : []),
                         ]}
                       />
@@ -359,13 +360,13 @@ export function SurvivalPage() {
                   <div className="flex flex-wrap gap-8">
                     <Stat
                       label="Log-rank p"
-                      value={data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}
+                      value={formatP(data.logrank_p_value)}
                       tone={data.logrank_p_value != null && data.logrank_p_value < 0.05 ? "hot" : "neutral"}
                     />
                     {data.cox && !coxIsDegenerate && (
                       <Stat
                         label="Cox model p"
-                        value={data.cox.log_likelihood_p_value.toExponential(2)}
+                        value={formatP(data.cox.log_likelihood_p_value)}
                         tone={data.cox.log_likelihood_p_value < 0.05 ? "hot" : "neutral"}
                       />
                     )}
