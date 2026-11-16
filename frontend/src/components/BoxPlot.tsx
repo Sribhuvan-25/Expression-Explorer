@@ -242,14 +242,19 @@ export function BoxPlot({
     // character count here -- that's what made four distinct subtypes all
     // render as "B-Lymphoblastic Leukemia/Lymp…".
     const longest = groups.reduce((m, g) => Math.max(m, g.group.length), 0);
-    const labelW = Math.round(
-      Math.min(Math.max(longest * 6.1 + 16 + N_GUTTER, 150), Math.max(availableWidth * 0.44, 190)),
-    );
+    // Below 420 px the label column (min 150-190) left the boxes a sliver
+    // of ~15 px (DepMap by subtype at 390 px). There each name goes on its
+    // own line above its box, and the box gets the full width.
+    const stacked = availableWidth < 420;
+    const layoutWidth = availableWidth;
+    const labelW = stacked
+      ? 0
+      : Math.round(Math.min(Math.max(longest * 6.1 + 16 + N_GUTTER, 150), Math.max(layoutWidth * 0.44, 190)));
     const margin = { top: 14, right: 26, bottom: 46, left: 12 };
-    const rowH = 30;
+    const rowH = stacked ? 46 : 30;
     const plotH = groups.length * rowH;
     const height = plotH + margin.top + margin.bottom;
-    const width = availableWidth;
+    const width = layoutWidth;
     const plotLeft = margin.left + labelW;
     const plotW = Math.max(width - plotLeft - margin.right, 120);
     const x = (v: number) => plotLeft + ((transform(v) - tMin) / span) * plotW;
@@ -304,7 +309,7 @@ export function BoxPlot({
             />
 
             {groups.map((g, i) => {
-              const cy = margin.top + rowH * i + rowH / 2;
+              const cy = margin.top + rowH * i + (stacked ? 31 : rowH / 2);
               const single = g.values.length === 1;
               return (
                 <g key={g.group}>
@@ -322,19 +327,19 @@ export function BoxPlot({
                       the axis, so it neither collides with a long group
                       name nor overlaps the boxes inside the plot. */}
                   <text
-                    x={plotLeft - N_GUTTER}
-                    y={cy}
-                    textAnchor="end"
+                    x={stacked ? margin.left : plotLeft - N_GUTTER}
+                    y={stacked ? margin.top + rowH * i + 11 : cy}
+                    textAnchor={stacked ? "start" : "end"}
                     dominantBaseline="middle"
                     fontSize={11}
                     fill="var(--ink)"
                   >
                     <title>{`${g.group} (n=${g.values.length})`}</title>
-                    {fitLabel(g.group, labelW - N_GUTTER - 12)}
+                    {fitLabel(g.group, stacked ? width - margin.left - margin.right - 30 : labelW - N_GUTTER - 12)}
                   </text>
                   <text
-                    x={plotLeft - 8}
-                    y={cy}
+                    x={stacked ? width - margin.right : plotLeft - 8}
+                    y={stacked ? margin.top + rowH * i + 11 : cy}
                     textAnchor="end"
                     dominantBaseline="middle"
                     fontSize={9}

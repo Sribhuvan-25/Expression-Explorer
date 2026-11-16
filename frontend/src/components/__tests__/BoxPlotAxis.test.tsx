@@ -109,3 +109,21 @@ describe("box plot log-scale ticks", () => {
     }
   });
 });
+
+describe("box plot with many groups on a narrow screen", () => {
+  it("puts each group name above its box instead of in a side column", async () => {
+    const { vi } = await import("vitest");
+    const spy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(214);
+    const pts = Array.from({ length: 12 }, (_, g) =>
+      [1, 2, 3].map((k) => ({ sample_id: `S${g}-${k}`, group: `Subtype number ${g}`, value: g + k })),
+    ).flat();
+    const { container } = render(<BoxPlot points={pts} valueLabel="expression" unit="log2_tpm" />);
+    const nameTexts = [...container.querySelectorAll("svg text")].filter((t) => /Subtype number/.test(t.textContent ?? ""));
+    expect(nameTexts.length).toBe(12);
+    expect(nameTexts.every((t) => t.getAttribute("text-anchor") === "start")).toBe(true);
+    spy.mockRestore();
+    const wide = render(<BoxPlot points={pts} valueLabel="expression" unit="log2_tpm" />);
+    const wideNames = [...wide.container.querySelectorAll("svg text")].filter((t) => /Subtype number/.test(t.textContent ?? ""));
+    expect(wideNames.every((t) => t.getAttribute("text-anchor") === "end")).toBe(true);
+  });
+});
