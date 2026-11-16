@@ -170,6 +170,13 @@ def expression_vs_aux_correlation(
             f"for this gene -- need at least {MIN_AUX_SAMPLES} paired samples to correlate."
         )
 
+    for column, label in (("expression", "This gene's expression"), ("aux", f"'{aux_feature_id}'")):
+        if paired[column].nunique() <= 1:
+            # Constant values give a NaN r, which is not valid JSON (500).
+            raise ValueError(
+                f"{label} has the same value ({paired[column].iloc[0]:g}) in all {len(paired)} paired "
+                f"samples, so it has no variance and cannot be correlated."
+            )
     stat, p_value = methods[method](paired["expression"], paired["aux"])
     n_total = int(ds.matrix.shape[1])
 

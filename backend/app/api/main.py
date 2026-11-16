@@ -790,7 +790,9 @@ def correlation(dataset_id: str, gene_a: str, gene_b: str, method: Literal["pear
     try:
         result = gene_correlation(ds.matrix, feature_a, feature_b, method=method)
     except ValueError as exc:
-        raise HTTPException(422, str(exc))
+        # Messages name the matrix's feature ids (Ensembl on TARGET); say
+        # them the way the user typed them.
+        raise HTTPException(422, str(exc).replace(feature_a, gene_a).replace(feature_b, gene_b))
     result["gene_a"] = gene_a
     result["gene_b"] = gene_b
     # Per-point groups so the scatter can be coloured: r pools every
@@ -816,7 +818,10 @@ def co_expression(
         raise HTTPException(422, "top_n must be between 1 and 200.")
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
-    network = co_expression_network(ds.matrix, feature_id, top_n=top_n, method=method, direction=direction)
+    try:
+        network = co_expression_network(ds.matrix, feature_id, top_n=top_n, method=method, direction=direction)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc).replace(feature_id, gene))
     # Map each result's feature_id back to its display symbol -- the
     # network is computed on the matrix's own index (Ensembl IDs for
     # TARGET, symbols for DepMap/GDS4299), but a reader wants gene symbols

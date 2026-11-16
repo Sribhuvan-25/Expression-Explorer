@@ -11,6 +11,18 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
+def _require_variance(values: pd.Series, label: str) -> None:
+    """A gene with one value in every sample (unexpressed: all-zero TPM)
+    has no variance, so r is 0/0. scipy returns NaN, which is not valid
+    JSON, and the endpoint answered 500 -- easy to hit, since 30,809 of
+    GSE324984's genes and 2,445 of TARGET's are constant."""
+    if values.nunique() <= 1:
+        raise ValueError(
+            f"{label} has the same value ({values.iloc[0]:g}) in every sample, so it has no "
+            f"variance and cannot be correlated with anything."
+        )
+
+
 _METHODS = {
     "pearson": stats.pearsonr,
     "spearman": stats.spearmanr,
@@ -55,6 +67,8 @@ def gene_correlation(
             f"Only {n} samples have values for both genes -- need at least 3 to compute a correlation."
         )
 
+    _require_variance(paired[gene_a], gene_a)
+    _require_variance(paired[gene_b], gene_b)
     stat, p_value = _METHODS[method](paired[gene_a], paired[gene_b])
     return {
         "gene_a": gene_a,
@@ -102,6 +116,8 @@ def co_expression_network(
 
     others = matrix.drop(index=gene)
     query = matrix.loc[gene]
+    # It used to return an empty network with no explanation.
+    _require_variance(query, gene)
     corr = others.T.corrwith(query, method=method).dropna()
 
     ranked = corr.sort_values(ascending=(direction == "negative"))
