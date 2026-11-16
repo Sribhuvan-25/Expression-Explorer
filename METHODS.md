@@ -56,6 +56,50 @@ A single sample has no within-group variance, so a test against it is
 meaningless. The sample still appears in the plot (as a point — see 3.3)
 because it is real data worth seeing; it just isn't given a p-value.
 
+### 1.4a Small groups: exact Mann–Whitney, and the smallest p it can give
+**Decided (2026-11-15).** `backend/app/analysis/compare.py` →
+`mann_whitney_pvalues()`, `min_p_achievable()`; used by `/compare`,
+`/compare-multi` and `/differential`.
+
+**Exact test for small groups.** When the two groups admit at most
+5,000 splits (`EXACT_SPLIT_LIMIT`; e.g. 2 vs 2 = 6, 5 vs 3 = 56, 7 vs 7 =
+3,432) the p-value is the exact permutation distribution of U over every
+split, average ranks for ties, two-sided as min(1, 2 × smaller tail) —
+scipy's exact-test convention. On tie-free data it equals
+`mannwhitneyu(method="exact")` to 1e-12; on tied data it equals
+`scipy.stats.permutation_test` with full enumeration (both pinned in
+`tests/test_mann_whitney_exact.py`). Larger groups use the normal
+approximation with tie and continuity correction, now chosen
+explicitly. Cost: 7 vs 7 across 65,535 genes takes 4.7 s.
+
+**Why this replaced scipy's default (a defect found in review).** The
+genome-wide scan called `mannwhitneyu(..., axis=1)`; in scipy 1.15 one
+tied gene anywhere switches *every* gene to the normal approximation. At
+2 vs 2 that served p = 0.245 for a cleanly separated gene (exact: 0.333)
+and p = 0.2207 for every gene with one all-zero arm, so GSE324984's
+"Rank genes" list was 500 genes with a silent arm, MYCL absent. At 3 vs 3
+the approximation crossed 0.05 (p = 0.047) where the exact test cannot go
+below 0.1. Single-gene Compare had the same fallback for tied genes.
+**This changes numbers** for any comparison with ≤ 5,000 splits, including
+lopsided ones such as 2 vs 30 that scipy previously approximated
+(e.g. small DepMap subtypes), and only those; TARGET's and GDS4299's ETP
+comparisons are far above the limit and unchanged.
+
+**The floor is reported.** Every test carries `min_p_achievable` =
+2 / C(n_a + n_b, n_a) on the exact path (null on the approximate path).
+It genuinely bounds every served p now. At the November 2026 datasets'
+sizes it *is* the result: 2 vs 2 cannot go below **0.333**, 5 vs 2 not
+below **0.095**, 3 vs 2 not below **0.2**, 5 vs 3 not below **0.036**. The UI
+states it wherever it exceeds 0.05, because "p = 0.33, not significant"
+otherwise reads as "no effect" when the test could not have said
+anything else. For replicated designed experiments, read the count-based
+contrast in §11.2 instead.
+
+Kruskal–Wallis (§1.2) still uses the chi-square approximation; at 4
+groups of 2 its smallest attainable p is 0.083 (complete separation,
+measured), so it cannot produce
+a spurious p < 0.05 at these sizes, but it is approximate.
+
 ---
 
 ## 2. Signature scoring
@@ -382,8 +426,15 @@ PP2A / ETP-signature gene panel on GSE28703:
   background, with scattered p-values (0.055–0.88) consistent with
   noise. Both rules select it.
 - Where the rules differ (MYB, PPP2R5C, PPP2R1B, KIAA1524), the
-  unbiased rule **still finds the comparison significant**
-  (p = 0.008, 0.004, <0.001, 0.003).
+  unbiased rule **still finds the comparison significant**: Mann–Whitney
+  (§1.1, what Compare serves) **p = 0.010, 0.023, < 0.001, 0.0046**
+  respectively (CIP2A is the current symbol for KIAA1524).
+  *Revised 2026-11-15:* this bullet originally gave p = 0.008, 0.004,
+  < 0.001, 0.003 without naming the test. Those are **Welch t-tests** from
+  the exploratory script on the same probes (they recompute to 0.0076,
+  0.0037, 0.0001, 0.0031), not the app's test, so they never matched the
+  UI. The Mann–Whitney values above are recomputed from the GEO files and
+  equal what the running app serves.
 
 So the unbiased rule costs essentially nothing in sensitivity here while
 removing the circularity. Worth raising with the expert since it differs
@@ -417,6 +468,53 @@ which matches the published composition of GSE28703 (Zhang et al.,
 Nature 2012, 481:157-163; PMID 22237106) confirmed against an
 independent source. All 52 labels join cleanly to the matrix with no
 missing or extra samples.
+
+### 7.1b GSE66586 (GPL6244) — probe collapse, symbols, cell-line identity
+**Decided and implemented (2026-11-15).** `app/ingest/gse66586.py`;
+shared GEO helpers moved to `app/ingest/_geo.py`.
+
+Neuroblastoma cell lines (Gu et al. 2016, PMID 26844271), Affymetrix
+Human Gene 1.0 ST, RMA log2 as submitted. 10 samples: 5 MYCN-amplified,
+3 MYCN non-amplified, 2 non-malignant (bone-marrow MSC, HCN-1A).
+
+**Probe collapse.** The §7.1 rule, now shared code
+(`_geo.collapse_probes`): first symbol per transcript cluster, `---`/`NA`
+dropped, highest mean across all 10 samples wins. It never looks at MYCN
+status. 22,195 of 33,297 clusters carry a symbol; they collapse to 20,002
+genes (1,310 had more than one cluster). In the MYC/PP2A panel only
+ARPP19 has two (7988963, mean 11.24, kept; 8110618, mean 9.97). Moving the
+helpers out of `gds4299.py` was checked to leave GDS4299's matrix,
+samples and features bit-identical (`assert_frame_equal`, exact).
+
+**Symbols.** GPL6244's annotation (Aug 2016) carries two panel genes
+under old names: `KIAA1524` (now CIP2A) and `FAM122A` (now PABIR1). Both
+are renamed to the current HGNC symbol at ingest and the old name kept in
+`aliases`. Neither current symbol has its own cluster on this platform,
+so there is no collision; if one existed, the highest-mean rule would
+pick between them.
+
+**Labels** are parsed from the series matrix (`!Sample_source_name_ch1`
+→ `mycn_status`, characteristics → `cell_type`, title → `cell_line`).
+Ingest fails unless the parse reproduces the published 5 / 3 / 2 split
+and every cell type agrees with its group.
+
+**Not every line is independent.** GSM1625938 "BE(2)c" is ATCC CRL-2268
+= SK-N-BE(2)-C (CVCL_0529). GSM1625941 is *titled* "SK-N-BE(2)c" but is
+ATCC CRL-2271 = the parental SK-N-BE(2) (CVCL_0528), and its CEL file
+name agrees. SH-SY5Y (CVCL_0019) is a subclone of SK-N-SH (CVCL_0531).
+So the MYCN-amplified arm is 5 samples from 4 patients and the
+non-amplified arm 3 samples from 2, and any group test here overstates
+the number of independent biological samples. Pearson r on the collapsed
+matrix: BE(2)-C vs SK-N-BE(2) 0.954, SH-SY5Y vs SK-N-SH 0.958 — against
+0.960 for the unrelated SK-N-DZ vs IMR-32 and a 0.776–0.960 range over
+all 45 pairs. Neither pair looks like two runs of one line, so all 10
+samples are kept unmerged. `cell_line_identity` (Cellosaurus name,
+resolved from each sample's ATCC catalogue number rather than its title)
+is a declared group column so the relationship is visible. The dataset
+notes disclose this, and the §1.4a floors for its group sizes.
+
+Side observation, not acted on: HCN-1A correlates with hBM-MSC at 0.947
+but at most 0.866 with any neuroblastoma line.
 
 ### 7.2 Cross-dataset comparison
 **Decided and implemented (2026-08-27).** Datasets are shown
@@ -502,6 +600,21 @@ the annotation panel finds the gene even though GPL13158 only knows it as
 KIAA1524, because MyGene.info's own alias index carries both names.
 Verified directly: `mygene.info/v3/query?q=KIAA1524` returns the CIP2A
 record.
+
+**Update (2026-11-15).** Two narrow steps, neither of which changes
+which gene an existing query matches. (1) When a query misses but the
+dataset's *own* feature table records the name as an older symbol,
+`_resolve_gene()`'s 404 now names the current symbol ("KIAA1524 … is an
+older name for CIP2A") instead of a bare "not found", which read as a
+coverage claim. (2) The design-contrast gene panel (§11.4) — and only it —
+resolves such a name, and says so on that row. The open question below
+is unchanged for every other endpoint. (3) Mixed-case symbols resolve:
+the resolver upper-cased the query and then required an exact symbol
+match, so `C1orf112`-style symbols could never be found on an
+Ensembl-indexed dataset (TARGET, GSE324984). It now tries exact, then
+upper-case, then a case-insensitive match that resolves only when
+unambiguous (two symbols differing only by case → 422). `/compare-multi`
+skip reasons now carry the legacy-symbol hint too.
 
 **Deliberately not wired into `_resolve_gene()` yet.** Making alias
 resolution affect which gene a *query* matches is a different, bigger
@@ -711,6 +824,12 @@ bit-identical p-values before committing to the vectorised path, so this
 is a performance change with no numeric difference, not a different
 (faster but less correct) statistic.
 
+**Tie-break fixed (2026-11-15).** The code sorted by p only, although
+this entry and the docstring said ties are broken by |median difference|.
+At 2 vs 2 thousands of genes share the floor p, so the order among them
+was arbitrary (MYCL, +230-fold in GSE324984, fell outside the top 500).
+Now sorted by p, then |median difference| descending; tied p keep tied q.
+
 **BH-FDR computed over every gene tested, not just the returned top N**
 — an FDR computed only across the already-most-significant genes shown
 would be a biased correction (same reasoning as the pairwise-test FDR in
@@ -915,8 +1034,13 @@ evidence the parsing is correct: the top recurrently-mutated genes come
 out as NOTCH1 57%, FBXW7 21%, PHF6 14%, NRAS 10%, PTEN 10%, JAK3 6%,
 RPL10 5% — the canonical T-ALL driver profile at literature-consistent
 frequencies. Splitting DTX1 (a direct NOTCH1 target) by NOTCH1 mutation
-status gives p = 4.9e-3, while MYCN (not NOTCH1-regulated) gives
-p = 0.87.
+status gives **p = 6.1e-3** (medians 18.86 mutated vs 8.71 wild-type,
+159 vs 120), while MYCN (not NOTCH1-regulated) gives **p = 0.75** — the
+values the running app serves. *Revised 2026-11-15:* first measured as
+p = 4.9e-3 (medians 18.86 vs 9.69) and p = 0.87 on 2026-09-13; the §8.6a
+deterministic file-selection fix (2026-09-22) changed 29 cases'
+expression, and the old values reproduce exactly from the pre-fix
+backup. Same conclusion either way.
 
 Gene-level only for now; amino-acid-level resolution is deferred (the
 loader keeps the columns that would allow it).
@@ -1043,6 +1167,68 @@ Two related QA fixes, same principle:
   shared resolver wasn't, so `?gene=dtx1` 404'd on an API the UI happens
   to uppercase for you.
 
+### 8.6a One RNA-seq file per TARGET-ALL-P2 case, chosen deterministically
+**Decided (2026-09-22), after independent verification during QA.**
+`select_one_file_per_case()` in `app/ingest/gdc_target.py` picks exactly
+one GDC file per case (patient) before the expression matrix is
+assembled, and the same selection is applied to the mutation aux layer
+(`app/ingest/target_mutations.py`).
+
+**The bug.** `list_open_rna_files()` queries GDC with no `sample_type`
+or `workflow_type` filter and no dedup. 56 of the 469 TARGET-ALL-P2
+cases have more than one open-access RNA-seq file: 48 carry both a
+Primary and a Recurrent sample (a genuine second disease timepoint —
+relapse tissue, not a technical duplicate), 8 carry two files of the
+*identical* sample_type (a true duplicate upload), and 1 case has only
+Recurrent files. The pre-fix code (`if sample_path.exists(): continue`,
+keyed on `case.submitter_id`) silently kept whichever file GDC happened
+to list first — non-deterministic across ingests, and undetectable from
+the outside since the total sample count didn't change. Found by
+spot-checking a production reference value against a fresh local
+ingest: identical n but a different statistic, traced via direct GDC
+`/files` queries to this exact mechanism.
+
+**Why picking one, not exposing both, was the right fix.** Every
+grouping/clinical column (`vital_status`, `etp_status`, `mrd_status`)
+and the mutation aux layer are keyed at the same patient level as the
+expression matrix. `target_all_p2` is also the only dataset in this app
+with `supports_survival=True`. Exposing a patient's Primary and
+Recurrent samples as two separate rows would give that patient the same
+`vital_status`/follow-up time twice — double-counting their survival
+event in Kaplan-Meier/Cox, which assume one independent observation per
+row — and double their weight in any group comparison or
+differential-expression run that happens to include them. It would also
+break the "469 samples = 469 patients" equivalence assumed everywhere
+in the UI and in this document, for a subset of the cohort, silently.
+One row per patient is a correctness requirement here, not a
+simplification.
+
+**Selection order:** Primary tumor over Recurrent (baseline disease
+state, matching how published TARGET-ALL-P2 analyses treat this
+cohort) → Bone Marrow over Peripheral Blood (the dominant, best
+represented specimen site in this project) → lowest `file_id` (breaks
+the 8 true-duplicate ties the same way on every ingest). 55 of the 56
+affected cases resolve via the Primary preference; the 1 Recurrent-only
+case falls back correctly rather than dropping out of the cohort.
+
+Verified against live GDC before writing the fix: re-queried `/files`
+directly and confirmed the exact partition (55 cases with an available
+Primary sample, 1 without, 8 same-type duplicates). `select_one_file_per_case()`
+is unit-tested against all three cases plus the ordinary single-file
+case (`tests/test_gdc_target.py`), each validated by reintroducing the
+bug and confirming the test fails first.
+
+**Also fixed in the same change:** `scripts/ingest_dataset.py` was
+re-reading its own previously-ingested database row instead of the
+source loader on every subsequent run, once a dataset had been ingested
+once — the database-wins precedence that's correct for serving requests
+(§10.5) made "re-ingest" a no-op against the actual GDC source after the
+first run. This is exactly why the fix above didn't reach data on disk
+until this was also fixed: registry now exposes
+`get_code_descriptor()`, which the ingest script uses instead, and which
+always reaches the real loader regardless of what's already in the
+database. Covered by two new tests in `test_registry_db.py`.
+
 ### 3.1a Tied scores at a percentile cutoff
 **Decided (2026-09-13), after QA.** `binarize_by_cutoff()` takes a
 `tie_policy` (`trim` default / `exclude` / `inclusive`), and the survival
@@ -1084,6 +1270,21 @@ ties actually occur.
 `trim` is the default because it is the only policy that keeps the arms
 consistent with what the interface says it is doing, and it never
 silently produces an unusable result.
+
+**Addendum (2026-09-23), after QA.** An emptied arm under `exclude` was
+disclosed in the KM plot's tie note, but the Cox table below it was not
+gated on the same condition — `lifelines` still fits a coefficient when
+one arm is empty, and the result is a hazard ratio and 95% CI spanning
+many orders of magnitude (observed live: target_all_p2/MEF2C, quartile +
+exclude → HR=18341.107, CI 0.000–688692843566556.625, p=0.4294) rendered
+in the same table styling as a real result, with no signal that the
+model has nothing to compare. Fixed in `SurvivalPage.tsx`: the Cox
+table and its summary p-value are now suppressed whenever fewer than 2
+arms are present, replaced with a message naming the empty-arm cause and
+pointing at the control that fixes it. The KM curve, tie note, and
+sample-accounting line are unaffected — this only changes the Cox
+model's ability to fabricate a data-free statistic. 2 new frontend
+tests, validated by reintroducing the bug and confirming both fail.
 
 ### 8.7 Aux feature ids normalise like gene symbols — but not by upper-casing
 **Decided (2026-09-13), after QA.** `_resolve_aux_feature()` mirrors
@@ -1319,6 +1520,205 @@ unaffected.
 
 ---
 
+## 11. Designed perturbation experiments
+
+Added 2026-11-15 for GSE324984 (MYCL gain and loss in prostate cancer
+cell lines), the first dataset in this app that is a designed experiment
+rather than a cohort.
+
+### 11.1 Contrasts are part of the dataset, and stay within a cell line
+**Decided.** A dataset may declare pre-specified two-group contrasts
+(`ContrastSpec` in `app/models/contract.py`), computed at ingest and
+stored (`contrasts` table + one parquet per contrast; alembic revision
+`b3c1f0a2d4e5`). GSE324984 declares two:
+
+| contrast | reference (n) | treatment (n) |
+|---|---|---|
+| `c42b_mycl_oe` | C4-2B empty vector (2) | C4-2B MYCL overexpression (2) |
+| `h660_mycl_kd` | NCI-H660 shCtrl (2) | NCI-H660 shMYCL (2) |
+
+Why fixed contrasts rather than "pick any two groups": the cell lines
+differ far more than any perturbation changes them (log2-TPM r ≈ 0.99
+between replicates, ≈ 0.987 within a line across arms, ≈ 0.89 across
+lines). A C4-2B control against an H660 knockdown measures mostly
+"adenocarcinoma vs NEPC line". Each contrast is fitted on its own four
+samples only — filtering, normalisation and the variance prior included —
+so one experiment cannot influence the other's numbers (pinned by
+`test_other_experiments_samples_do_not_influence_a_contrast`).
+
+The rest of the app still sees all 8 samples (Compare by `arm` shows the
+four arms separately; Rank across all 8 is legitimate). The dataset notes
+warn that correlations or PCA across all 8 samples mostly reflect cell
+line. On Compare, every pairwise test whose two groups lie in different
+strata of a contrast's `stratum_column` is marked `crosses_stratum`, and
+the response carries a one-line `stratum_caveat` (GSE324984 by `arm`: 4
+of the 6 pairs cross cell lines) — those p-values were previously shown
+in one table with the within-line pairs and nothing to tell them apart.
+
+### 11.2 Method: edgeR + limma-trend on the counts
+**Decided.** `app/analysis/contrast.py` → `run_contrast()`.
+
+    filterByExpr(group)  →  TMM  →  cpm(log=TRUE, prior.count=3)
+    →  lmFit(~group)  →  eBayes(trend=TRUE)  →  BH over tested genes
+
+Why not the app's Mann–Whitney: at 2 vs 2 it cannot go below p = 0.333
+(§1.4a), so every gene would read "not significant" regardless of the
+data. Replicated perturbation RNA-seq needs a test that shares variance
+information across genes; limma's empirical-Bayes moderated t is a
+standard one (prior df here: 6.97 for C4-2B, 13.75 for H660).
+
+**It is a re-implementation, verified against R.** Each step mirrors the
+named R function with its default arguments. On the full 78,691-gene
+counts file, against R 4.2 / edgeR 3.40.2 / limma 3.54.2: identical
+tested gene sets (16,855 and 16,987), identical TMM factors to 6 dp,
+identical prior df, and every log2FC / AveExpr / t / p / q within
+2e-12 absolute; 5,905 and 4,224 genes at q < 0.05 in both
+implementations. A 2,720-gene subset with R's output is vendored in
+`tests/fixtures/contrast/` so the comparison runs in the test suite
+offline (`tests/test_contrast.py`), and the suite was checked to fail on
+seven planted deviations (prior count, trend off, unweighted TMM, BH
+off-by-one, using other experiments' samples, keeping pre-filter library
+sizes, no filter).
+
+**Edge cases matched to limma, found in review (2026-11-15):** when the
+variance prior is infinite (very regular replicates) limma uses the plain
+pooled variance as the prior scale without a trend, `exp(emean)` with
+one — the first was wrong here and is now checked against R on a Poisson
+fixture for both `trend=TRUE` and `FALSE`; an infinite prior df is stored
+as `df_prior: null, df_prior_infinite: true` because JSON (and Postgres
+JSON) cannot hold Infinity, which would have made every contrast endpoint
+500; TMM returns factor 1 for a sample with no finite log-ratios, as R
+does, instead of raising.
+
+**Choices stated:** counts used as submitted (11% fractional, which edgeR
+accepts — no rounding); genes failing `filterByExpr` are kept in the
+table as `tested = false` and shown as "not tested", never as 0 or as
+absent; q-values are genome-wide within the experiment, so the gene
+panel and the Top-genes list always show the same q for the same gene.
+A panel-only correction (25 genes) would give smaller q-values and is
+defensible for a pre-specified list, but would mean two different q's for
+one gene in one app — not done.
+
+**Why not DESeq2:** it is the other standard choice and likely what the
+authors used, so log2FC/p will differ somewhat from the paper's tables.
+Adding it means a new Python dependency (`pydeseq2`); installing it into
+the project environment was declined by this session's permission
+settings, so it was not added. Implemented with numpy/scipy only, the
+dataset ingests from the existing requirements. Revisit if the expert
+wants the paper's own numbers reproduced.
+
+**Checked against DESeq2 (R 4.2, DESeq2 1.38.3, counts rounded, default
+Wald test, fitted per cell line), validation only — 2026-11-15.**
+Genome-wide, the two agree on effect sizes: log2FC Pearson r = 0.966
+(C4-2B) and 0.963 (H660) over all tested genes; signs agree for 98.7% /
+98.4% of genes and for 100% of genes this app calls q < 0.05. limma-trend
+is the more liberal of the two at n = 2: 5,905 vs 4,355 genes at q < 0.05
+in C4-2B (overlap 4,316) and 4,224 vs 2,717 in H660 (overlap 2,635). For
+the PP2A panel the headline is method-independent — PPP2R5B (+1.26 /
+−0.89) and MYC (−0.45 / +0.79) are reciprocal and significant in both
+experiments under both methods; CIP2A, SET, ANP32A, PPP2R1B (C4-2B) and
+PPP2R2C, PPP2R5D (H660) are significant under both. Borderline genes
+differ: PPP2R2A (q 0.034 vs padj 0.067) and PPP2R2C (0.016 vs 0.062) in
+C4-2B are significant only here; ARPP19 in C4-2B (0.061 vs 0.048) and SET
+in H660 (0.126 vs 0.014) only under DESeq2. A reader should treat those
+four as not robust to the choice of method.
+
+### 11.3 GSE324984 source-file problems, and what was done
+**Decided.** `app/ingest/gse324984.py`.
+
+- **Truncated TPM file.** `GSE324984_RNAseq_TPM_matrix.txt.gz` has
+  exactly 65,535 gene rows — the legacy Excel row limit — and is a strict
+  prefix of the 78,691-row counts file. The missing 13,156 rows are the
+  tail of the Ensembl ordering (ENSG00000297233 onward). TPM values that
+  are present are unchanged (each column sums to ≈ 997–998k, i.e. TPM
+  computed before the cut). So: expression shown = submitted TPM for
+  65,535 genes; statistics = complete counts. Top-genes rows with no TPM
+  are flagged `in_expression_matrix = false`. All 23 panel genes are in
+  both files.
+- **One gene mis-named in the counts file.** ENSG00000073282 is "TP63" in
+  the TPM file (and Ensembl) but "KDM5A" in the counts file; real KDM5A
+  (ENSG00000073614) is present separately in both, and the row's counts
+  match TP63's near-zero TPM. The Ensembl id is the key; the TPM file's
+  name wins. More than 5 such conflicts fails ingest as misaligned files.
+- **TPM and counts are different quantifications.** If the TPM were the
+  counts divided by a fixed gene length, log(counts / TPM) would be
+  exactly gene effect + sample effect. It is not: residual SD 0.066 over
+  10,227 well-expressed genes, with 7.4% deviating by > 20% in some
+  sample — consistent with an isoform-aware TPM (sample-specific
+  effective lengths) beside gene-level counts. Consequence: for 2,029 of
+  16,476 judged C4-2B genes (12%) and 910 of 16,699 H660 genes (5%) the
+  mean TPM moves the opposite way from the count-based log2FC (largest
+  case at q < 0.05: HSPA12A, log2FC +1.04, TPM 4.8 → 3.6). Neither is
+  "wrong"; they measure differently. The test is the count-based one, so
+  each contrast stores the TMM-normalised CPM it ran on
+  (`norm_cpm:<sample>` columns, checked against R's library sizes ×
+  TMM factors), the panel returns those alongside TPM, and
+  `display_direction_agrees = false` flags the rows where the two
+  disagree. All tested PP2A-panel genes agree.
+- **Duplicate names — one locus per name, chosen over the complete
+  counts (revised 2026-11-15 after review).** 1,595 TPM rows share a name
+  with another Ensembl id: Y_RNA/snoRNA families, and PAR X/Y copies
+  (GTPBP6, CD99, PLCXD1…) whose reads the aligner splits arbitrarily
+  between copies — the X and Y copy of one gene showed opposite-signed
+  fold-changes at q < 0.05. For each name one locus keeps the name: the
+  highest mean TPM when every locus with that name has TPM (TPM is
+  length-normalised: C4orf36's loci have equal mean counts, 24.7 vs 25.0,
+  but TPM 1.77 vs 0.71), otherwise the highest mean count (TPM cannot rank
+  a locus it lacks). The others show their Ensembl id, carry no alias for
+  the shared name, and are flagged (`n_loci_with_name`, an identity note
+  on panel rows). The first version chose by TPM among TPM rows only,
+  which (a) sent "CAST" to a near-silent TPM-file locus while the
+  expressed CAST (ENSG00000310517, ~1,000–5,000 counts) exists only past
+  the truncation, (b) let the top-genes list (undeduplicated) and the
+  panel show different loci under one symbol, and (c) stored the shared
+  name as an *alias*, so the legacy-name fallback resolved "C4orf36" to
+  the secondary locus. All three fixed and pinned by tests built on those
+  cases. Label-independent and deterministic either way.
+- **Genes only in the counts are reachable.** 13,156 genes have
+  statistics but no TPM row (356 tested in C4-2B, 32 at q < 0.05; 265 in
+  H660, 44). The gene panel resolves them by id or symbol and says the TPM
+  column is empty and why; Compare/Rank (TPM-based) return a 404 that
+  names the locus and points to the contrasts, rather than "not found".
+- **Label check on both files.** The MYCL check now runs on the counts
+  (as CPM) too — a column swap in the counts file alone would otherwise
+  reach every statistic unchecked. Real files: MYCL counts 371/320 in
+  controls vs 65,524/70,252 with overexpression.
+- **Column mapping.** Matrix columns are library names
+  (`C4-2B_Ctrl_1`, `shMYCL_H660_2`, …) in a different order from the
+  GSMs; they are mapped through each GSM's "Library name" description,
+  never by position.
+- **Label check.** Ingest fails unless MYCL itself moves as the arms
+  say. Measured mean TPM: C4-2B empty vector 5.9 → MYCL OE 1,399.1;
+  H660 shCtrl 56.2 → shMYCL 6.6 (≈ 88% knockdown).
+
+### 11.4 The gene panel endpoint
+**Decided.** `POST /datasets/{id}/contrast-panel`, `GET
+/datasets/{id}/contrasts`, `GET /datasets/{id}/contrasts/{cid}/top`.
+Reads stored results only; computes no statistics at request time.
+
+Every contrast summary carries the §6.1 sample accounting —
+`n_dataset_total` 8, `n_excluded` 4, and the by-design reason (only that
+cell line's two arms enter) — surfaced in the UI.
+
+Unlike a signature score (§2.5), a panel row does not depend on the other
+genes, so an unknown gene is listed in `missing` with its reason rather
+than failing the request or being dropped. A legacy symbol the dataset
+records (KIAA1524, FAM122A) resolves to the current gene with an
+`alias_note` on the row (§7.4 update). Each row carries both replicate
+values per arm so the reader sees what the fold-change rests on.
+
+### 11.5 What the PP2A panel can and cannot say
+**Provisional — for the domain expert.** Two replicates per arm, two
+cell lines, one perturbation each. A gene that moves in opposite
+directions with overexpression and knockdown, at q < 0.05 in both, is
+the pattern MYCL-dependent regulation would produce in these lines; it
+is an association, not evidence of direct regulation, and says nothing
+about protein level or PP2A activity. Direction-only differences of
+small size (|log2FC| < 0.3) at n = 2 deserve caution even when q is
+small, since the variance prior is doing much of the work.
+
+---
+
 ## Change log
 
 | Date | Change |
@@ -1351,3 +1751,12 @@ unaffected.
 | 2026-09-21 | §10.5: registry cut over to read datasets from the database, with code-registered datasets kept as the fallback floor. A dataset that exists only as a row + parquet now loads with no ingest module and no redeploy (covered by a test that seeds exactly that). Verified bit-identical to the code path and every reference statistic unchanged to 12 dp; graceful degradation confirmed by pointing DATABASE_URL at a dead host. 7 new tests, 165 total, passing on both SQLite and Postgres. |
 | 2026-09-21 | §7.10 added after a production incident: `target_all_p2` failed to warm on the live Railway deploy (502s, "Excel file format cannot be determined") while `depmap`/`gds4299` warmed fine — one supplementary clinical-supplement fetch with no retry and no response-body validation took the whole 469-sample dataset down. New `app/ingest/_http.py` (`fetch_with_retry` + `validate_excel_bytes`) generalises the existing MAF-download retry pattern and adds response-body sniffing before parsing; wired into both `target_mrd.py` and `liu2017_etp.py` (the latter independently observed hanging 277s on the same class of failure while investigating). `gdc_target.load()` no longer lets either fetch be fatal — `etp_status`/`mrd_status` follow the same additive-never-fatal contract as the §8.1 aux layers, verified by mocking both to fail unconditionally and confirming the dataset still loads with its full matrix. Also closed a related gap: `/group-values` now reports `unavailable: true` for a declared column with zero current values, distinct from an unknown column, surfaced in the UI instead of a silently-empty picker. 9 new backend tests (174 total), frontend unaffected build/typecheck/test all clean. |
 | 2026-09-21 | §5.8 added: the Differential Genes tab's "Rank genes" button and group selects went silently disabled with no explanation when the chosen grouping column has fewer than 2 distinct values (e.g. DepMap's `lineage`, filtered to Lymphoid-only upstream) -- the auto-select effect that populates groupA/groupB is gated on >= 2 options, so the pre-existing "must be different" hint (which needs groupA truthy) never fired either. Found during regression testing after the §7.10 deploy fix. Added an explicit message, distinguished from §7.10's `unavailable` case (declared-but-currently-empty) since the two conditions are mutually exclusive by construction. 3 new frontend tests (27 total), each validated by reverting the fix and confirming failure. Verified live: message shows/hides correctly across a single-valued and a two-valued column, no false positives. |
+| 2026-09-22 | §8.6a added after independent verification during QA found a real data-accuracy bug: 56 of 469 `target_all_p2` cases had more than one open-access GDC RNA-seq file (48 Primary/Recurrent timepoint pairs, 8 true duplicate uploads, 1 Recurrent-only case), and the loader kept whichever file GDC's API happened to list first -- non-deterministic across ingests, invisible from sample counts alone. Fixed via `select_one_file_per_case()` in `app/ingest/gdc_target.py` (Primary > Recurrent > lowest file_id), applied identically to the mutation aux layer's 22 affected cases in `app/ingest/target_mutations.py`. Also fixed a second bug this uncovered: `scripts/ingest_dataset.py` resolved its loader via the database-wins `get_descriptor()`, so any re-ingest after the first silently re-read its own previous output and never reached GDC again -- added `get_code_descriptor()` to `app/registry.py`, which always bypasses the database, and pointed the ingest script at it. 8 new backend tests (192 total; each new test validated by reintroducing its bug and confirming failure first). Re-ingested from live GDC: 469 samples unchanged (no case lost), zero duplicate sample_ids, and 29 of the 56 previously-ambiguous cases' expression values changed from the prior (buggy) ingest, confirming the fix reached real data, not just the loader logic. Independent code-audit QA pass (separate agent) confirmed no circular-import risk, confirmed `get_code_descriptor()` is fully DB-independent, and found no other ingest module shares this bug pattern; also flagged that the §8.6a changelog entry was missing (added retroactively, this line) and a narrow gap where `ingest_dataset.py --all` would surface a raw `KeyError` for a future database-only dataset with no code loader -- both fixed same-day: `code_descriptor_ids()` added to `app/registry.py` so `--all` now skips and names any database-only dataset instead, covered by a new test. 186 backend tests passing. |
+| 2026-09-23 | §3.1a addendum: the Cox table on the Survival page rendered a hazard ratio and 95% CI even when a tie policy emptied one arm entirely -- `lifelines` still fits a coefficient with nothing to compare it against, producing a CI spanning many orders of magnitude (target_all_p2/MEF2C, quartile+exclude: HR=18341.107, CI 0.000-688692843566556.625) styled identically to a real result. Found via live reproduction during the post-§8.6a QA pass. Fixed in `SurvivalPage.tsx`: Cox table and its summary p-value now suppress whenever fewer than 2 curve arms are present, replaced by a message naming the cause and the control that restores both arms. 2 new frontend tests (29 total), validated by reintroducing the bug and confirming both fail first. |
+| 2026-11-15 | Two GEO datasets added. **GSE324984** (MYCL overexpression in C4-2B, MYCL knockdown in NCI-H660, n=2 per arm): new §11 designed-experiment contrasts, computed at ingest from the counts with an edgeR+limma-trend re-implementation (`app/analysis/contrast.py`) that matches R limma 3.54 / edgeR 3.40 to ≤2e-12 on all 78,691 genes; new `contrasts` table (alembic `b3c1f0a2d4e5`), `/contrasts`, `/contrast-panel`, `/contrasts/{id}/top` endpoints and a Perturbation Contrasts pane with the PP2A gene preset. Source-file defects found and handled (§11.3): TPM file truncated at 65,535 rows (Excel limit), one gene mis-named in the counts file (TP63/KDM5A), TPM and counts from different quantifications (12%/5% of tested genes disagree in direction, flagged per row). **GSE66586** (neuroblastoma lines, GPL6244): §7.1b, shared GEO helpers in `_geo.py` (GDS4299 verified bit-identical after the refactor); BE(2)c/SK-N-BE(2)c found to be subclone/parent by ATCC number, disclosed via `cell_line_identity`. §1.4a: every Mann–Whitney result now reports `min_p_achievable` (0.333 at 2 vs 2), shown in the UI. §7.4: legacy symbols get a 404 naming the current symbol; the panel resolves them with a per-row note. BH now skips NaN like `p.adjust`. Verified: 229 backend tests, 39 frontend tests, build clean; 414 served panel values match the raw GEO files; every new test checked to fail with its bug reintroduced; Perturbation Contrasts and Compare checked in the browser; every other pane's endpoint (signature, rank, correlation, co-expression, PCA, aux layers, survival refusal) checked on both datasets against the running backend, not clicked through in the browser. DESeq2 comparison not done (R DESeq2 install failed; `pydeseq2` not installed by permission). |
+| 2026-11-15 | Two GEO datasets added for the L-MYC / PP2A question. **GSE324984** (MYCL overexpression in C4-2B, knockdown in NCI-H660; RNA-seq, n=2 per arm) with §11 — pre-specified within-cell-line contrasts computed at ingest by an edgeR + limma-trend re-implementation that matches R (limma 3.54.2 / edgeR 3.40.2) to ≤ 2e-12 on all 78,691 genes; new `contrasts` table (alembic `b3c1f0a2d4e5`), `/contrasts`, `/contrast-panel`, `/contrasts/{id}/top`, and a Perturbation Contrasts pane with the researcher's 23-gene PP2A preset. Source-file defects found and handled: TPM file truncated at Excel's 65,535 rows (13,156 genes missing), one gene mis-named in the counts file (TP63 as "KDM5A"), TPM and counts from different quantifications (12% / 5% of genes change direction between them — flagged per gene). **GSE66586** (neuroblastoma lines, 5 MYCN-amplified / 3 non-amplified / 2 non-malignant; microarray) with §7.1b — GEO helpers shared via `_geo.py` (GDS4299 bit-identical), legacy symbols renamed, and two non-independent line pairs disclosed (SK-N-BE(2)-C vs parental SK-N-BE(2) per ATCC numbers despite the sample title; SH-SY5Y ⊂ SK-N-SH). §1.4a added. Every value served for the panel (414) checked against the raw GEO files by an independent parser. |
+| 2026-11-15 | Independent review of the above found and this fixed: §1.4a **scipy's vectorised Mann–Whitney fell back to the normal approximation for every gene when any gene had ties** (pre-existing; served p below the exact floor, could cross 0.05 at 3 vs 3) — replaced by an exact permutation test for ≤ 5,000 splits, which changes p-values for small comparisons in every dataset; §7.8 documented tie-break by |median difference| was never applied; §11.3 shared-name loci chosen over the truncated TPM file (CAST resolved to a silent locus), panel and top list disagreeing on loci, shared names stored as aliases (C4orf36 mis-resolved), count-only genes unreachable; mixed-case symbols (C1orf112) never resolvable on Ensembl-indexed datasets including TARGET; §11.2 limma infinite-prior edge case and Infinity in JSON; counts-file label check; contrast sample accounting; cross-cell-line pairwise tests on Compare now flagged (`crosses_stratum`). Each fix has a test validated by reintroducing the bug. Final: backend 259 passed (1 skipped), frontend 43 passed, tsc and production build clean; Perturbation Contrasts pane checked in the browser against the API. |
+| 2026-11-15 | Whole-app verification pass after the above, against the running system. API sweep: every endpoint × all 5 datasets (107 checks: strict JSON, sample accounting adds up, every p ≥ its floor) — found and fixed a 500 on DepMap Compare by subtype (mixed exact/approximate pairs stored the None floor as NaN). Existing results re-run through the committed HEAD code side by side on the same data: GDS4299, TARGET, DepMap CRISPR (MYB r = −0.652361, n = 91), differential, signature and correlation are bit-identical; only DepMap's small-subtype pairwise p-values change, as intended by §1.4a. (Two older documented numbers did not match the served ones; both causes confirmed, neither is a data error: §7.1's GDS4299 p-values are Welch t-tests, not the app's Mann–Whitney — recomputed both ways, §7.1 now says so; the 2026-09-13 DTX1-by-NOTCH1 values (medians 18.86 vs 9.69, p = 0.00494) reproduce exactly from `data/cache_backup_pre_fix/`, and the current 18.86 vs 8.71, p = 0.00608 is the result of the §8.6a deterministic file-selection fix, which changed 29 cases' expression.) Top-gene lists: all 2,000 served rows (both contrasts, both directions, n = 500) match R limma to ≤ 1.5e-12 and contain exactly R's top-500 sets; the C4-2B and H660 top-genes CSVs match the API row for row. Browser: every pane exercised on the new datasets. Exports checked by capturing the downloads in-page: the panel CSV (46 rows) matches the API value for value; the top-genes CSV matches row order; the PNG export lost all colour and MYCL's "+8.24 ›" label because inline `style="fill: var(--…)"` overrode the inlined literal paint — fixed in the shared exporter (also affects Compare/Survival PNG strokes), with a test. Min-p notice now merges mirrored sizes ("4 vs 3" = "3 vs 4"). §11.2 DESeq2 concordance added. Backend 260 passed (1 skipped), frontend 45 passed, tsc and build clean. |
+| 2026-11-15 | §5.7 export audit — every PNG export in the app exported and inspected in the browser (Compare box plot, Perturbation Contrasts panel, Correlation scatter, PCA, Survival). Found and fixed, each with a test validated by reintroducing the defect: PCA coloured its first and third groups in two near-identical blues (`--accent` #2455A4 vs `--cool` #2C6E9B), so GSE66586's non-amplified and non-malignant lines were indistinguishable on screen and in the export — palette reordered (blue, red, amber, …); PCA and Survival PNGs had no legend (HTML legends are not part of the image), so the image did not say which colour was which group or which curve was HIGH — a text colour key is now written into the image; Correlation, PCA and Survival PNG titles did not name the dataset — now do, with the pooled-experiments note for designed datasets; Compare PNGs printed p = 0.0952 with no small-sample floor — the floor is now in the image; long titles and notes ran off the image edge — wrapped. Frontend 51 passed, tsc and build clean. |
+| 2026-11-15 | Remaining usability/identity gaps closed, each verified in the browser and pinned by a test validated by reintroducing the defect. Signature Score listed bare GSM ids; it now reads the same scores from `/rank-signature` (identical to `/signature-score` on all 5 datasets, max difference 0.0, both methods) and shows each sample's cell line and groups. A renamed gene (C1orf112, now FIRRM) returned a bare "not found" on GSE324984: the gene-annotation panel, which already knew the current symbol from MyGene.info, now says the searched name is a previous one and offers "Search FIRRM instead" — an explicit choice, never a silent re-query (§7.4). Compare's skipped-dataset line printed a double full stop. Differential and Sample Ranking CSVs did not name their dataset (same group pair from two datasets overwrote one file): dataset id now in filename and every row; differential CSV carries the exact-test floor. Differential, Sample Ranking, panel and top-genes CSVs and every PNG export checked against the API (corrected: the co-expression CSV was not yet checked at this point — see next line). Backend 260 passed (1 skipped), frontend 56 passed, tsc and build clean, 107-check API sweep clean. |
+| 2026-11-15 | Co-expression network CSV — the one CSV export not yet checked — exported in the browser: matched the API on all 20 rows but carried no dataset in its filename or rows (one gene's network from two datasets overwrote one file); fixed like the others, with a test validated by reverting the fix. The app has exactly five CSV exports (Compare differential, Perturbation Contrasts panel and top genes, Sample Ranking, co-expression), all now verified value-for-value against the API; Correlation scatter, PCA and Survival export PNG only, all verified. §7.1 and §8.2 now lead with the values the running app serves (Mann–Whitney on GDS4299; post-§8.6a DTX1/MYCN), the earlier figures kept as dated history. Frontend 57 passed, backend 260 passed. |

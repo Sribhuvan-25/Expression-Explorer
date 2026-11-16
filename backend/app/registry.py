@@ -97,7 +97,7 @@ def _descriptor_from_row(row) -> DatasetDescriptor:
                 raise KeyError(f"Dataset '{dataset_id}' is no longer in the database.")
             # Relationships are lazy-loaded, so they must be realised
             # while the session is still open.
-            _ = fresh.samples, fresh.features, fresh.aux_layers
+            _ = fresh.samples, fresh.features, fresh.aux_layers, fresh.contrasts
             return load_from_row(fresh)
 
     return DatasetDescriptor(
@@ -149,6 +149,29 @@ def get_descriptor(dataset_id: str) -> DatasetDescriptor:
     return merged[dataset_id]
 
 
+def get_code_descriptor(dataset_id: str) -> DatasetDescriptor:
+    """The code-registered descriptor for `dataset_id`, bypassing the
+    database entirely.
+
+    `get_descriptor()`/`_merged()` prefer the database on purpose (an
+    operator's most recent ingest should win at request time) -- but that
+    means calling it from the ingest script itself is circular: once a
+    dataset has been ingested once, its own DB row wins over the code
+    descriptor, so a "re-ingest" would silently re-read its own previous
+    output forever and never touch the upstream source again. Ingestion
+    is the one caller that must always reach the actual source loader.
+    """
+    if dataset_id not in _REGISTRY:
+        raise KeyError(dataset_id)
+    return _REGISTRY[dataset_id]
+
+
+def code_descriptor_ids() -> frozenset[str]:
+    """dataset_ids with a real code loader -- the only ones `--all` can
+    meaningfully re-ingest from source. See `get_code_descriptor`."""
+    return frozenset(_REGISTRY)
+
+
 def list_descriptors() -> list[DatasetDescriptor]:
     return list(_merged().values())
 
@@ -157,4 +180,4 @@ def ensure_loaded() -> None:
     """Import every ingest module so its register() call runs. Called
     once at API startup; new ingest modules just need to be imported
     here to join the registry — no other wiring."""
-    from app.ingest import depmap, gdc_target, gds4299  # noqa: F401
+    from app.ingest import depmap, gdc_target, gds4299, gse324984, gse66586  # noqa: F401

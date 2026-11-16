@@ -114,3 +114,31 @@ describe("DifferentialGenesTab single-value grouping column", () => {
     expect(screen.queryByText(/only one value on this dataset/i)).not.toBeInTheDocument();
   });
 });
+
+describe("DifferentialGenesTab CSV export identity", () => {
+  it("names the dataset in the file and in every row, and carries the exact-test floor", async () => {
+    const exportTable = await import("../../lib/exportTable");
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const spy = vi.spyOn(exportTable, "exportRowsAsCsv").mockImplementation(() => {});
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TWO_VALUED_DATASET] });
+    vi.spyOn(api, "groupValues").mockResolvedValue({
+      group_column: "vital_status",
+      values: [{ value: "Alive", n: 300 }, { value: "Dead", n: 169 }],
+      unavailable: false,
+    });
+    vi.spyOn(api, "differential").mockResolvedValue({
+      group_column: "vital_status", group_a: "Alive", group_b: "Dead", n_a: 300, n_b: 169,
+      n_genes_tested: 1, top_n: 1, min_p_achievable: null,
+      genes: [{ feature_id: "G1", symbol: "G1", p_value: 0.01, q_value: 0.02, median_diff: 1, median_a: 2, median_b: 1 }],
+    } as unknown as Awaited<ReturnType<typeof api.differential>>);
+
+    renderTab();
+    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: /rank genes/i }));
+    await userEvent.click(await screen.findByTitle("Download as CSV"));
+
+    const [filename, , rows] = spy.mock.calls.at(-1)!;
+    expect(filename).toContain("target_all_p2");
+    expect((rows as Record<string, unknown>[])[0].dataset_id).toBe("target_all_p2");
+  });
+});

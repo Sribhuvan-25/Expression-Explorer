@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from app.analysis.compare import mann_whitney_pvalues, min_p_achievable
+
 
 def top_differential_genes(
     matrix: pd.DataFrame,
@@ -60,7 +62,10 @@ def top_differential_genes(
 
     a_vals = matrix[a_samples].to_numpy()
     b_vals = matrix[b_samples].to_numpy()
-    stat, p_values = stats.mannwhitneyu(a_vals, b_vals, axis=1, alternative="two-sided")
+    # Exact per gene for small groups, ties included (see compare.py) --
+    # scipy's vectorised call let one tied gene switch every gene to the
+    # normal approximation.
+    stat, p_values = mann_whitney_pvalues(a_vals, b_vals)
 
     median_diff = np.median(a_vals, axis=1) - np.median(b_vals, axis=1)
 
@@ -79,7 +84,13 @@ def top_differential_genes(
     # genes would be a biased/meaningless correction (same reasoning as
     # pairwise_tests' FDR in compare.py, just applied genome-wide here).
     m = len(result)
-    result = result.sort_values("p_value").reset_index(drop=True)
+    # Ties broken by |median difference|, as documented above. This was
+    # promised but not done: at 2 vs 2 thousands of genes share the floor
+    # p, and the order among them was arbitrary (MYCL, +230-fold in
+    # GSE324984, fell outside the top 500). BH handles tied p either way.
+    result["_abs_diff"] = result["median_diff"].abs()
+    result = result.sort_values(["p_value", "_abs_diff"], ascending=[True, False], kind="mergesort")
+    result = result.drop(columns="_abs_diff").reset_index(drop=True)
     result["q_value"] = (result["p_value"] * m / (result.index + 1)).clip(upper=1)
     result["q_value"] = result["q_value"][::-1].cummin()[::-1]
 
@@ -92,6 +103,9 @@ def top_differential_genes(
         "n_a": len(a_samples),
         "n_b": len(b_samples),
         "n_genes_tested": m,
+        # At small n no gene can be significant whatever the data say --
+        # see compare.min_p_achievable and METHODS.md 1.4a.
+        "min_p_achievable": min_p_achievable(len(a_samples), len(b_samples)),
         "top_n": len(top),
         "genes": top.to_dict("records"),
     }

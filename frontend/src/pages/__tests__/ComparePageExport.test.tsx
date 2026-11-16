@@ -83,3 +83,21 @@ describe("Expression Compare export identity", () => {
     expect(a.filename).not.toBe(b.filename);
   });
 });
+
+describe("Expression Compare export carries the small-sample floor", () => {
+  it("states the smallest possible p in the image when it exceeds 0.05", async () => {
+    // The exported PNG travels without the on-page notice: "p = 0.0952"
+    // alone in a figure reads as a negative result (GSE66586, 5 vs 2).
+    const r = result("gse66586", "GSE66586");
+    r.pairwise_tests = [
+      { group_a: "A", group_b: "B", n_a: 5, n_b: 2, u_stat: 10, p_value: 0.0952, min_p_achievable: 2 / 21 },
+      { group_a: "C", group_b: "D", n_a: 30, n_b: 40, u_stat: 10, p_value: 0.01, min_p_achievable: null },
+    ] as CompareMultiDatasetResult["pairwise_tests"];
+    render(<DatasetPanel result={r} gene="PPP2R5B" />);
+    await userEvent.click(screen.getByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const lines = (spy.mock.calls.at(-1)![2] as { statLines: string[] }).statLines;
+    expect(lines.find((l) => l.startsWith("A vs B"))).toContain("smallest possible p at n = 5 vs 2: 0.095");
+    expect(lines.find((l) => l.startsWith("C vs D"))).not.toContain("smallest possible");
+  });
+});

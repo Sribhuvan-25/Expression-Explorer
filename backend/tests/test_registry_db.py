@@ -134,3 +134,37 @@ def test_missing_matrix_file_names_the_path(db):
     path.unlink()
     with pytest.raises(FileNotFoundError, match="ingest_dataset"):
         registry.get_descriptor("dbonly").loader()
+
+
+def test_get_code_descriptor_bypasses_the_database(db):
+    """Reproduces a re-ingest bug found 2026-09-22: `scripts/ingest_dataset.py`
+    used `get_descriptor()` (database wins) to decide what to load, so
+    re-ingesting a dataset that had already been ingested once silently
+    read back its own previous parquet forever instead of re-running the
+    source loader -- a fix to app/ingest/gdc_target.py would never reach
+    the served data because the DB row from the last ingest always won.
+
+    `get_code_descriptor()` exists specifically for the ingest script:
+    it must return the code-registered loader even when a `ready` row
+    for the same id exists in the database."""
+    _seed(db, dataset_id="gds4299")  # DB row shadows the code dataset
+    code_descriptor = registry.get_code_descriptor("gds4299")
+    assert code_descriptor.display_name != "DB Only Cohort"
+    assert code_descriptor.loader.__module__ == "app.ingest.gds4299"
+
+
+def test_get_code_descriptor_unknown_id_raises(db):
+    _seed(db, dataset_id="dbonly")  # exists in the DB, but never in code
+    with pytest.raises(KeyError):
+        registry.get_code_descriptor("dbonly")
+
+
+def test_code_descriptor_ids_excludes_database_only_datasets(db):
+    """`ingest_dataset.py --all` uses this to skip a database-only
+    dataset with a clear message instead of surfacing a bare KeyError
+    from get_code_descriptor -- flagged during the 2026-09-22 QA audit
+    of the select_one_file_per_case fix."""
+    _seed(db, dataset_id="dbonly")
+    ids = registry.code_descriptor_ids()
+    assert "dbonly" not in ids
+    assert {"depmap", "target_all_p2", "gds4299"} <= ids

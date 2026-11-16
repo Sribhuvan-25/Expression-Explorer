@@ -6,6 +6,19 @@ const CURVE_COLORS: Record<string, string> = {
   LOW: "var(--cool)",
 };
 const FALLBACK_COLORS = ["var(--accent)", "var(--warn)", "#8B6DBF"];
+const CURVE_COLOR_NAMES: Record<string, string> = { HIGH: "red", LOW: "blue" };
+const FALLBACK_COLOR_NAMES = ["dark blue", "amber", "purple"];
+
+/**
+ * The curve legend as text, for exported PNGs: the HTML legend is not
+ * part of the image, so an exported figure did not say which curve was
+ * HIGH and which LOW. Same label order and colours as SurvivalPlot.
+ */
+export function survivalColorKey(curves: Record<string, SurvivalCurve>): string {
+  return Object.entries(curves)
+    .map(([label, c], i) => `${CURVE_COLOR_NAMES[label] ?? FALLBACK_COLOR_NAMES[i % FALLBACK_COLOR_NAMES.length]} = ${label} (n=${c.n})`)
+    .join(", ");
+}
 
 export function SurvivalPlot({
   curves,

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type TiePolicy } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
-import { SurvivalPlot } from "../components/SurvivalCurve";
+import { SurvivalPlot, survivalColorKey } from "../components/SurvivalCurve";
 import { ExportButton } from "../components/ExportButton";
 
 const PRESETS: Record<string, string[]> = {
@@ -104,6 +104,21 @@ export function SurvivalPage() {
                     ))}
                   </select>
                 </div>
+              )}
+              {/* With a single survival-capable dataset there is no picker,
+                  so without this line the page never says which cohort it
+                  runs on, nor that the cell-line datasets are not offered
+                  (they have no clinical follow-up). */}
+              {survivalCapable.length === 1 && (
+                <p data-testid="survival-dataset-note" className="mb-4 text-[12px] text-ink-mute">
+                  Dataset: <span className="text-ink-soft">{survivalCapable[0].display_name}</span> — the only
+                  registered dataset with clinical follow-up.
+                  {datasets.length > 1 &&
+                    ` Not available for ${datasets
+                      .filter((d) => !d.supports_survival)
+                      .map((d) => d.display_name)
+                      .join(", ")} (no survival data).`}
+                </p>
               )}
 
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
@@ -243,7 +258,18 @@ export function SurvivalPage() {
               />
             )}
 
-            {data && (
+            {data && (() => {
+              // A tie policy (or a percentile cutoff) can empty one arm
+              // entirely -- Cox still returns a fitted coefficient in that
+              // case, but it's comparing a group against nothing, which
+              // shows up as a hazard ratio and CI spanning many orders of
+              // magnitude (e.g. HR ~18000, CI 0.000-6.9e14) that looks like
+              // a real result rather than a degenerate one. Gate the table
+              // on there being at least 2 arms, the same signal the plot
+              // and tie_note already use to explain the emptied arm.
+              const armCount = Object.keys(data.curves).length;
+              const coxIsDegenerate = armCount < 2;
+              return (
               <>
                 <Panel
                   title={`Survival — ${data.genes.join(", ")}`}
@@ -256,11 +282,16 @@ export function SurvivalPage() {
                       <ExportButton
                         svgRef={chartRef}
                         filename={`survival-${data.genes.join("-")}`}
-                        title={`Survival — ${data.genes.join(", ")}`}
+                        title={`Survival — ${data.genes.join(", ")}${
+                          datasets.find((d) => d.dataset_id === datasetId)?.display_name
+                            ? ` — ${datasets.find((d) => d.dataset_id === datasetId)!.display_name}`
+                            : ""
+                        }`}
                         subtitle={`n = ${data.n} · LOW/HIGH split by ${cutoffDescription}`}
                         statLines={[
+                          `Curves: ${survivalColorKey(data.curves)}`,
                           `Log-rank p = ${data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}`,
-                          ...(data.cox
+                          ...(data.cox && !coxIsDegenerate
                             ? [`Cox model p = ${data.cox.log_likelihood_p_value.toExponential(2)}`]
                             : []),
                         ]}
@@ -300,7 +331,7 @@ export function SurvivalPage() {
                       value={data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}
                       tone={data.logrank_p_value != null && data.logrank_p_value < 0.05 ? "hot" : "neutral"}
                     />
-                    {data.cox && (
+                    {data.cox && !coxIsDegenerate && (
                       <Stat
                         label="Cox model p"
                         value={data.cox.log_likelihood_p_value.toExponential(2)}
@@ -309,7 +340,17 @@ export function SurvivalPage() {
                     )}
                   </div>
 
-                  {data.cox && (
+                  {data.cox && coxIsDegenerate && (
+                    <p className="mt-4 rounded-[3px] border border-warn/30 bg-warn-soft px-2.5 py-2 text-[11.5px] text-warn">
+                      Cox model not shown — the tied-scores policy above left only one group
+                      (n={Object.values(data.curves)[0]?.n ?? 0}), so there is nothing to compare it
+                      against. A hazard ratio needs two groups; choose a different{" "}
+                      <span className="font-mono">Tied scores at the cutoff</span> policy to restore
+                      both arms.
+                    </p>
+                  )}
+
+                  {data.cox && !coxIsDegenerate && (
                     <div className="mt-4">
                       <DataTable
                         columns={[
@@ -331,7 +372,8 @@ export function SurvivalPage() {
                   )}
                 </Panel>
               </>
-            )}
+              );
+            })()}
           </>
         )}
       </div>

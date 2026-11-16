@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { requestOpenPane } from "../lib/paneEvents";
 import { api } from "../lib/api";
 import { DataTable, EmptyState, ErrorState, GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat } from "../components/ui";
-import { ScatterPlot } from "../components/ScatterPlot";
+import { ScatterPlot, scatterColorKey } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
 import { exportRowsAsCsv } from "../lib/exportTable";
 
@@ -12,7 +13,11 @@ const PCA_PRESETS: Record<string, string[]> = {
   "ETP-TF5": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
 };
 
-function CorrelationTab({ datasetId }: { datasetId: string }) {
+// Exported figures travel without the on-page warning (METHODS.md 5.7, 11.1).
+const POOLED_EXPORT_NOTE =
+  "Note: pools separate designed experiments (e.g. cell lines); mostly reflects differences between them, not the perturbation.";
+
+function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datasetId: string; datasetName?: string; pooled?: boolean }) {
   const chartRef = useRef<SVGSVGElement>(null);
   const [geneA, setGeneA] = useState("MYCN");
   const [geneB, setGeneB] = useState("MYC");
@@ -123,11 +128,12 @@ function CorrelationTab({ datasetId }: { datasetId: string }) {
               <ExportButton
                 svgRef={chartRef}
                 filename={`${data.gene_a}-vs-${data.gene_b}-correlation`}
-                title={`${data.gene_a} vs ${data.gene_b}`}
+                title={`${data.gene_a} vs ${data.gene_b}${datasetName ? ` — ${datasetName}` : ""}`}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[
                   `${data.method} r = ${data.coefficient.toFixed(3)}`,
                   `p = ${data.p_value < 0.001 ? data.p_value.toExponential(2) : data.p_value.toFixed(4)}`,
+                  ...(pooled ? [POOLED_EXPORT_NOTE] : []),
                 ]}
               />
             </div>
@@ -152,7 +158,7 @@ function CorrelationTab({ datasetId }: { datasetId: string }) {
   );
 }
 
-function NetworkTab({ datasetId }: { datasetId: string }) {
+export function NetworkTab({ datasetId }: { datasetId: string }) {
   const [gene, setGene] = useState("MYCN");
   const [topN, setTopN] = useState(20);
   const [method, setMethod] = useState<"pearson" | "spearman">("pearson");
@@ -267,13 +273,17 @@ function NetworkTab({ datasetId }: { datasetId: string }) {
               type="button"
               onClick={() =>
                 exportRowsAsCsv(
-                  `${data.gene}-${data.direction}-network`,
+                  // Dataset in the name and every row, as for the other CSVs
+                  // (METHODS.md 5.7): one gene's network from two datasets
+                  // used to overwrite one file with no provenance inside.
+                  `${datasetId}-${data.gene}-${data.direction}-network`,
                   [
+                    { key: "dataset_id", label: "dataset_id" },
                     { key: "rank", label: "#" },
                     { key: "symbol", label: "gene" },
                     { key: "coefficient", label: `${data.method} r` },
                   ],
-                  data.network.map((n, i) => ({ ...n, rank: i + 1 })),
+                  data.network.map((n, i) => ({ ...n, rank: i + 1, dataset_id: datasetId })),
                 )
               }
               title="Download as CSV"
@@ -310,7 +320,7 @@ function NetworkTab({ datasetId }: { datasetId: string }) {
 // back to the dataset's first group column otherwise) means the first
 // thing a user sees after hitting Run is already colored meaningfully,
 // not an undifferentiated cloud of same-colored dots.
-function PCATab({ datasetId }: { datasetId: string }) {
+function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: string; datasetName?: string; pooled?: boolean }) {
   const chartRef = useRef<SVGSVGElement>(null);
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const activeDataset = datasetList?.datasets.find((d) => d.dataset_id === datasetId);
@@ -427,13 +437,15 @@ function PCATab({ datasetId }: { datasetId: string }) {
                 filename={`pca-${data.genes_used.join("-")}`}
                 title={`PCA — ${data.genes_used.slice(0, 4).join(", ")}${
                   data.genes_used.length > 4 ? ` +${data.genes_used.length - 4} more` : ""
-                }`}
+                }${datasetName ? ` — ${datasetName}` : ""}`}
                 subtitle={`n = ${data.n_samples} · ${data.genes_used.length} genes`}
                 statLines={[
                   `PC1 variance explained = ${(data.variance_explained[0] * 100).toFixed(1)}%`,
                   ...(data.variance_explained[1] != null
                     ? [`PC2 variance explained = ${(data.variance_explained[1] * 100).toFixed(1)}%`]
                     : []),
+                  ...(colorBy && scatterColorKey(plotPoints) ? [`Colour by ${colorBy}: ${scatterColorKey(plotPoints)}`] : []),
+                  ...(pooled ? [POOLED_EXPORT_NOTE] : []),
                 ]}
               />
             </div>
@@ -469,6 +481,8 @@ export function CorrelationPage() {
   }, [datasets, datasetId]);
 
   const [tab, setTab] = useState<Tab>("correlation");
+  const activeDataset = datasets.find((d) => d.dataset_id === datasetId);
+  const isPooled = (activeDataset?.n_contrasts ?? 0) > 0;
 
   return (
     <div className="mx-auto max-w-[1000px]">
@@ -524,6 +538,34 @@ export function CorrelationPage() {
           </div>
         </div>
 
+        {/* A dataset that declares design contrasts is several separate
+            experiments (GSE324984: two cell lines, r = 0.89 across lines vs
+            0.99 within). Every analysis on this page pools all its samples,
+            so the result mostly tracks the experiment, not the
+            perturbation -- and nothing in the correlation responses says so. */}
+        {(() => {
+          const active = datasets.find((d) => d.dataset_id === datasetId);
+          if (!active || !((active.n_contrasts ?? 0) > 0)) return null;
+          return (
+            <div
+              data-testid="pooled-experiments-note"
+              className="rounded-[3px] border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12.5px] text-ink"
+            >
+              {active.display_name} combines separate designed experiments. Correlation, co-expression and PCA here run
+              across all its samples together, so they mostly reflect differences between the experiments (e.g. cell
+              lines), not the perturbation.{" "}
+              <button
+                type="button"
+                onClick={() => requestOpenPane("contrasts")}
+                className="font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+              >
+                Open Perturbation Contrasts
+              </button>{" "}
+              for within-experiment effects.
+            </div>
+          );
+        })()}
+
         {/* Both tabs stay mounted at all times, hidden with CSS rather than
             conditionally rendered -- a conditional render unmounts the
             inactive tab, which wipes its local useState (query inputs AND
@@ -533,7 +575,7 @@ export function CorrelationPage() {
             defaults each time, not because state actually survived. */}
         {datasetId && (
           <div className={tab === "correlation" ? "contents" : "hidden"}>
-            <CorrelationTab datasetId={datasetId} />
+            <CorrelationTab datasetId={datasetId} datasetName={activeDataset?.display_name} pooled={isPooled} />
           </div>
         )}
         {datasetId && (
@@ -543,7 +585,7 @@ export function CorrelationPage() {
         )}
         {datasetId && (
           <div className={tab === "pca" ? "contents" : "hidden"}>
-            <PCATab datasetId={datasetId} />
+            <PCATab datasetId={datasetId} datasetName={activeDataset?.display_name} pooled={isPooled} />
           </div>
         )}
       </div>

@@ -154,6 +154,72 @@ class AuxMatrix:
         return int((self.matrix[present].notna().sum(axis=1) >= min_samples).sum())
 
 
+class ContrastSpec(BaseModel):
+    """A pre-specified two-group comparison that is part of a dataset's
+    experimental design -- e.g. "C4-2B MYCL overexpression vs C4-2B
+    control" in GSE324984.
+
+    Exists because some datasets are designed experiments rather than
+    cohorts: which groups may be compared is fixed by the design, and
+    comparing anything else (e.g. a C4-2B control against an H660
+    knockdown) mixes a cell-line difference into the perturbation effect.
+    `stratum_column`/`stratum_value` name the sub-experiment the contrast
+    lives in, so the UI can say so. See METHODS.md 11.1.
+    """
+
+    contrast_id: str
+    label: str
+    group_column: str
+    reference: str
+    treatment: str
+    stratum_column: Optional[str] = None
+    stratum_value: Optional[str] = None
+    method: str
+    # What a positive log2 fold-change means, in words, for this contrast.
+    direction_note: str = ""
+
+
+class ContrastResult:
+    """A contrast's specification plus its genome-wide result table.
+
+    `table` is indexed by feature_id (same id space as the dataset
+    matrix) with columns: symbol, tested, log2_fc, ave_log_cpm, t,
+    p_value, q_value. It may contain genes the expression matrix lacks:
+    statistics come from the complete counts file even where the
+    submitted TPM file is incomplete (GSE324984, METHODS.md 11.3).
+    """
+
+    def __init__(
+        self,
+        spec: ContrastSpec,
+        table: pd.DataFrame,
+        reference_samples: list[str],
+        treatment_samples: list[str],
+        details: Optional[dict] = None,
+    ):
+        self.spec = spec
+        self.table = table
+        self.reference_samples = list(reference_samples)
+        self.treatment_samples = list(treatment_samples)
+        self.details = dict(details or {})
+
+    @property
+    def n_genes_tested(self) -> int:
+        return int(self.table["tested"].sum())
+
+    def summary(self) -> dict:
+        return {
+            **self.spec.model_dump(),
+            "n_reference": len(self.reference_samples),
+            "n_treatment": len(self.treatment_samples),
+            "reference_samples": self.reference_samples,
+            "treatment_samples": self.treatment_samples,
+            "n_genes_input": int(len(self.table)),
+            "n_genes_tested": self.n_genes_tested,
+            "details": self.details,
+        }
+
+
 class Dataset:
     """In-memory bundle: matrix (features x samples) + both metadata tables,
     plus any auxiliary measurement layers on the same samples.
@@ -171,6 +237,7 @@ class Dataset:
         samples: pd.DataFrame,
         features: pd.DataFrame,
         aux: Optional[dict[AuxLayer, AuxMatrix]] = None,
+        contrasts: Optional[dict[str, "ContrastResult"]] = None,
     ):
         self.source = source
         self.matrix = matrix  # index=feature_id, columns=sample_id
@@ -179,6 +246,9 @@ class Dataset:
         # Lazily populated by loaders that have a second measurement layer;
         # every existing loader passes nothing and is unaffected.
         self.aux: dict[AuxLayer, AuxMatrix] = aux or {}
+        # Pre-specified design contrasts (METHODS.md 11.1). Empty for
+        # cohort datasets, which compare whatever groups the user picks.
+        self.contrasts: dict[str, ContrastResult] = contrasts or {}
 
     def require_quantitative(self) -> None:
         if self.source.assay_type == AssayType.QPCR:

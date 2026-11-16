@@ -26,6 +26,8 @@ from app.models.contract import (
     AssayType,
     AuxLayer,
     AuxMatrix,
+    ContrastResult,
+    ContrastSpec,
     Dataset,
     DatasetSource,
     ExpressionUnit,
@@ -147,6 +149,19 @@ def _aux_layers(row: DatasetRow) -> dict[AuxLayer, AuxMatrix]:
     return layers
 
 
+def _contrasts(row: DatasetRow) -> dict[str, ContrastResult]:
+    out: dict[str, ContrastResult] = {}
+    for record in row.contrasts:
+        out[record.contrast_id] = ContrastResult(
+            spec=ContrastSpec(**record.spec),
+            table=_read_matrix(record.results_uri),
+            reference_samples=list(record.reference_samples),
+            treatment_samples=list(record.treatment_samples),
+            details=dict(record.details or {}),
+        )
+    return out
+
+
 def load_from_row(row: DatasetRow) -> Dataset:
     """Materialise the `Dataset` described by one database row."""
     matrix = _read_matrix(row.matrix_uri)
@@ -167,4 +182,5 @@ def load_from_row(row: DatasetRow) -> Dataset:
         samples=_samples_frame(row, matrix),
         features=_features_frame(row, matrix),
         aux=_aux_layers(row),
+        contrasts=_contrasts(row),
     )

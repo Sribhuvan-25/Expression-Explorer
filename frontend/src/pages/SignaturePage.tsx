@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, EmptyState, ErrorState, DataTable } from "../components/ui";
@@ -30,6 +30,29 @@ const PRESETS: Record<string, string[]> = {
  * Exported for tests -- this is the rule that decides whether the chart
  * is readable, so it is worth pinning against real cohort sizes.
  */
+// Metadata keys that are bookkeeping or follow-up numbers, not a readable
+// description of the sample.
+const NON_DESCRIPTIVE = new Set(["sample_id", "value", "library_name", "days_to_death", "days_to_last_follow_up"]);
+
+/**
+ * A short human description of a sample from its metadata, e.g.
+ * "BE(2)c · MYCN-amplified · neuroblastoma · SK-N-BE(2)-C". Exported for
+ * tests. Never throws on missing or odd fields.
+ */
+export function sampleDescription(row: Record<string, unknown> | undefined): string {
+  if (!row) return "";
+  const parts: string[] = [];
+  const name = row.cell_line ?? row.cell_line_name ?? row.sample_title;
+  if (name != null && name !== "") parts.push(String(name));
+  for (const [k, v] of Object.entries(row)) {
+    if (NON_DESCRIPTIVE.has(k) || k === "cell_line" || k === "cell_line_name" || k === "sample_title") continue;
+    if (v == null || v === "" || typeof v === "object") continue;
+    const text = String(v);
+    if (!parts.includes(text)) parts.push(text);
+  }
+  return parts.join(" · ");
+}
+
 export function histogramBinCount(scores: number[]): number {
   const min = Math.min(...scores);
   const max = Math.max(...scores);
@@ -121,7 +144,10 @@ export function SignaturePage() {
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["signature", query],
-    queryFn: () => api.signatureScore(query!.datasetId, query!.genes, query!.method),
+    // rank-signature returns the same scores as signature-score (verified
+    // identical on every dataset) plus each sample's metadata, so the table
+    // can say which cell line a GSM id is instead of listing bare ids.
+    queryFn: () => api.rankBySignature(query!.datasetId, query!.genes, query!.method),
     enabled: !!query,
   });
 
@@ -138,11 +164,16 @@ export function SignaturePage() {
   // (not the live form state) is what lets a fresh run clear this safely.
   const resultsAreStale = !!data && !!query && (query.datasetId !== datasetId || query.method !== method);
 
-  const rows = data
-    ? Object.entries(data.scores)
-        .filter(([, v]) => v != null && !Number.isNaN(v))
+  const rows: [string, number][] = data
+    ? data.rows
+        .filter((r) => r.value != null && !Number.isNaN(r.value))
+        .map((r) => [r.sample_id, r.value] as [string, number])
         .sort((a, b) => b[1] - a[1])
     : [];
+  const describe = useMemo(() => {
+    const byId = new Map((data?.rows ?? []).map((r) => [r.sample_id, r]));
+    return (sampleId: string) => sampleDescription(byId.get(sampleId));
+  }, [data]);
   // Bars are scaled across the whole cohort, not just the visible 25, so
   // the top-25 view doesn't imply the full range is on screen.
   const scoreMax = rows.length ? rows[0][1] : 1;
@@ -261,12 +292,14 @@ export function SignaturePage() {
               columns={[
                 { key: "rank", label: "#", align: "right" },
                 { key: "sample", label: "Sample" },
+                { key: "about", label: "Annotation" },
                 { key: "bar", label: "Score" },
                 { key: "score", label: "", align: "right" },
               ]}
               rows={rows.slice(0, 25).map(([sample, score], i) => ({
                 rank: i + 1,
                 sample: <span className="font-mono">{sample}</span>,
+                about: <span className="text-[12px] text-ink-soft">{describe(sample)}</span>,
                 // An inline bar makes the spread between ranks readable at a
                 // glance; a column of 4-decimal numbers alone does not show
                 // whether rank 1 and rank 25 differ by a little or a lot.

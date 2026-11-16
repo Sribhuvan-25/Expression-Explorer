@@ -1,5 +1,6 @@
 import type { IDockviewPanelProps } from "dockview-react";
 import { ComparePage } from "../pages/ComparePage";
+import { ContrastsPage } from "../pages/ContrastsPage";
 import { CorrelationPage } from "../pages/CorrelationPage";
 import { GenomeTracksPage } from "../pages/GenomeTracksPage";
 import { MultiOmicsPage } from "../pages/MultiOmicsPage";
@@ -38,6 +39,7 @@ export const PANE_COMPONENTS = {
   correlation: paneFrame(CorrelationPage),
   "multi-omics": paneFrame(MultiOmicsPage),
   "genome-tracks": paneFrame(GenomeTracksPage),
+  contrasts: paneFrame(ContrastsPage),
 };
 
 export type PaneType = keyof typeof PANE_COMPONENTS;
@@ -50,4 +52,5 @@ export const PANE_LABELS: Record<PaneType, string> = {
   correlation: "Correlation",
   "multi-omics": "Multi-omics",
   "genome-tracks": "Genome Tracks",
+  contrasts: "Perturbation Contrasts",
 };

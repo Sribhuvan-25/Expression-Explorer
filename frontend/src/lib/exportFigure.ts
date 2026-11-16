@@ -16,7 +16,7 @@ interface ExportOptions {
   scale?: number;
 }
 
-function inlineComputedPaint(liveRoot: SVGSVGElement, clonedRoot: SVGSVGElement): void {
+export function inlineComputedPaint(liveRoot: SVGSVGElement, clonedRoot: SVGSVGElement): void {
   const walk = (live: Element, cloned: Element) => {
     if (live instanceof SVGElement) {
       const computed = getComputedStyle(live);
@@ -26,12 +26,25 @@ function inlineComputedPaint(liveRoot: SVGSVGElement, clonedRoot: SVGSVGElement)
       // matching attribute at all — the clone has none of those sources
       // once it's serialized outside the live document, so every relevant
       // property has to be captured as a literal here.
+      //
+      // Written to the clone's inline style as well as its attribute: an
+      // inline `style="fill: var(--hot)"` beats the attribute, and once
+      // serialized the var() no longer resolves, so paint fell back to
+      // black -- the Perturbation Contrasts PNG lost its up/down colours
+      // and the white "+8.24 ›" label on MYCL's capped bar vanished.
+      const style = (cloned as SVGElement).style;
       const fill = computed.fill;
-      if (fill && fill !== "none") cloned.setAttribute("fill", fill);
+      if (fill && fill !== "none") {
+        cloned.setAttribute("fill", fill);
+        if (style) style.setProperty("fill", fill);
+      }
       const stroke = computed.stroke;
-      if (stroke && stroke !== "none") cloned.setAttribute("stroke", stroke);
-      if (live instanceof SVGTextElement) {
-        (cloned as SVGTextElement).setAttribute("font-family", computed.fontFamily);
+      if (stroke && stroke !== "none") {
+        cloned.setAttribute("stroke", stroke);
+        if (style) style.setProperty("stroke", stroke);
+      }
+      if (live.tagName.toLowerCase() === "text") {
+        cloned.setAttribute("font-family", computed.fontFamily);
       }
     }
     const liveChildren = Array.from(live.children);
@@ -41,6 +54,30 @@ function inlineComputedPaint(liveRoot: SVGSVGElement, clonedRoot: SVGSVGElement)
     });
   };
   walk(liveRoot, clonedRoot);
+}
+
+/**
+ * Greedy word-wrap to `maxWidth` using the given measure. A single word
+ * wider than the limit stays on its own line rather than being cut. The
+ * title and stat lines were drawn unwrapped, so a title naming the dataset
+ * ("PCA — … — GSE66586 (neuroblastoma cell lines, MYCN status)") or a
+ * small-sample/pooled-experiment note was clipped at the image edge.
+ */
+export function wrapText(text: string, maxWidth: number, measure: (s: string) => number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (current && measure(candidate) > maxWidth) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
 }
 
 export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, options: ExportOptions): Promise<void> {
@@ -65,11 +102,26 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
   const fontFamily = (bodyStyle.getPropertyValue("--f-body").trim() || "sans-serif").replace(/"/g, "");
   const monoFamily = (bodyStyle.getPropertyValue("--f-mono").trim() || "monospace").replace(/"/g, "");
 
-  const headerH = 68;
-  const statsH = 20 + options.statLines.length * 18 + 12;
   const footerH = 28;
   const padding = 24;
   const totalW = chartWidth + padding * 2;
+  const textW = totalW - padding * 2;
+
+  // Measure with the same fonts used to draw, so wrapping matches output.
+  const measureCtx = document.createElement("canvas").getContext("2d");
+  const measurer = (font: string) => (t: string) => {
+    if (!measureCtx) return t.length * 7;
+    measureCtx.font = font;
+    return measureCtx.measureText(t).width;
+  };
+  const titleFont = `700 17px ${fontFamily}`;
+  const statFont = `600 11px ${monoFamily}`;
+  const titleLines = wrapText(options.title, textW, measurer(titleFont));
+  const statLines = options.statLines.flatMap((l) => wrapText(l, textW, measurer(statFont)));
+
+  const titleBlockH = titleLines.length * 22;
+  const headerH = titleBlockH + (options.subtitle ? 18 : 0) + 28;
+  const statsH = 20 + statLines.length * 18 + 12;
   const totalH = headerH + chartHeight + statsH + footerH + padding * 2;
 
   const canvas = document.createElement("canvas");
@@ -83,13 +135,13 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
   ctx.fillRect(0, 0, totalW, totalH);
 
   ctx.fillStyle = inkColor;
-  ctx.font = `700 17px ${fontFamily}`;
-  ctx.fillText(options.title, padding, padding + 22);
+  ctx.font = titleFont;
+  titleLines.forEach((line, i) => ctx.fillText(line, padding, padding + 22 + i * 22));
 
   if (options.subtitle) {
     ctx.fillStyle = inkMuteColor;
     ctx.font = `400 11px ${fontFamily}`;
-    ctx.fillText(options.subtitle, padding, padding + 40);
+    ctx.fillText(options.subtitle, padding, padding + titleBlockH + 18);
   }
 
   ctx.strokeStyle = ruleColor;
@@ -119,8 +171,8 @@ export async function exportSvgAsPng(svgEl: SVGSVGElement, filename: string, opt
 
   let statsY = headerH + chartHeight + padding + 20;
   ctx.fillStyle = inkColor;
-  ctx.font = `600 11px ${monoFamily}`;
-  for (const line of options.statLines) {
+  ctx.font = statFont;
+  for (const line of statLines) {
     ctx.fillText(line, padding, statsY);
     statsY += 18;
   }

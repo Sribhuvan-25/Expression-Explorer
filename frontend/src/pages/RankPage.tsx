@@ -146,14 +146,15 @@ export function RankPage() {
                   type="button"
                   onClick={() =>
                     exportRowsAsCsv(
-                      `${isSingleGene ? query!.genes[0] : query!.genes.join("-")}-ranking`,
+                      `${query!.datasetId}-${isSingleGene ? query!.genes[0] : query!.genes.join("-")}-ranking`,
                       [
+                        { key: "dataset_id", label: "dataset_id" },
                         { key: "rank", label: "#" },
                         { key: "sample_id", label: "sample" },
                         ...metadataKeys.map((k) => ({ key: k, label: k })),
                         { key: "value", label: "value" },
                       ],
-                      data.rows.map((row, i) => ({ ...row, rank: i + 1 })),
+                      data.rows.map((row, i) => ({ ...row, rank: i + 1, dataset_id: query!.datasetId })),
                     )
                   }
                   title="Download as CSV"

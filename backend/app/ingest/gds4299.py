@@ -26,15 +26,17 @@ Data sources, both public:
 """
 from __future__ import annotations
 
-import gzip
-import io
-import re
 from pathlib import Path
 
-import httpx
 import pandas as pd
 
 from app.config import settings
+from app.ingest._geo import (
+    collapse_probes as _collapse_probes,
+    download as _download,
+    probe_to_symbol,
+    read_series_matrix_expression,
+)
 from app.models.contract import AssayType, Dataset, DatasetSource, ExpressionUnit
 
 CACHE_DIR = settings.cache_dir / "gds4299"
@@ -72,81 +74,13 @@ _SYMBOL_ALIASES = {
 # (TARGET's Liu-2017 enrichment emits 'ETP' / 'near-ETP' / 'non-ETP').
 _SUBTYPE_MAP = {"ETP": "ETP", "nonETP": "non-ETP", "non-ETP": "non-ETP"}
 
-# GEO uses these as "no mapping", not as gene symbols.
-_NULL_SYMBOLS = {"---", "NA", ""}
-
-
-def _download(url: str, dest: Path) -> Path:
-    if dest.exists():
-        return dest
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=120.0) as r:
-        r.raise_for_status()
-        tmp = dest.with_suffix(dest.suffix + ".part")
-        with tmp.open("wb") as fh:
-            for chunk in r.iter_bytes():
-                fh.write(chunk)
-        tmp.rename(dest)
-    return dest
-
-
-def _read_geo_table(path: Path, begin: str, end: str) -> pd.DataFrame:
-    """Pull the delimited table out of a GEO file's !..._begin/!..._end block."""
-    with gzip.open(path, "rt", errors="replace") as fh:
-        text = fh.read()
-    start, stop = text.index(begin), text.index(end)
-    body = text[start:stop].split("\n", 1)[1]
-    return pd.read_csv(io.StringIO(body), sep="\t", low_memory=False)
-
-
 def _probe_to_symbol(annot_path: Path) -> pd.Series:
-    """probe_id -> gene symbol, for probes that actually map to a gene.
+    """probe_id -> gene symbol on GPL13158, legacy symbols remapped.
 
-    A probe may list several symbols ('A /// B'); GEO also uses '---' and
-    'NA' to mean "no mapping". Both were handled in the prior verified
-    analysis of this dataset and are handled the same way here: take the
-    first symbol, drop the sentinels. ~44k of 54,715 probes survive.
+    The generic mapping rules (first symbol of 'A /// B', drop '---'/'NA')
+    live in `_geo.probe_to_symbol`; ~44k of 54,715 probes survive.
     """
-    ann = _read_geo_table(annot_path, "!platform_table_begin", "!platform_table_end")
-    symbol_col = "Gene symbol" if "Gene symbol" in ann.columns else "Gene Symbol"
-    ann = ann[["ID", symbol_col]].dropna()
-    ann["ID"] = ann["ID"].astype(str).str.strip()
-    symbols = (
-        ann[symbol_col]
-        .astype(str)
-        .str.split(r"[;,/\s]+", regex=True)
-        .str[0]
-        .str.strip()
-    )
-    symbols = symbols.replace(_SYMBOL_ALIASES)
-    keep = ~symbols.isin(_NULL_SYMBOLS)
-    return pd.Series(symbols[keep].to_numpy(), index=ann["ID"][keep].to_numpy())
-
-
-def _collapse_probes(expr: pd.DataFrame, probe_symbol: pd.Series) -> pd.DataFrame:
-    """One row per gene, choosing the probe with the highest mean expression.
-
-    The selection rule is deliberately independent of any sample grouping.
-    The earlier exploratory analysis picked, per gene, the probe with the
-    lowest ETP-vs-non-ETP p-value -- that is circular for inference
-    (choose the probe that best separates the groups, then test whether
-    the groups separate), so it is not used here. See METHODS.md 7.1.
-
-    Highest mean also does the obvious right thing on this platform: MYCN
-    has 10 probes, one at mean 5.36 and nine sitting at ~2.7 background.
-    """
-    shared = expr.index.intersection(probe_symbol.index)
-    expr = expr.loc[shared]
-    genes = probe_symbol.loc[shared]
-
-    order = expr.mean(axis=1).sort_values(ascending=False)
-    # First occurrence per gene in mean-descending order == highest mean.
-    best_probe = genes.loc[order.index].reset_index().drop_duplicates(subset=0, keep="first")
-    best_probe.columns = ["probe_id", "symbol"]
-
-    collapsed = expr.loc[best_probe["probe_id"]]
-    collapsed.index = pd.Index(best_probe["symbol"], name="feature_id")
-    return collapsed.sort_index()
+    return probe_to_symbol(annot_path, _SYMBOL_ALIASES)
 
 
 def _load_labels() -> pd.Series:
@@ -170,10 +104,7 @@ def load(use_cache: bool = True) -> Dataset:
     matrix_path = _download(SERIES_MATRIX_URL, CACHE_DIR / "GSE28703_series_matrix.txt.gz")
     annot_path = _download(PLATFORM_ANNOT_URL, CACHE_DIR / "GPL13158.annot.gz")
 
-    expr = _read_geo_table(matrix_path, "!series_matrix_table_begin", "!series_matrix_table_end")
-    expr = expr.set_index(expr.columns[0])
-    expr.index = expr.index.astype(str).str.strip('"')
-    expr.columns = [str(c).strip('"') for c in expr.columns]
+    expr = read_series_matrix_expression(matrix_path)
 
     matrix = _collapse_probes(expr, _probe_to_symbol(annot_path))
 
