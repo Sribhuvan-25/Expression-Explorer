@@ -93,3 +93,11 @@ def test_mutation_layer_usable_count_counts_mutants_not_non_nulls(client):  # no
     # Fixture: NOTCH1 mutated in 8 of 16 covered samples, NEVER in none.
     assert mut["n_features"] == 2
     assert mut["n_usable_features"] == 1
+
+
+def test_gds4299_records_the_legacy_symbols_it_remaps():
+    """KIAA1524 / PME1 are renamed at ingest; without them as aliases the
+    resolver's 'older name for CIP2A' hint could never fire on GDS4299."""
+    from app.ingest.gds4299 import legacy_aliases
+
+    assert legacy_aliases(["CIP2A", "PPME1", "MYCN"]) == [["KIAA1524"], ["PME1"], []]
