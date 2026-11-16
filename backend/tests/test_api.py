@@ -398,3 +398,20 @@ def test_warm_datasets_are_listed_with_provenance_and_not_flagged(client):
     entry = next(d for d in body["datasets"] if d["dataset_id"] == DATASET_ID)
     assert entry["warming"] is False
     assert entry["n_samples"] == N
+
+
+def test_pca_and_correlation_points_carry_top_level_group_columns(client):
+    """PCA's "Color by etp_status" default coloured no TARGET point: TARGET
+    keeps etp_status as a top-level samples column, and PCA returned only
+    each sample's nested group_columns dict. This dataset has the same
+    shape (etp_status top-level, empty dicts). Correlation points now carry
+    groups too, so the scatter can show what drives a pooled r."""
+    pca = client.post(f"/datasets/{DATASET_ID}/pca", json={"genes": ["MYCN", "DTX1", "MEF2C"]}).json()
+    corr = client.get(f"/datasets/{DATASET_ID}/correlation", params={"gene_a": "MYCN", "gene_b": "DTX1"}).json()
+    for body in (pca, corr):
+        by_sample = {p["sample_id"]: p["group_columns"] for p in body["points"]}
+        assert by_sample["S01"]["etp_status"] == "ETP"
+        assert by_sample["S00"]["etp_status"] == "non-ETP"
+        assert by_sample["S00"]["vital_status"] == "Dead"
+        # Declared but never populated: present as null, never NaN.
+        assert by_sample["S00"]["mrd_status"] is None

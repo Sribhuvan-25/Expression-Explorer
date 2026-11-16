@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComparePoint } from "../lib/api";
 import { formatUnit, isLogUnit } from "../lib/units";
+import { niceTicks, tickDigits as stepDigits } from "../lib/axis";
 
 // Shared with the scatter/PCA palette. The box plot had its own order
 // starting --cool, --hot, --accent: two near-identical blues (#2C6E9B,
@@ -41,26 +42,7 @@ interface GroupStats {
   color: string;
 }
 
-/**
- * Linear-axis ticks on round values (1, 2, 2.5 or 5 x 10^k), with the
- * domain widened to the outermost ticks so gridlines meet the plot edges.
- * Exported for tests.
- */
-export function niceTicks(lo: number, hi: number, count = 5): number[] {
-  if (!(hi > lo)) {
-    const pad = Math.abs(lo) * 0.05 || 1;
-    lo -= pad;
-    hi += pad;
-  }
-  const raw = (hi - lo) / count;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((st) => st >= raw * (1 - 1e-9))!;
-  const start = Math.floor(lo / step + 1e-9) * step;
-  const n = Math.ceil(hi / step - 1e-9) - Math.round(start / step);
-  // Round away float noise (0.30000000000000004) at the step's precision.
-  const digits = Math.max(0, -Math.floor(Math.log10(step)) + 2);
-  return Array.from({ length: n + 1 }, (_, i) => Number((start + i * step).toFixed(digits)));
-}
+export { niceTicks };
 
 /**
  * The value-axis domain before ticks are rounded. Exported for tests.
@@ -215,8 +197,7 @@ export function BoxPlot({
   // or adds noise at the high end.
   // Linear ticks share one step, so they share one precision ("7, 8 ... 11"
   // or "2.5, 5.0, 7.5"), not "11.0, 10.0, 9.00".
-  const tickStep = !logScale && tickValues.length > 1 ? tickValues[1] - tickValues[0] : null;
-  const tickDigits = tickStep ? Math.min(4, Math.max(0, -Math.floor(Math.log10(tickStep) + 1e-9) + (tickStep / 10 ** Math.floor(Math.log10(tickStep) + 1e-9) === 2.5 ? 1 : 0))) : null;
+  const tickDigits = !logScale && tickValues.length > 1 ? stepDigits(tickValues[1] - tickValues[0]) : null;
   const fmt = (v: number) =>
     tickDigits !== null
       ? v.toFixed(tickDigits)

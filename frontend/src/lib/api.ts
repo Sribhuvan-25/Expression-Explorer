@@ -193,6 +193,8 @@ export interface CorrelationPoint {
   sample_id: string;
   x: number;
   y: number;
+  // The dataset's declared grouping columns for this sample, for colouring.
+  group_columns?: Record<string, string | null>;
 }
 
 export interface CorrelationResult {

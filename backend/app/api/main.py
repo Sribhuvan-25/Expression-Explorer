@@ -76,6 +76,30 @@ def _get_dataset(dataset_id: str) -> Dataset:
     return descriptor.loader()
 
 
+def _sample_groups(dataset_id: str, ds: Dataset) -> dict[str, dict]:
+    """sample_id -> {declared group column: value} for colouring points.
+
+    A declared column can live either inside each sample's
+    `group_columns` dict or as a top-level samples column -- TARGET keeps
+    `etp_status`/`mrd_status`/`vital_status` top-level, which is why
+    `expression_by_group` checks both. PCA used to return only the dict,
+    so its "Color by etp_status" default coloured no TARGET point at all.
+    Missing values come back as None, never NaN (strict JSON).
+    """
+    declared = get_descriptor(dataset_id).group_columns
+    samples = ds.samples
+    out: dict[str, dict] = {}
+    for sid, row in samples.iterrows():
+        nested = row.get("group_columns") if "group_columns" in samples.columns else None
+        nested = nested if isinstance(nested, dict) else {}
+        groups = {}
+        for col in declared:
+            v = row[col] if col in samples.columns else nested.get(col)
+            groups[col] = None if v is None or (isinstance(v, float) and v != v) else v
+        out[str(sid)] = groups
+    return out
+
+
 def _resolve_gene(ds: Dataset, gene: str) -> str:
     """Accept either a symbol or a feature_id; return the feature_id.
 
@@ -762,6 +786,12 @@ def correlation(dataset_id: str, gene_a: str, gene_b: str, method: Literal["pear
         raise HTTPException(422, str(exc))
     result["gene_a"] = gene_a
     result["gene_b"] = gene_b
+    # Per-point groups so the scatter can be coloured: r pools every
+    # sample, and a between-group difference alone can produce a strong r
+    # (GSE66586 MYCN vs PPP2R5B, r = -0.85, is mostly amplified vs not).
+    groups = _sample_groups(dataset_id, ds)
+    for point in result["points"]:
+        point["group_columns"] = groups.get(point["sample_id"], {})
     return result
 
 
@@ -1027,6 +1057,9 @@ def dataset_pca(dataset_id: str, body: PCARequest):
     # never resolved at all (unrecognised input) is a distinct kind of
     # "missing" a caller needs to see, so both lists are surfaced rather
     # than the input-level failures being silently swallowed.
+    groups = _sample_groups(dataset_id, ds)
+    for point in result["points"]:
+        point["group_columns"] = groups.get(point["sample_id"], {})
     result["genes_unrecognized"] = missing_input_genes
     # Why each one failed, in the resolver's words (e.g. "older name for
     # CIP2A"), so PCA explains what /compare already explains.

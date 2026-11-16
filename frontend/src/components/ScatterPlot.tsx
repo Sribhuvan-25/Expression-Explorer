@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { niceTicks, tickDigits } from "../lib/axis";
 
 // Ordered so the first groups are clearly distinct. --cool used to sit
 // third, right after --accent: two near-identical blues (#2455A4 vs
@@ -15,11 +16,23 @@ export function scatterGroups(points: { group?: string | null }[]): string[] {
   return Array.from(seen).sort();
 }
 
-/** "blue = A, red = B, ..." -- the legend, as text, for exported images. */
+// Samples with no value in the colouring column, when colouring is on.
+// They used to fall back to --accent -- the first group's blue -- so on
+// TARGET coloured by etp_status the 279 samples with no ETP call read as
+// ETP (19 samples). A neutral grey, drawn underneath, named in the key.
+export const NO_GROUP_COLOR = "#A3A3A3";
+
+/** "blue = A (n=3), red = B (n=5), grey = no value (n=2)" -- the legend,
+ * as text, for exported images. */
 export function scatterColorKey(points: { group?: string | null }[]): string | null {
   const groups = scatterGroups(points);
   if (groups.length === 0) return null;
-  return groups.map((g, i) => `${GROUP_COLOR_NAMES[i % GROUP_COLOR_NAMES.length]} = ${g}`).join(", ");
+  const count = (g: string) => points.filter((p) => p.group === g).length;
+  const nNone = points.filter((p) => p.group == null).length;
+  return [
+    ...groups.map((g, i) => `${GROUP_COLOR_NAMES[i % GROUP_COLOR_NAMES.length]} = ${g} (n=${count(g)})`),
+    ...(nNone > 0 ? [`grey = no value (n=${nNone})`] : []),
+  ].join(", ");
 }
 
 interface PlottablePoint {
@@ -51,7 +64,14 @@ export function ScatterPlot({
 
   const groups = useMemo(() => scatterGroups(points), [points]);
   const colorFor = (group: string | null | undefined) =>
-    group == null ? "var(--accent)" : GROUP_COLORS[groups.indexOf(group) % GROUP_COLORS.length];
+    group == null
+      ? groups.length > 0
+        ? NO_GROUP_COLOR
+        : "var(--accent)"
+      : GROUP_COLORS[groups.indexOf(group) % GROUP_COLORS.length];
+  const nUngrouped = groups.length > 0 ? points.filter((p) => p.group == null).length : 0;
+  // Ungrouped points first, so grey never sits on top of a coloured one.
+  const drawOrder = nUngrouped > 0 ? [...points.filter((p) => p.group == null), ...points.filter((p) => p.group != null)] : points;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -71,26 +91,30 @@ export function ScatterPlot({
   const plotH = Math.round(Math.min(400, Math.max(220, plotW * 0.62)));
   const height = plotH + margin.top + margin.bottom;
 
-  const { xMin, xMax, yMin, yMax } = useMemo(() => {
+  // Ticks on round values with the domain widened to the outer ticks.
+  // The evenly divided padded range printed "6.7, 8.6, 10.6, 12.5" and,
+  // on a narrow range, repeated labels at one decimal.
+  const { xTicks, yTicks } = useMemo(() => {
     const xs = points.map((p) => p.x);
     const ys = points.map((p) => p.y);
-    // Pad the domain slightly so points at the extremes aren't drawn
-    // flush against the axis line.
+    // Pad slightly so points at the extremes aren't drawn flush against
+    // the axis line.
     const xPad = (Math.max(...xs) - Math.min(...xs)) * 0.06 || 1;
     const yPad = (Math.max(...ys) - Math.min(...ys)) * 0.06 || 1;
     return {
-      xMin: Math.min(...xs) - xPad,
-      xMax: Math.max(...xs) + xPad,
-      yMin: Math.min(...ys) - yPad,
-      yMax: Math.max(...ys) + yPad,
+      xTicks: niceTicks(Math.min(...xs) - xPad, Math.max(...xs) + xPad, 5),
+      yTicks: niceTicks(Math.min(...ys) - yPad, Math.max(...ys) + yPad, 5),
     };
   }, [points]);
+  const xMin = xTicks[0];
+  const xMax = xTicks[xTicks.length - 1];
+  const yMin = yTicks[0];
+  const yMax = yTicks[yTicks.length - 1];
+  const xDigits = tickDigits(xTicks[1] - xTicks[0]);
+  const yDigits = tickDigits(yTicks[1] - yTicks[0]);
 
   const x = (v: number) => margin.left + ((v - xMin) / (xMax - xMin)) * plotW;
   const y = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
-
-  const xTicks = Array.from({ length: 5 }, (_, i) => xMin + ((xMax - xMin) * i) / 4);
-  const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4);
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -115,7 +139,7 @@ export function ScatterPlot({
               fontFamily="var(--f-mono)"
               className="fill-[var(--ink-mute)]"
             >
-              {t.toFixed(1)}
+              {t.toFixed(yDigits)}
             </text>
           </g>
         ))}
@@ -129,7 +153,7 @@ export function ScatterPlot({
             fontFamily="var(--f-mono)"
             className="fill-[var(--ink-mute)]"
           >
-            {t.toFixed(1)}
+            {t.toFixed(xDigits)}
           </text>
         ))}
         <text
@@ -163,7 +187,7 @@ export function ScatterPlot({
           stroke="var(--rule-firm)"
         />
 
-        {points.map((p) => {
+        {drawOrder.map((p) => {
           const color = colorFor(p.group);
           return (
             <circle
@@ -186,14 +210,20 @@ export function ScatterPlot({
         })}
       </svg>
 
-      {groups.length > 1 && (
+      {(groups.length > 1 || (groups.length === 1 && nUngrouped > 0)) && (
         <div className="mt-1 flex flex-wrap items-center justify-center gap-4">
           {groups.map((g) => (
             <span key={g} className="flex items-center gap-1.5 text-[12px] text-ink-soft">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorFor(g) }} />
-              {g}
+              {g} <span className="font-mono text-[10.5px] text-ink-mute">{points.filter((p) => p.group === g).length}</span>
             </span>
           ))}
+          {nUngrouped > 0 && (
+            <span className="flex items-center gap-1.5 text-[12px] text-ink-soft">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: NO_GROUP_COLOR }} />
+              no value <span className="font-mono text-[10.5px] text-ink-mute">{nUngrouped}</span>
+            </span>
+          )}
         </div>
       )}
 
