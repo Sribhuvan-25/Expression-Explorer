@@ -164,7 +164,10 @@ function FoldChangeChart({
       viewBox={`0 0 ${W} ${H}`}
       width={W}
       height={H}
-      className="block max-w-full"
+      // Native size, scrolled sideways by the wrapper on a narrow screen:
+      // max-w-full shrank the 640-wide chart to 214 px at 390 px width,
+      // leaving ~3 px text and a tall blank band above it.
+      className="block"
       role="img"
       aria-label="log2 fold-change per contrast"
     >
