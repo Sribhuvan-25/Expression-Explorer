@@ -127,6 +127,7 @@ export function PresetButton({
 }) {
   return (
     <button
+      aria-pressed={active}
       type="button"
       onClick={onClick}
       className={[

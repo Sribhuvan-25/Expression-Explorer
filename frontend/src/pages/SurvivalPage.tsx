@@ -154,6 +154,7 @@ export function SurvivalPage() {
                   <div className="flex overflow-hidden rounded-[3px] border border-rule">
                     {(["median", "quartile", "custom"] as const).map((m) => (
                       <button
+                        aria-pressed={cutoffMethod === m}
                         key={m}
                         type="button"
                         onClick={() => setCutoffMethod(m)}
@@ -203,6 +204,7 @@ export function SurvivalPage() {
                         ] as const
                       ).map(([value, label]) => (
                         <button
+                          aria-pressed={tiePolicy === value}
                           key={value}
                           type="button"
                           onClick={() => setTiePolicy(value)}

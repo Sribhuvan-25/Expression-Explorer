@@ -104,6 +104,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
             <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-rule">
               {(["pearson", "spearman", "kendall"] as const).map((m) => (
                 <button
+                  aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
@@ -273,6 +274,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             <div className="flex overflow-hidden rounded-[3px] border border-rule">
               {(["pearson", "spearman"] as const).map((m) => (
                 <button
+                  aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
@@ -290,6 +292,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             <div className="flex overflow-hidden rounded-[3px] border border-rule">
               {(["positive", "negative"] as const).map((d) => (
                 <button
+                  aria-pressed={direction === d}
                   key={d}
                   type="button"
                   onClick={() => setDirection(d)}
@@ -587,6 +590,7 @@ export function CorrelationPage() {
               { key: "pca" as const, label: "PCA" },
             ]).map((t) => (
               <button
+                aria-pressed={tab === t.key}
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}

@@ -972,6 +972,7 @@ export function ContrastsPage() {
                 { key: "top" as const, label: "Top genes" },
               ]).map((t) => (
                 <button
+                  aria-pressed={tab === t.key}
                   key={t.key}
                   type="button"
                   onClick={() => setTab(t.key)}

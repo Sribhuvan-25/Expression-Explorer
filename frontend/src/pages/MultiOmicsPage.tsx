@@ -378,6 +378,7 @@ function AuxCorrelationTab({
             <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-rule">
               {(["pearson", "spearman"] as const).map((m) => (
                 <button
+                  aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
@@ -537,6 +538,7 @@ export function MultiOmicsPage() {
               const available = layers.has(TAB_LAYER[t]);
               return (
                 <button
+                  aria-pressed={tab === t && available}
                   key={t}
                   type="button"
                   onClick={() => available && setTab(t)}

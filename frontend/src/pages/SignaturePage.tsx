@@ -240,6 +240,7 @@ export function SignaturePage() {
               <div className="flex overflow-hidden rounded-[3px] border border-rule">
                 {(["auc", "log2_mean"] as const).map((m) => (
                   <button
+                    aria-pressed={method === m}
                     key={m}
                     type="button"
                     onClick={() => setMethod(m)}

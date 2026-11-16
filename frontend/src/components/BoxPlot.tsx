@@ -634,6 +634,7 @@ function ScaleToggle({
         </span>
       )}
       <button
+        aria-pressed={!logScale}
         type="button"
         onClick={() => setLogScale(false)}
         className={`rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors ${
@@ -643,6 +644,7 @@ function ScaleToggle({
         Linear
       </button>
       <button
+        aria-pressed={logScale}
         type="button"
         onClick={() => setLogScale(true)}
         className={`rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors ${

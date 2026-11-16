@@ -668,6 +668,7 @@ export function ComparePage() {
             { key: "differential" as const, label: "Top differential genes" },
           ]).map((t) => (
             <button
+              aria-pressed={tab === t.key}
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
