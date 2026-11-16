@@ -36,7 +36,11 @@ describe("box plot value axis", () => {
 
   it("names the unit on the axis and offers no log-of-log toggle", () => {
     render(<BoxPlot points={PPP2R5B} valueLabel="expression" unit="log2_intensity" />);
-    expect(screen.getByText("EXPRESSION (LOG2 INTENSITY)")).toBeInTheDocument();
+    // Sentence case in the body font: the title was uppercase tracked mono
+    // ("EXPRESSION (LOG2 INTENSITY)"), which read as a code identifier.
+    const title = screen.getByText("Expression (log2 intensity)");
+    expect(title).toHaveAttribute("font-family", "var(--f-body)");
+    expect(title.getAttribute("style") ?? "").not.toContain("letter-spacing");
     expect(screen.queryByText("Log scale")).toBeNull();
   });
 
@@ -44,7 +48,7 @@ describe("box plot value axis", () => {
     const tpm = PPP2R5B.map((p) => ({ ...p, value: 2 ** p.value }));
     const { container } = render(<BoxPlot points={tpm} valueLabel="expression" unit="tpm" />);
     expect(Math.min(...axisTicks(container))).toBe(0);
-    expect(screen.getByText("EXPRESSION (TPM)")).toBeInTheDocument();
+    expect(screen.getByText("Expression (TPM)")).toBeInTheDocument();
     expect(screen.getByText("Log scale")).toBeInTheDocument();
   });
 

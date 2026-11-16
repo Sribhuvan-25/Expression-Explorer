@@ -114,6 +114,11 @@ export function BoxPlot({
 }) {
   const logUnit = isLogUnit(unit);
   const axisLabel = unit ? `${valueLabel} (${formatUnit(unit)})` : valueLabel;
+  // Sentence case in the body font, like every other label in the app;
+  // the uppercase tracked mono title ("EXPRESSION (TPM)") read as a code
+  // identifier. Only the first letter is raised: units and gene symbols
+  // keep their own case.
+  const axisTitle = axisLabel.charAt(0).toUpperCase() + axisLabel.slice(1);
   const [hover, setHover] = useState<{ x: number; y: number; sample: string; value: number } | null>(null);
 
   // Expression data is routinely right-skewed -- a single high-expressing
@@ -297,12 +302,11 @@ export function BoxPlot({
               x={plotLeft + plotW / 2}
               y={height - 6}
               textAnchor="middle"
-              fontSize={10.5}
-              fontFamily="var(--f-mono)"
-              className="fill-[var(--ink-mute)]"
-              style={{ letterSpacing: "0.04em" }}
+              fontSize={11.5}
+              fontFamily="var(--f-body)"
+              className="fill-[var(--ink-soft)]"
             >
-              {axisLabel.toUpperCase()}
+              {axisTitle}
             </text>
             <line
               x1={plotLeft}
@@ -505,12 +509,11 @@ export function BoxPlot({
           <text
             transform={`translate(${14}, ${margin.top + plotH / 2}) rotate(-90)`}
             textAnchor="middle"
-            fontSize={10.5}
-            fontFamily="var(--f-mono)"
-            className="fill-[var(--ink-mute)]"
-            style={{ letterSpacing: "0.04em" }}
+            fontSize={11.5}
+            fontFamily="var(--f-body)"
+            className="fill-[var(--ink-soft)]"
           >
-            {axisLabel.toUpperCase()}
+            {axisTitle}
           </text>
 
           {groups.map((g, i) => {
