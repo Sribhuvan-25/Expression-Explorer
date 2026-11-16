@@ -369,7 +369,7 @@ export function SurvivalPage() {
                         }))}
                       />
                       {"signature_score" in data.cox.coefficients && (
-                        // HR 27.7 on ETP-TF5 reads as an enormous per-unit
+                        // HR 23.5 on ETP-TF5 reads as an enormous per-unit
                         // effect unless the unit is stated: the score is an
                         // AUC bounded to [0, 1], so one unit is its full range.
                         <p data-testid="cox-unit-note" className="mt-2 text-[11.5px] text-ink-mute">

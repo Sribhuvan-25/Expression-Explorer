@@ -105,25 +105,74 @@ a spurious p < 0.05 at these sizes, but it is approximate.
 ## 2. Signature scoring
 
 ### 2.1 Default method
-**Decided.** AUCell-equivalent rank-based scoring.
-`backend/app/analysis/signature.py` → `auc_signature_score()`
+**Decided.** AUCell's score (Aibar et al. 2017; Bioconductor `AUCell`),
+reproduced exactly. `backend/app/analysis/signature.py` →
+`auc_signature_score()`
+
+Genes are ranked within each sample (1 = highest). With
+`aucThreshold = round(0.25 × n_genes)` (§2.2) and `x` the sorted ranks
+of the signature genes below it, the AUC is AUCell's step-function area
+`sum(diff(c(x, aucThreshold)) × seq_along(x))` — equivalently each
+signature gene at rank r contributes `aucThreshold − r`. Duplicated
+genes count once, as in AUCell.
 
 Rank-based, so it's insensitive to absolute scale and to between-sample
 normalisation differences. This matters more once multiple datasets are
 in play.
 
+**Ties.** AUCell ranks ties at random (`colRanks(ties.method =
+"random")`), so its score for a sample changes from run to run. Here a
+gene tied over ranks a..b contributes the mean of `max(aucThreshold − r,
+0)` over r = a..b: the expected AUCell score over its random
+tie-breaking, exactly, and the same on every run. Ties are not rare —
+about 10% of DepMap's entries in the top 25% are tied (its values are
+rounded); 270 of DepMap's and 686 of TARGET's tie blocks straddle the
+threshold, where plain average ranks would no longer give the expectation.
+
+**Correction (2026-11-16).** The score was previously a trapezoid
+integral of the recovery curve (interpolating linearly between hits,
+which over-counts the area of a step function) divided by
+`aucThreshold × n`. Scores ran about 0.05 high on average and up to
+0.10; the sample order barely changed (Spearman 0.985–1.0) but samples
+crossed the median split that survival uses. ETP-TF5 (MEF2C, LYL1,
+HHEX, LMO2, MYCN): 16 of 186 DepMap lines, 8 of 469 TARGET patients and
+2 of 52 GDS4299 samples changed side. On TARGET ETP-TF5, log-rank p
+2.20e-14 → 2.53e-14 and Cox HR 27.7 → 23.5 (8.79–62.84). Single-gene
+scores keep their sample order, so a one-gene median split is
+unchanged (MEF2C log-rank p 1.798e-13 before and after; its Cox HR
+moves 7.00 → 7.80 because the score's scale changed).
+
+**Verified against R AUCell 1.20.2** (`AUCell_buildRankings` +
+`AUCell_calcAUC`, same `aucMaxRank`, `normAUC = TRUE`) on ETP-TF5 or the
+PP2A set in DepMap, TARGET (60 samples each, all genes), GSE66586,
+GDS4299 and GSE324984: samples with no tied signature gene match to
+≤ 6e-17; samples with one match R's mean over 40 random seeds to
+≤ 1.7e-5, inside R's own run-to-run spread (up to 1.7e-4). TARGET
+ETP-TF5 survival on the new scores re-run in R `survival`: log-rank p
+2.525840e-14, Cox HR 23.504 (8.791–62.842), p 3.13e-10 — identical.
+Tests: `backend/tests/test_signature_aucell.py` (hand-worked case;
+ties against an exhaustive average over every tie ordering; values
+pinned from R AUCell), each confirmed to fail on the old code.
+
 ### 2.2 aucMaxRank
 **Decided.** `top_fraction = 0.25` — the top 25% of expressed genes per
-sample. `signature.py:27`
+sample; `aucThreshold = round(0.25 × n_genes)` (round half to even, as R's
+`round`). `signature.py` → `auc_signature_score(top_fraction=0.25)`.
+AUCell's own default is 5%; 25% is the reference method's bulk RNA-seq
+setting.
 
 Matches the reference method's stated setting for bulk RNA-seq.
 
 ### 2.3 Score normalisation
-**Decided.** AUC is divided by `max_rank × n_signature_genes`, bounding
-scores to **[0, 1]**. `signature.py:63-64`
+**Decided (updated 2026-11-16).** AUCell's `normAUC`: the AUC is divided
+by `maxAUC`, the area when the n present signature genes hold ranks
+1..n, so a score of 1 means the signature genes are the sample's top
+genes. Bounded to **[0, 1]**. Previously divided by
+`aucThreshold × n_signature_genes` (§2.1 correction).
 
-Verified empirically: observed range 0.0–0.622 (DepMap ETP-TF5),
-0.0–0.917 (TARGET). A score outside [0,1] would indicate a bug.
+Observed range (ETP-TF5): 0.0–0.565 DepMap (was 0.622), 0.0–0.890
+TARGET (was 0.917), 0.0–0.870 GDS4299. A score outside [0,1] would
+indicate a bug.
 
 A score of exactly 0 is meaningful, not missing: it means none of the
 signature's genes reached that sample's top 25%. 46 of 186 DepMap lines
@@ -1860,3 +1909,4 @@ uses the same words.
 | 2026-11-15 | §2.4a: gene-set tag input split nothing — a typed or pasted list became one unresolvable tag, and unconfirmed text was dropped on clicking Score. Now parsed like the gene panel; tests validated by reintroducing each defect. Found scoring the PP2A inhibitors on GSE66586 as a user. |
 | 2026-11-15 | §2.4: "log2 mean" signature scores re-logged data already on a log2 scale (DepMap, GDS4299, GSE66586), giving mean log2(log2(x)+1). Fixed for both endpoints; GSE66586 scores now match the raw GEO probe means exactly. AUC scoring and survival unaffected. Tests validated by reintroducing the defect; backend 270 passed. |
 | 2026-11-15 | §3 Survival, from user-standpoint testing: TARGET MEF2C median split re-run in R `survival` on the same scores — n 466 (233/233), log-rank p 1.797e-13 vs app 1.798e-13, Cox HR 7.003 (3.904–12.562), p 6.628e-11, identical. Day-axis ticks now round (0, 1000 … 4000, was 1096, 2192 …); a caption under the Cox table says the signature_score hazard ratio is per 1.0 of a 0–1 AUC score — its whole range — since "HR 27.7" for ETP-TF5 otherwise reads as a per-unit effect. Censoring marks are not drawn (the API does not return censoring times); noted, not done. |
+| 2026-11-16 | §2.1–2.3: the AUC signature score now reproduces AUCell exactly — step-function area and AUCell's maxAUC normalisation instead of a trapezoid over `aucThreshold × n`; ties scored as the exact expectation of AUCell's random tie-breaking. Verified against R AUCell 1.20.2 on five datasets (untied samples ≤ 6e-17) and the TARGET ETP-TF5 survival result against R `survival`. Scores fall by up to 0.10; 16 DepMap / 8 TARGET / 2 GDS4299 samples change median-split side for ETP-TF5; TARGET ETP-TF5 Cox HR 27.7 → 23.5, log-rank p 2.20e-14 → 2.53e-14. |

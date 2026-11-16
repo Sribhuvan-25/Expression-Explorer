@@ -184,7 +184,7 @@ export function SignaturePage() {
       <PageHeader
         eyebrow="Signature Score"
         title="Score any gene set across samples"
-        description="AUCell-equivalent rank-based scoring, or a simpler log2-mean. Enter a custom gene set or start from a preset."
+        description="AUCell rank-based scoring, or a simpler log2-mean. Enter a custom gene set or start from a preset."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">
