@@ -320,15 +320,17 @@ function AuxCorrelationTab({
   auxLayerKey,
   featurePlaceholder,
   featureLabel,
+  defaultGene = "MYCN",
 }: {
   datasetId: string;
   layer: AuxLayerSummary;
   auxLayerKey: "crispr_gene_effect" | "drug_sensitivity";
   featurePlaceholder: string;
   featureLabel: string;
+  defaultGene?: string;
 }) {
   const chartRef = useRef<SVGSVGElement>(null);
-  const [gene, setGene] = useState("MYCN");
+  const [gene, setGene] = useState(defaultGene);
   const [auxFeature, setAuxFeature] = useState(featurePlaceholder);
   const [method, setMethod] = useState<"pearson" | "spearman">("pearson");
   const [query, setQuery] = useState<{
@@ -594,7 +596,12 @@ export function MultiOmicsPage() {
             datasetId={datasetId}
             layer={activeLayer}
             auxLayerKey="crispr_gene_effect"
-            featurePlaceholder="RPL13A"
+            // MYB expression vs MYB dependency: screened on all 91 covered
+            // lines, and the known MYB addiction (r = -0.65, METHODS.md 8).
+            // RPL13A was screened on 13, so the first thing a user saw was
+            // an underpowered result.
+            defaultGene="MYB"
+            featurePlaceholder="MYB"
             featureLabel="Dependency on gene"
           />
         )}
