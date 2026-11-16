@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuxLayerSummary } from "../lib/api";
-import { EmptyState, ErrorState, PageHeader, Panel, PrimaryButton, Stat } from "../components/ui";
+import { EmptyState, ErrorState, FieldLabel, Gene, PageHeader, Panel, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
+import { useLinkedDataset, useLinkedGene } from "../lib/workbench";
 import { formatUnit } from "../lib/units";
 import { BoxPlot } from "../components/BoxPlot";
 import { ScatterPlot } from "../components/ScatterPlot";
@@ -63,7 +64,7 @@ function CoverageNote({ layer }: { layer: AuxLayerSummary }) {
 
 function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerSummary }) {
   const chartRef = useRef<SVGSVGElement>(null);
-  const [gene, setGene] = useState("MYCN");
+  const [gene, setGene, geneLink] = useLinkedGene("MYCN");
   const [mutatedGene, setMutatedGene] = useState("");
   const [query, setQuery] = useState<{ datasetId: string; gene: string; mutatedGene: string } | null>(null);
 
@@ -90,22 +91,34 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
 
   return (
     <>
-      <Panel title="Query">
-        <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
+      <QueryPanel
+        done={!!data && !!query}
+        runKey={query}
+        dirty={!!query && !!data && gene.trim().toUpperCase() !== query.gene}
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                <><Gene>{query.gene}</Gene> expression</>,
+                <>split by <Gene>{query.mutatedGene}</Gene> mutation</>,
+              ]}
+            />
+          )
+        }
+      >
+        <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-              Expression of
-            </label>
+            <FieldLabel link={geneLink}>Expression of</FieldLabel>
             <input
               aria-label="Expression of"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+              className="wb-field wb-gene"
             />
           </div>
           <div className="min-w-[18ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <label className="wb-label">
               Split by mutation in
             </label>
             <select
@@ -113,7 +126,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               value={mutatedGene}
               onChange={(e) => setMutatedGene(e.target.value)}
               disabled={!topMutated?.genes.length}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
+              className="wb-field"
             >
               {topMutated?.genes.map((g) => (
                 <option key={g.gene} value={g.gene}>
@@ -129,7 +142,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
         <div className="mt-3 border-t border-rule pt-2.5">
           <CoverageNote layer={layer} />
         </div>
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -261,7 +274,7 @@ function AuxFeaturePicker({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSubmit()}
           placeholder={placeholder}
-          className="w-full min-w-0 rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-accent"
+          className="wb-field min-w-0 font-mono"
         />
         <button
           type="button"
@@ -282,7 +295,7 @@ function AuxFeaturePicker({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, id, or mechanism…"
-              className="w-full rounded-[3px] border border-rule bg-ground px-2 py-1.5 text-[12px] text-ink outline-none focus:border-accent"
+              className="wb-field wb-field-sm"
             />
             {data && (
               <p className="mt-1.5 text-[10.5px] text-ink-mute">
@@ -341,7 +354,7 @@ function AuxCorrelationTab({
   defaultGene?: string;
 }) {
   const chartRef = useRef<SVGSVGElement>(null);
-  const [gene, setGene] = useState(defaultGene);
+  const [gene, setGene, geneLink] = useLinkedGene(defaultGene);
   const [auxFeature, setAuxFeature] = useState(featurePlaceholder);
   const [method, setMethod] = useState<"pearson" | "spearman">("pearson");
   const [query, setQuery] = useState<{
@@ -365,22 +378,35 @@ function AuxCorrelationTab({
 
   return (
     <>
-      <Panel title="Query">
-        <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
+      <QueryPanel
+        done={!!data && !!query}
+        runKey={query}
+        dirty={!!query && !!data && gene.trim().toUpperCase() !== query.gene}
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                <><Gene>{query.gene}</Gene> expression</>,
+                <>vs {featureLabel.toLowerCase()} <span className="font-mono">{query.auxFeature}</span></>,
+                <span className="capitalize">{query.method}</span>,
+              ]}
+            />
+          )
+        }
+      >
+        <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-              Expression of
-            </label>
+            <FieldLabel link={geneLink}>Expression of</FieldLabel>
             <input
               aria-label="Expression of"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+              className="wb-field wb-gene"
             />
           </div>
           <div className="min-w-[16ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <label className="wb-label">
               {featureLabel}
             </label>
             <AuxFeaturePicker
@@ -393,16 +419,16 @@ function AuxCorrelationTab({
             />
           </div>
           <div className="min-w-[14ch]">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Method</label>
-            <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-rule">
+            <label className="wb-label">Method</label>
+            <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-field-edge bg-surface">
               {(["pearson", "spearman"] as const).map((m) => (
                 <button
                   aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
-                  className={`flex-1 whitespace-nowrap px-3 py-2 font-mono text-[11.5px] capitalize transition-colors ${
-                    method === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                  className={`flex-1 whitespace-nowrap h-[28px] px-3 font-mono text-[11.5px] capitalize transition-colors ${
+                    method === m ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                   }`}
                 >
                   {m}
@@ -417,7 +443,7 @@ function AuxCorrelationTab({
         <div className="mt-3 border-t border-rule pt-2.5">
           <CoverageNote layer={layer} />
         </div>
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -461,13 +487,17 @@ function AuxCorrelationTab({
           {data.aux_feature_moa && (
             <p className="mb-2 text-[11.5px] text-ink-mute">Mechanism: {data.aux_feature_moa}</p>
           )}
+          <div className="grid gap-x-5 @4xl:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
+          <div className="min-w-0">
           <ScatterPlot
             points={data.points}
             xLabel={`${data.gene} expression${data.expression_value_unit ? ` (${formatUnit(data.expression_value_unit)})` : ""}`}
             yLabel={data.value_label}
             svgRef={chartRef}
           />
-          <div className="mt-4 flex flex-wrap gap-8 border-t border-rule pt-3">
+          </div>
+          <div className="min-w-0 @4xl:border-l @4xl:border-rule @4xl:pl-5">
+          <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-rule pt-3 @4xl:mt-0 @4xl:flex-col @4xl:border-t-0 @4xl:pt-0">
             <Stat
               label={`${data.method[0].toUpperCase()}${data.method.slice(1)} r`}
               value={data.coefficient.toFixed(3)}
@@ -484,6 +514,8 @@ function AuxCorrelationTab({
             {data.n_excluded > 0 &&
               ` Showing ${data.n} of ${data.n_dataset_total} samples — ${data.n_excluded} excluded (${data.exclusion_reason}).`}
           </p>
+          </div>
+          </div>
         </Panel>
       )}
     </>
@@ -494,10 +526,7 @@ export function MultiOmicsPage() {
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
 
-  const [datasetId, setDatasetId] = useState<string>("");
-  useEffect(() => {
-    if (!datasetId && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
-  }, [datasets, datasetId]);
+  const [datasetId, setDatasetId, datasetLink] = useLinkedDataset(datasets.map((d) => d.dataset_id));
 
   const { data: layersResult, isLoading: layersLoading } = useQuery({
     queryKey: ["aux-layers", datasetId],
@@ -532,18 +561,18 @@ export function MultiOmicsPage() {
         description="Auxiliary measurements on the same samples — somatic mutation status, CRISPR knockout dependency, and drug sensitivity — joined to the expression matrix."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
-        <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           {datasets.length > 1 && (
-            <div className="min-w-[24ch]">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <div className="min-w-[24ch] max-sm:w-full">
+              <FieldLabel link={datasetLink} noun="dataset" display={datasets.find((d) => d.dataset_id === datasetLink.contextValue)?.display_name}>
                 Dataset
-              </label>
+              </FieldLabel>
               <select
                 aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 {datasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
@@ -553,7 +582,7 @@ export function MultiOmicsPage() {
               </select>
             </div>
           )}
-          <div className="flex flex-wrap gap-px overflow-hidden rounded-[3px] border border-rule">
+          <div className="flex flex-wrap gap-px overflow-hidden rounded-[3px] border border-field-edge bg-surface">
             {(Object.keys(TAB_LABELS) as Tab[]).map((t) => {
               const available = layers.has(TAB_LAYER[t]);
               return (
@@ -571,7 +600,7 @@ export function MultiOmicsPage() {
                   // buttons reading the same (caught in QA). Name the layer
                   // first, then the reason.
                   title={available ? undefined : `${TAB_LABELS[t]} — not available for this dataset`}
-                  className={`whitespace-nowrap px-3 py-2 text-[12.5px] font-medium transition-colors ${
+                  className={`whitespace-nowrap h-[30px] px-3 text-[12.5px] font-medium transition-colors ${
                     // Guard on `available`: an unavailable tab that happened
                     // to be the selected one kept the active tint, so it read
                     // as both current and disabled at once.

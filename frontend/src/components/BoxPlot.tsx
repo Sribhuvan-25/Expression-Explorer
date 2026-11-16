@@ -671,7 +671,7 @@ function ScaleToggle({
         type="button"
         onClick={() => setLogScale(false)}
         className={`rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors ${
-          !logScale ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+          !logScale ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
         }`}
       >
         Linear
@@ -681,7 +681,7 @@ function ScaleToggle({
         type="button"
         onClick={() => setLogScale(true)}
         className={`rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors ${
-          logScale ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+          logScale ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
         }`}
       >
         Log scale

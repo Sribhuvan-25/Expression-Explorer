@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useContextHasGenes, useLinkedDataset, useLinkedGenes } from "../lib/workbench";
 import { formatUnit } from "../lib/units";
 import { useQuery } from "@tanstack/react-query";
 import { api, type RankResult } from "../lib/api";
@@ -11,6 +12,10 @@ import {
   Panel,
   PresetButton,
   PrimaryButton,
+  QueryPanel,
+  SummaryParts,
+  Gene,
+  FieldLabel,
 } from "../components/ui";
 import { exportRowsAsCsv } from "../lib/exportTable";
 
@@ -24,16 +29,13 @@ export function RankPage() {
 
   // Defaults to whatever dataset the registry reports first, same pattern
   // as the other pages — no dataset id hardcoded here.
-  const [datasetId, setDatasetId] = useState<string>("");
-  useEffect(() => {
-    if (!datasetId && datasets.length > 0) {
-      const depmap = datasets.find((d) => d.dataset_id === "depmap");
-      setDatasetId((depmap ?? datasets[0]).dataset_id);
-    }
-  }, [datasets, datasetId]);
+  const [datasetId, setDatasetId, datasetLink] = useLinkedDataset(
+    datasets.map((d) => d.dataset_id),
+    "depmap",
+  );
 
-  const [genes, setGenes] = useState<string[]>(["MYCN"]);
-  const [activePreset, setActivePreset] = useState<string | null>("MYCN only");
+  const [activePreset, setActivePreset] = useState<string | null>(useContextHasGenes() ? null : "MYCN only");
+  const [genes, setGenes, genesLink] = useLinkedGenes(["MYCN"], { onAdopt: () => setActivePreset(null) });
   const [query, setQuery] = useState<{ datasetId: string; genes: string[] } | null>(null);
 
   const isSingleGene = query ? query.genes.length === 1 : true;
@@ -76,18 +78,40 @@ export function RankPage() {
         description="Every sample sorted by expression, for picking candidates — which samples carry the highest expression of a gene or signature."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
-        <Panel title="Query">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
+        <QueryPanel
+          done={!!data && !!query}
+          runKey={query}
+          dirty={!!query && !!data && (query.genes.join(",") !== genes.join(",") || query.datasetId !== datasetId)}
+          summary={
+            query && (
+              <SummaryParts
+                parts={[
+                  <>
+                      {query.genes.map((g, i) => (
+                        <span key={g}>
+                          {i > 0 && ", "}
+                          <Gene>{g}</Gene>
+                        </span>
+                      ))}
+                    </>,
+                  query.genes.length === 1 ? "by expression" : "by AUCell score",
+                  datasets.find((d) => d.dataset_id === query.datasetId)?.display_name,
+                ]}
+              />
+            )
+          }
+        >
           {datasets.length > 1 && (
-            <div className="mb-4 max-w-[28ch]">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <div className="mb-4 max-w-[36ch]">
+              <FieldLabel link={datasetLink} noun="dataset" display={datasets.find((d) => d.dataset_id === datasetLink.contextValue)?.display_name}>
                 Dataset
-              </label>
+              </FieldLabel>
               <select
                 aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 {datasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
@@ -98,6 +122,7 @@ export function RankPage() {
             </div>
           )}
 
+          <FieldLabel link={genesLink} noun="genes">Genes</FieldLabel>
           <div className="mb-3 flex flex-wrap gap-1.5">
             {Object.keys(PRESETS).map((name) => (
               <PresetButton
@@ -121,7 +146,7 @@ export function RankPage() {
             }}
           />
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
             <p className="text-[12px] text-ink-mute">
               One gene ranks by raw expression; more than one ranks by signature score (AUCell).
             </p>
@@ -129,7 +154,7 @@ export function RankPage() {
               Rank {genes.length} gene{genes.length === 1 ? "" : "s"}
             </PrimaryButton>
           </div>
-        </Panel>
+        </QueryPanel>
 
         {error && <ErrorState message={(error as Error).message} />}
 
@@ -167,7 +192,7 @@ export function RankPage() {
                     )
                   }
                   title="Download as CSV"
-                  className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
+                  className="wb-btn-quiet"
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                     <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />

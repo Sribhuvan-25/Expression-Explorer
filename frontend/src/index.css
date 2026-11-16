@@ -1,57 +1,64 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
 @import "tailwindcss";
 @import "./theme.css";
 
-/* Fixed split design, confirmed direction: the sidebar rail is always
-   dark navy (the Clinical identity), the working canvas is always a
-   light off-white where results are actually read. This isn't a
-   light/dark theme toggle — --rail-* is constant; --ground/--surface
-   (the canvas) is the only pair that would ever theme, and for now
-   there is only the light canvas. */
+/* Workbench: one light, neutral working surface. Greys carry no hue, so
+   the single accent (a deep petrol) is the only colour in the chrome and
+   every other colour on screen is data (--hot / --cool / --warn and the
+   chart palette). Contrast (WCAG 2.x formula), against #FFFFFF / --ground
+   / --surface-sunk:
+     --ink        17.4 / 15.8 / 15.0
+     --ink-soft   11.1 / 10.1 /  9.5
+     --ink-mute    6.4 /  5.8 /  5.5   (AA body text on every surface)
+     --accent      6.4 /  5.8 /  5.5   (white on --accent: 6.4)
+     --field-edge  3.5 /  3.2          (1.4.11 non-text: control edges)
+   The --rail-* names survive from the old dark sidebar so DatasetStatus
+   and Sources keep working; they now point at the light navigation
+   column. */
 :root {
-  --ground: #F4F6F8;
+  --ground: #F4F4F2;
   --surface: #FFFFFF;
-  --surface-sunk: #EAEEF2;
-  --surface-hover: #E2E7EC;
-  --ink: #131A22;
-  --ink-soft: #3D4A57;
-  --ink-mute: #5C6B79;
-  --rule: #DCE2E8;
-  --rule-firm: #B9C4CE;
+  --surface-sunk: #EEEEEB;
+  --surface-hover: #E7E7E3;
+  --ink: #1A1A18;
+  --ink-soft: #3C3C39;
+  --ink-mute: #5F5F5A;
+  --rule: #E0E0DC;
+  --rule-firm: #BDBDB7;
+  /* Edge of an input or select: 3:1 against its surroundings, so the
+     control is identifiable (--rule-firm is 1.9:1, fine for dividers). */
+  --field-edge: #8A8A84;
 
-  --accent: #2455A4;
-  --accent-strong: #1A3E7C;
-  --accent-soft: #E4EDF9;
-  --accent-ink: #1A3E7C;
+  --accent: #0B6B66;
+  --accent-strong: #07504C;
+  --accent-soft: #E2EFED;
+  --accent-ink: #07504C;
 
   --hot: #B4472E;
   --hot-soft: #F8EAE5;
   --cool: #2C6E9B;
   --cool-soft: #E6EFF6;
-  --warn: #8A6410;
-  --warn-soft: #F7F0DC;
+  --warn: #85600C;
+  --warn-soft: #F6EFDA;
 
-  --focus-ring: #2455A4;
+  --focus-ring: #0B6B66;
 
-  --radius-sm: 3px;
-  --radius: 5px;
+  --radius-sm: 2px;
+  --radius: 3px;
 
-  /* The rail: always dark navy, never themed. */
-  --rail-bg: #0B1120;
-  --rail-surface: #131A22;
-  --rail-rule: #232E3A;
-  --rail-ink: #EDEFF3;
-  --rail-ink-mute: #7C8A97;
-  --rail-active-bg: #1A2836;
-  --rail-active-ink: #7DAEEE;
-  --rail-accent: #4A8FE0;
-  /* Amber text on the rail. --warn (#8A6410) is for light surfaces: on
-     --rail-bg it is 3.5:1, under the 4.5:1 WCAG AA minimum. */
-  --rail-warn: #E3B341;
+  --rail-bg: #FAFAF9;
+  --rail-surface: #FFFFFF;
+  --rail-rule: #E0E0DC;
+  --rail-ink: #1A1A18;
+  --rail-ink-mute: #5F5F5A;
+  --rail-active-bg: #E2EFED;
+  --rail-active-ink: #07504C;
+  --rail-accent: #0B6B66;
+  --rail-warn: #85600C;
 
-  --f-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --f-body: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --f-display: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   color-scheme: light;
 }
@@ -71,9 +78,11 @@ body {
   background: var(--ground);
   color: var(--ink);
   font-family: var(--f-body);
-  font-size: 15px;
-  line-height: 1.5;
-  letter-spacing: -0.006em;
+  font-size: 14px;
+  line-height: 1.45;
+  /* Numbers line up in every column, stat and axis without each
+     component asking for it. */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -83,10 +92,11 @@ body {
   color: var(--accent-ink);
 }
 
+/* One focus treatment everywhere, and it cannot be switched off by a
+   stray `outline-none`: a 2px accent ring outside the control. */
 :focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: 2px;
+  outline: 2px solid var(--focus-ring) !important;
+  outline-offset: 1px;
 }
 
 ::-webkit-scrollbar {
@@ -109,6 +119,93 @@ code,
 
 .font-display {
   font-family: var(--f-display);
+}
+
+@layer components {
+  /* Field label: sentence case, small, set in the text face. Uppercase
+     mono labels on every field read as decoration; these read as labels. */
+  .wb-label {
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--f-body);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--ink-soft);
+  }
+
+  /* Compact text input / select: 30px tall. */
+  .wb-field {
+    width: 100%;
+    height: 30px;
+    border: 1px solid var(--field-edge);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--ink);
+    outline: none;
+  }
+  .wb-field:hover:not(:disabled) {
+    border-color: var(--ink-soft);
+  }
+  .wb-field:focus {
+    border-color: var(--accent);
+  }
+  .wb-field:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  select.wb-field {
+    padding-right: 4px;
+  }
+  .wb-field-sm {
+    height: 26px;
+    padding: 0 6px;
+    font-size: 12.5px;
+  }
+  /* Gene symbols are italic by convention. */
+  .wb-gene {
+    font-family: var(--f-mono);
+    font-style: italic;
+  }
+
+  /* Secondary, quiet control (PNG / CSV export, show-more). */
+  .wb-btn-quiet {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    border: 1px solid var(--rule-firm);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0 7px;
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    transition: border-color 120ms, color 120ms;
+  }
+  .wb-btn-quiet:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .wb-kbd {
+    display: inline-flex;
+    min-width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--rule-firm);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: var(--surface);
+    padding: 0 4px;
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    line-height: 1;
+    color: var(--ink-mute);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

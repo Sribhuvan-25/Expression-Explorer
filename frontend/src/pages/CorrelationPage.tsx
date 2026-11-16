@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { requestOpenPane } from "../lib/paneEvents";
 import { api } from "../lib/api";
-import { DataTable, EmptyState, ErrorState, GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat } from "../components/ui";
+import { DataTable, EmptyState, ErrorState, FieldLabel, Gene, GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
+import { useContextHasGenes, useLinkedDataset, useLinkedGene, useLinkedGenes } from "../lib/workbench";
 import { ScatterPlot, scatterColorKey } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
 import { exportRowsAsCsv } from "../lib/exportTable";
@@ -51,7 +52,7 @@ export function poolsGroupsNote(n: number, nGroups: number, column: string): str
 
 export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: { datasetId: string; datasetName?: string; pooled?: boolean }) {
   const chartRef = useRef<SVGSVGElement>(null);
-  const [geneA, setGeneA] = useState("MYCN");
+  const [geneA, setGeneA, geneALink] = useLinkedGene("MYCN");
   const [geneB, setGeneB] = useState("MYC");
   const [method, setMethod] = useState<"pearson" | "spearman" | "kendall">("pearson");
   const [query, setQuery] = useState<{ datasetId: string; geneA: string; geneB: string; method: typeof method } | null>(
@@ -106,30 +107,45 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
 
   return (
     <>
-      <Panel title="Query">
-        <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
+      <QueryPanel
+        done={!!data && !!query}
+        runKey={query}
+        dirty={!!query && !!data && (geneA.trim().toUpperCase() !== query.geneA || query.datasetId !== datasetId)}
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                <><Gene>{query.geneA}</Gene> vs <Gene>{query.geneB}</Gene></>,
+                <span className="capitalize">{query.method}</span>,
+                datasetName,
+              ]}
+            />
+          )
+        }
+      >
+        <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene A</label>
+            <FieldLabel link={geneALink}>Gene A</FieldLabel>
             <input
               aria-label="Gene A"
               value={geneA}
               onChange={(e) => setGeneA(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+              className="wb-field wb-gene"
             />
           </div>
           <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene B</label>
+            <label className="wb-label">Gene B</label>
             <input
               aria-label="Gene B"
               value={geneB}
               onChange={(e) => setGeneB(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+              className="wb-field wb-gene"
             />
           </div>
           <div className="w-full @sm:w-auto @sm:min-w-[27ch] @sm:flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Method</label>
+            <label className="wb-label">Method</label>
             {/* "Kendall" is the widest label of the three -- a container that
                 can be squeezed by its @sm:flex-row siblings (as the prior
                 overflow-hidden version was) clips it instead of reflowing,
@@ -138,15 +154,15 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
                 the first place, and dropping overflow-hidden means if it
                 ever is squeezed anyway, the buttons wrap onto a second row
                 instead of silently cutting off "Kendall" mid-word. */}
-            <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-rule">
+            <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-field-edge bg-surface">
               {(["pearson", "spearman", "kendall"] as const).map((m) => (
                 <button
                   aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
-                  className={`flex-1 whitespace-nowrap px-2 py-2 font-mono text-[11.5px] capitalize transition-colors ${
-                    method === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                  className={`flex-1 whitespace-nowrap h-[28px] px-2 font-mono text-[11.5px] capitalize transition-colors ${
+                    method === m ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                   }`}
                 >
                   {m}
@@ -156,7 +172,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
           </div>
           {activeDataset && activeDataset.group_columns.length > 0 && (
             <div className="min-w-[16ch]">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+              <label className="wb-label">
                 Color by
               </label>
               <select
@@ -166,7 +182,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
                   colorChosen.current = true;
                   setColorBy(e.target.value);
                 }}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 <option value="">None</option>
                 {activeDataset.group_columns.map((g) => (
@@ -192,7 +208,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
         {geneA.trim() && geneA.trim().toUpperCase() === geneB.trim().toUpperCase() && (
           <p className="mt-2.5 text-[12px] text-warn">Gene A and Gene B must be different.</p>
         )}
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -233,13 +249,17 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
             </div>
           }
         >
+          <div className="grid gap-x-5 @4xl:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
+          <div className="min-w-0">
           <ScatterPlot
             points={plotPoints}
             xLabel={`${data.gene_a}${unitSuffix}`}
             yLabel={`${data.gene_b}${unitSuffix}`}
             svgRef={chartRef}
           />
-          <div className="mt-4 flex gap-8 border-t border-rule pt-3">
+          </div>
+          <div className="min-w-0 @4xl:border-l @4xl:border-rule @4xl:pl-5">
+          <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-rule pt-3 @4xl:mt-0 @4xl:flex-col @4xl:border-t-0 @4xl:pt-0">
             <Stat
               label={`${data.method[0].toUpperCase()}${data.method.slice(1)} r`}
               value={data.coefficient.toFixed(3)}
@@ -256,14 +276,16 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               {poolsGroupsNote(data.n, nColorGroups, colorBy)}
             </p>
           )}
+          </div>
+          </div>
         </Panel>
       )}
     </>
   );
 }
 
-export function NetworkTab({ datasetId }: { datasetId: string }) {
-  const [gene, setGene] = useState("MYCN");
+export function NetworkTab({ datasetId, datasetName = "" }: { datasetId: string; datasetName?: string }) {
+  const [gene, setGene, geneLink] = useLinkedGene("MYCN");
   const [topN, setTopN] = useState(20);
   const [method, setMethod] = useState<"pearson" | "spearman">("pearson");
   const [direction, setDirection] = useState<"positive" | "negative">("positive");
@@ -288,20 +310,36 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
 
   return (
     <>
-      <Panel title="Query">
-        <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
+      <QueryPanel
+        done={!!data && !!query}
+        runKey={query}
+        dirty={!!query && !!data && (gene.trim().toUpperCase() !== query.gene || query.datasetId !== datasetId)}
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                <Gene>{query.gene}</Gene>,
+                `top ${query.topN} ${query.direction}`,
+                <span className="capitalize">{query.method}</span>,
+                datasetName,
+              ]}
+            />
+          )
+        }
+      >
+        <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene</label>
+            <FieldLabel link={geneLink}>Gene</FieldLabel>
             <input
               aria-label="Gene"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+              className="wb-field wb-gene"
             />
           </div>
           <div className="min-w-[10ch]">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Top N</label>
+            <label className="wb-label">Top N</label>
             <input
               aria-label="Top N"
               type="number"
@@ -309,20 +347,20 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
               max={200}
               value={topN}
               onChange={(e) => setTopN(Number(e.target.value))}
-              className="w-20 rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+              className="wb-field !w-20"
             />
           </div>
           <div className="min-w-[14ch]">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Method</label>
-            <div className="flex overflow-hidden rounded-[3px] border border-rule">
+            <label className="wb-label">Method</label>
+            <div className="flex overflow-hidden rounded-[3px] border border-field-edge bg-surface">
               {(["pearson", "spearman"] as const).map((m) => (
                 <button
                   aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
-                  className={`px-3 py-2 font-mono text-[11.5px] capitalize transition-colors ${
-                    method === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                  className={`h-[28px] px-3 font-mono text-[11.5px] capitalize transition-colors ${
+                    method === m ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                   }`}
                 >
                   {m}
@@ -331,16 +369,16 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             </div>
           </div>
           <div className="min-w-[16ch]">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Direction</label>
-            <div className="flex overflow-hidden rounded-[3px] border border-rule">
+            <label className="wb-label">Direction</label>
+            <div className="flex overflow-hidden rounded-[3px] border border-field-edge bg-surface">
               {(["positive", "negative"] as const).map((d) => (
                 <button
                   aria-pressed={direction === d}
                   key={d}
                   type="button"
                   onClick={() => setDirection(d)}
-                  className={`px-3 py-2 font-mono text-[11.5px] capitalize transition-colors ${
-                    direction === d ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                  className={`h-[28px] px-3 font-mono text-[11.5px] capitalize transition-colors ${
+                    direction === d ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                   }`}
                 >
                   {d}
@@ -352,7 +390,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             Build network
           </PrimaryButton>
         </div>
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -395,7 +433,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
                 )
               }
               title="Download as CSV"
-              className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
+              className="wb-btn-quiet"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -441,8 +479,12 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const activeDataset = datasetList?.datasets.find((d) => d.dataset_id === datasetId);
 
-  const [genes, setGenes] = useState<string[]>(PCA_PRESETS["ETP-TF5"]);
-  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5");
+  // PCA needs two genes: a single context gene leaves the preset alone.
+  const [activePreset, setActivePreset] = useState<string | null>(useContextHasGenes(2) ? null : "ETP-TF5");
+  const [genes, setGenes, genesLink] = useLinkedGenes(PCA_PRESETS["ETP-TF5"], {
+    minGenes: 2,
+    onAdopt: () => setActivePreset(null),
+  });
   const [colorBy, setColorBy] = useState<string>("");
   useEffect(() => {
     if (!activeDataset) return;
@@ -480,7 +522,29 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
 
   return (
     <>
-      <Panel title="Query">
+      <QueryPanel
+        done={!!data && !!query}
+        runKey={query}
+        dirty={!!query && !!data && (genes.join(",") !== query.genes.join(",") || query.datasetId !== datasetId)}
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                <>
+                  {query.genes.map((g, i) => (
+                    <span key={g}>
+                      {i > 0 && ", "}
+                      <Gene>{g}</Gene>
+                    </span>
+                  ))}
+                </>,
+                datasetName,
+              ]}
+            />
+          )
+        }
+      >
+        <FieldLabel link={genesLink} noun="genes">Gene set</FieldLabel>
         <div className="mb-3 flex flex-wrap gap-1.5">
           {Object.keys(PCA_PRESETS).map((name) => (
             <PresetButton
@@ -505,7 +569,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
         <div className="mt-4 flex flex-wrap items-end gap-4">
           {activeDataset && activeDataset.group_columns.length > 0 && (
             <div className="min-w-[16ch]">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+              <label className="wb-label">
                 Color by
               </label>
               <select
@@ -515,7 +579,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
                   colorChosen.current = true;
                   setColorBy(e.target.value);
                 }}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 <option value="">None</option>
                 {activeDataset.group_columns.map((g) => (
@@ -531,7 +595,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
           </PrimaryButton>
         </div>
         <p className="mt-2.5 text-[12px] text-ink-mute">Needs at least 2 genes present in the dataset.</p>
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -605,10 +669,7 @@ export function CorrelationPage() {
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
 
-  const [datasetId, setDatasetId] = useState<string>("");
-  useEffect(() => {
-    if (!datasetId && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
-  }, [datasets, datasetId]);
+  const [datasetId, setDatasetId, datasetLink] = useLinkedDataset(datasets.map((d) => d.dataset_id));
 
   const [tab, setTab] = useState<Tab>("correlation");
   const activeDataset = datasets.find((d) => d.dataset_id === datasetId);
@@ -622,18 +683,18 @@ export function CorrelationPage() {
         description="How two genes track together, the top genes most correlated with a query gene, or whether a gene set separates samples structurally (PCA)."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           {datasets.length > 1 && (
-            <div className="min-w-[24ch]">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <div className="min-w-[24ch] max-sm:w-full">
+              <FieldLabel link={datasetLink} noun="dataset" display={datasets.find((d) => d.dataset_id === datasetLink.contextValue)?.display_name}>
                 Dataset
-              </label>
+              </FieldLabel>
               <select
                 aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 {datasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
@@ -649,7 +710,7 @@ export function CorrelationPage() {
               7.6's QA fix). Three tab labels, one of them "Co-expression
               network", is even more likely to overflow a squeezed
               container than that was. */}
-          <div className="flex flex-wrap gap-px overflow-hidden rounded-[3px] border border-rule">
+          <div className="flex flex-wrap gap-px overflow-hidden rounded-[3px] border border-field-edge bg-surface">
             {([
               { key: "correlation" as const, label: "Correlation" },
               { key: "network" as const, label: "Co-expression network" },
@@ -660,8 +721,8 @@ export function CorrelationPage() {
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className={`whitespace-nowrap px-3 py-2 text-[12.5px] font-medium transition-colors ${
-                  tab === t.key ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                className={`whitespace-nowrap h-[30px] px-3 text-[12.5px] font-medium transition-colors ${
+                  tab === t.key ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                 }`}
               >
                 {t.label}
@@ -712,7 +773,7 @@ export function CorrelationPage() {
         )}
         {datasetId && (
           <div className={tab === "network" ? "contents" : "hidden"}>
-            <NetworkTab datasetId={datasetId} />
+            <NetworkTab datasetId={datasetId} datasetName={activeDataset?.display_name} />
           </div>
         )}
         {datasetId && (

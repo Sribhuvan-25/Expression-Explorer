@@ -22,9 +22,9 @@ import { SurvivalPage } from "../pages/SurvivalPage";
 // ui.tsx / page field rows) that respond to the pane's actual rendered
 // width instead of the viewport.
 function paneFrame(Component: React.ComponentType) {
-  return function PaneContent(_props: IDockviewPanelProps) {
+  return function PaneContent(props: IDockviewPanelProps) {
     return (
-      <div className="@container h-full overflow-y-auto [&>div]:mx-0 [&>div]:max-w-none">
+      <div data-pane-id={props.api.id} className="@container h-full overflow-y-auto [&>div]:mx-0 [&>div]:max-w-none">
         <Component />
       </div>
     );

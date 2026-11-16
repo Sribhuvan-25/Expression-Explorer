@@ -65,13 +65,13 @@ function EmptyWorkspace({ containerApi }: IWatermarkPanelProps) {
       <div>
         <p className="text-[13.5px] font-medium text-ink-soft">No analysis open</p>
         <p className="mt-1 max-w-[36ch] text-[12.5px] text-ink-mute">
-          Choose one from the sidebar to get started.
+          Choose one from the Analyses list, or press Alt+1 to Alt+8.
         </p>
       </div>
       <button
         type="button"
         onClick={() => openPane(containerApi, "compare")}
-        className="mt-1 rounded-[3px] border border-rule-firm bg-surface px-3 py-1.5 text-[12.5px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
+        className="mt-1 h-[30px] rounded-[3px] border border-field-edge bg-surface px-3 text-[12.5px] font-medium text-ink-soft transition-colors hover:border-accent hover:text-accent"
       >
         Open {PANE_LABELS.compare}
       </button>

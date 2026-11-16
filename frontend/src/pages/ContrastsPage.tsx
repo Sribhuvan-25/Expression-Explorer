@@ -12,7 +12,8 @@ import {
   type ContrastSummary,
   type DatasetSummary,
 } from "../lib/api";
-import { EmptyState, ErrorState, PageHeader, Panel, PresetButton, PrimaryButton, Stat } from "../components/ui";
+import { EmptyState, ErrorState, LinkHint, PageHeader, Panel, PresetButton, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
+import { useLinkedDataset } from "../lib/workbench";
 import { ExportButton } from "../components/ExportButton";
 import { exportRowsAsCsv } from "../lib/exportTable";
 
@@ -49,7 +50,7 @@ function CsvButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       title="Download as CSV"
-      className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
+      className="wb-btn-quiet"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
         <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -501,16 +502,33 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
     );
   };
 
-  const thSub = "border-b border-rule bg-surface-sunk px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-wider text-ink-mute";
+  const thSub = "border-b border-rule bg-surface-sunk px-2.5 py-1 text-[11px] font-semibold text-ink-soft";
   const totalCols = 1 + shownContrasts.length * 4 + (twoWay ? 1 : 0);
 
   return (
     <>
-      <Panel title="Genes">
+      <QueryPanel
+        title="Genes"
+        done={!!data && !!query}
+        runKey={query}
+        dirty={stale}
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                query.text === PP2A_PRESET_TEXT ? "PP2A signalling panel" : "Custom panel",
+                `${query.parsed.length} gene${query.parsed.length === 1 ? "" : "s"}`,
+                `${shownContrasts.length} contrast${shownContrasts.length === 1 ? "" : "s"}`,
+                dataset.display_name.split(" (")[0],
+              ]}
+            />
+          )
+        }
+      >
         <div className="mb-3 flex flex-wrap gap-1.5">
           <PresetButton label="PP2A signalling panel" active={text === PP2A_PRESET_TEXT} onClick={() => setText(PP2A_PRESET_TEXT)} />
         </div>
-        <label htmlFor="contrast-genes" className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+        <label htmlFor="contrast-genes" className="wb-label">
           Gene symbols — comma, space or newline separated; "Heading: genes" lines group the results
         </label>
         <textarea
@@ -518,9 +536,9 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={5}
-          className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[12.5px] text-ink outline-none focus:border-accent"
+          className="wb-field font-mono text-[12.5px]"
         />
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <span className="text-[11.5px] text-ink-mute">
             {parsedNow.length} gene{parsedNow.length === 1 ? "" : "s"} · names in parentheses are shown as notes, not sent
           </span>
@@ -528,7 +546,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
             Run panel
           </PrimaryButton>
         </div>
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -729,13 +747,13 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
   const genes = data?.genes ?? [];
   const c = data?.contrast;
   const anyNoTpm = genes.some((g) => g?.in_expression_matrix === false);
-  const sel = "w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent";
-  const lbl = "mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute";
+  const sel = "wb-field";
+  const lbl = "wb-label";
 
   return (
     <>
       <Panel title="Query">
-        <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
+        <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[24ch] flex-[2]">
             <label className={lbl}>Contrast</label>
             <select aria-label="Contrast" value={contrastId} onChange={(e) => setContrastId(e.target.value)} className={sel}>
@@ -906,10 +924,7 @@ type Tab = "panel" | "top";
 export function ContrastsPage() {
   const { data: datasetList, error: listError } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = useMemo(() => (datasetList?.datasets ?? []).filter((d) => (d.n_contrasts ?? 0) > 0), [datasetList]);
-  const [datasetId, setDatasetId] = useState("");
-  useEffect(() => {
-    if (!datasets.some((d) => d.dataset_id === datasetId) && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
-  }, [datasets, datasetId]);
+  const [datasetId, setDatasetId, datasetLink] = useLinkedDataset(datasets.map((d) => d.dataset_id));
   const dataset = datasets.find((d) => d.dataset_id === datasetId);
   const [tab, setTab] = useState<Tab>("panel");
 
@@ -928,7 +943,7 @@ export function ContrastsPage() {
         title="Designed experiments, gene by gene"
         description="Precomputed count-based differential tests (limma-trend moderated t) for each within-experiment contrast — fold-change, p and genome-wide q per gene, side by side."
       />
-      <div className="flex flex-col gap-5 px-8 py-6">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
         {listError && <ErrorState message={(listError as Error).message} />}
         {datasetList && datasets.length === 0 && (
           <EmptyState
@@ -942,13 +957,22 @@ export function ContrastsPage() {
           />
         )}
         {dataset && (
-          <Panel title="Dataset">
+          <Panel
+            title="Dataset"
+            action={
+              <LinkHint
+                link={datasetLink}
+                noun="dataset"
+                display={datasets.find((d) => d.dataset_id === datasetLink.contextValue)?.display_name}
+              />
+            }
+          >
             <div className="max-w-[48ch]">
               <select
                 aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 {datasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
@@ -971,7 +995,7 @@ export function ContrastsPage() {
 
         {dataset && (
           <>
-            <div className="flex self-start overflow-hidden rounded-[3px] border border-rule">
+            <div className="flex self-start overflow-hidden rounded-[3px] border border-field-edge bg-surface">
               {([
                 { key: "panel" as const, label: "Gene panel" },
                 { key: "top" as const, label: "Top genes" },
@@ -981,8 +1005,8 @@ export function ContrastsPage() {
                   key={t.key}
                   type="button"
                   onClick={() => setTab(t.key)}
-                  className={`px-3 py-2 text-[12.5px] font-medium transition-colors ${
-                    tab === t.key ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                  className={`h-[30px] px-3 text-[12.5px] font-medium transition-colors ${
+                    tab === t.key ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                   }`}
                 >
                   {t.label}

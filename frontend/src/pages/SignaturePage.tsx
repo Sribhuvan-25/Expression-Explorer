@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, EmptyState, ErrorState, DataTable } from "../components/ui";
+import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
+import { useContextHasGenes, useLinkedDataset, useLinkedGenes } from "../lib/workbench";
 
 const PRESETS: Record<string, string[]> = {
   "ETP-TF5": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
@@ -140,14 +141,11 @@ export function SignaturePage() {
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
 
-  const [datasetId, setDatasetId] = useState<string>("");
-  useEffect(() => {
-    if (!datasetId && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
-  }, [datasets, datasetId]);
+  const [datasetId, setDatasetId, datasetLink] = useLinkedDataset(datasets.map((d) => d.dataset_id));
 
-  const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5"]);
   const [method, setMethod] = useState<"auc" | "log2_mean">("auc");
-  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5");
+  const [activePreset, setActivePreset] = useState<string | null>(useContextHasGenes() ? null : "ETP-TF5");
+  const [genes, setGenes, genesLink] = useLinkedGenes(PRESETS["ETP-TF5"], { onAdopt: () => setActivePreset(null) });
   const [query, setQuery] = useState<{ datasetId: string; genes: string[]; method: "auc" | "log2_mean" } | null>(null);
 
   const { data, isFetching, error } = useQuery({
@@ -195,18 +193,41 @@ export function SignaturePage() {
         description="AUCell rank-based scoring, or a simpler log2-mean. Enter a custom gene set or start from a preset."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
-        <Panel title="Gene set">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
+        <QueryPanel
+          title="Gene set"
+          done={!!data && !!query}
+          runKey={query}
+          dirty={resultsAreStale || (!!query && !!data && query.genes.join(",") !== genes.join(","))}
+          summary={
+            query && (
+              <SummaryParts
+                parts={[
+                  <>
+                      {query.genes.map((g, i) => (
+                        <span key={g}>
+                          {i > 0 && ", "}
+                          <Gene>{g}</Gene>
+                        </span>
+                      ))}
+                    </>,
+                  query.method === "auc" ? "AUCell" : "log2 mean",
+                  datasets.find((d) => d.dataset_id === query.datasetId)?.display_name,
+                ]}
+              />
+            )
+          }
+        >
           {datasets.length > 1 && (
-            <div className="mb-4 max-w-[28ch]">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <div className="mb-4 max-w-[36ch]">
+              <FieldLabel link={datasetLink} noun="dataset" display={datasets.find((d) => d.dataset_id === datasetLink.contextValue)?.display_name}>
                 Dataset
-              </label>
+              </FieldLabel>
               <select
                 aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                className="wb-field"
               >
                 {datasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
@@ -216,6 +237,7 @@ export function SignaturePage() {
               </select>
             </div>
           )}
+          <FieldLabel link={genesLink} noun="genes">Genes</FieldLabel>
           <div className="mb-3 flex flex-wrap gap-1.5">
             {Object.keys(PRESETS).map((name) => (
               <PresetButton
@@ -243,18 +265,18 @@ export function SignaturePage() {
             }}
           />
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
             <div className="flex items-center gap-3">
-              <label className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">Method</label>
-              <div className="flex overflow-hidden rounded-[3px] border border-rule">
+              <label className="text-[11.5px] font-medium text-ink-soft">Method</label>
+              <div className="flex overflow-hidden rounded-[3px] border border-field-edge bg-surface">
                 {(["auc", "log2_mean"] as const).map((m) => (
                   <button
                     aria-pressed={method === m}
                     key={m}
                     type="button"
                     onClick={() => setMethod(m)}
-                    className={`px-3 py-1 font-mono text-[11.5px] transition-colors ${
-                      method === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                    className={`h-[26px] px-3 font-mono text-[11.5px] transition-colors ${
+                      method === m ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                     }`}
                   >
                     {m === "auc" ? "AUCell" : "log2 mean"}
@@ -266,7 +288,7 @@ export function SignaturePage() {
               Score {genes.length} gene{genes.length === 1 ? "" : "s"}
             </PrimaryButton>
           </div>
-        </Panel>
+        </QueryPanel>
 
         {error && <ErrorState message={(error as Error).message} />}
 
