@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
+from app.analysis.spearman import spearman_test
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, Dataset
 
 
@@ -136,7 +137,7 @@ def expression_vs_aux_correlation(
     if aux_feature_id not in aux.matrix.index:
         raise KeyError(f"{aux_feature_id} not found in the {layer.value} layer.")
 
-    methods = {"pearson": stats.pearsonr, "spearman": stats.spearmanr}
+    methods = {"pearson": stats.pearsonr, "spearman": spearman_test}
     if method not in methods:
         raise ValueError(f"Unknown correlation method: {method!r}")
 

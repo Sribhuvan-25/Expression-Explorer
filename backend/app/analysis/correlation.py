@@ -11,6 +11,8 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
+from app.analysis.spearman import spearman_test
+
 def _require_variance(values: pd.Series, label: str) -> None:
     """A gene with one value in every sample (unexpressed: all-zero TPM)
     has no variance, so r is 0/0. scipy returns NaN, which is not valid
@@ -25,7 +27,7 @@ def _require_variance(values: pd.Series, label: str) -> None:
 
 _METHODS = {
     "pearson": stats.pearsonr,
-    "spearman": stats.spearmanr,
+    "spearman": spearman_test,
     "kendall": stats.kendalltau,
 }
 
