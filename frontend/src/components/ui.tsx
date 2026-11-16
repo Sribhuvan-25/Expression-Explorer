@@ -204,7 +204,8 @@ export function EmptyState({ icon, title, description }: { icon: ReactNode; titl
 
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
+    // role="alert" so a screen reader announces the failure.
+    <div role="alert" className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
       <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Request failed</p>
       <p className="mt-1 text-[13px] text-ink">{message}</p>
     </div>
@@ -215,7 +216,8 @@ export function DataTable({
   columns,
   rows,
 }: {
-  columns: { key: string; label: string; align?: "left" | "right" }[];
+  // srLabel names a column whose visible header is blank (a bar column).
+  columns: { key: string; label: string; align?: "left" | "right"; srLabel?: string }[];
   rows: Record<string, ReactNode>[];
 }) {
   return (
@@ -226,7 +228,15 @@ export function DataTable({
     // levels up, and the header scrolled off-screen with the body instead
     // of staying pinned. max-h + overflow-y-auto makes this div itself the
     // scrolling ancestor sticky needs.
-    <div className="max-h-[70vh] overflow-x-auto overflow-y-auto rounded-[3px] border border-rule">
+    // tabIndex + role: a scrolling region must be reachable by keyboard
+    // (axe: scrollable-region-focusable), or a keyboard user cannot see
+    // rows past the first screen.
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label="Results table"
+      className="max-h-[70vh] overflow-x-auto overflow-y-auto rounded-[3px] border border-rule"
+    >
       <table className="w-full min-w-[28rem] border-collapse text-[12.5px]">
         <thead>
           <tr>
@@ -237,7 +247,7 @@ export function DataTable({
                   c.align === "right" ? "text-right" : "text-left"
                 }`}
               >
-                {c.label}
+                {c.label || <span className="sr-only">{c.srLabel ?? c.key}</span>}
               </th>
             ))}
           </tr>

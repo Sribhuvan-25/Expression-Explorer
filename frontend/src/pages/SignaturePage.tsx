@@ -307,8 +307,8 @@ export function SignaturePage() {
                 { key: "rank", label: "#", align: "right" },
                 { key: "sample", label: "Sample" },
                 { key: "about", label: "Annotation" },
-                { key: "bar", label: "Score" },
-                { key: "score", label: "", align: "right" },
+                { key: "bar", label: "", srLabel: "Score bar" },
+                { key: "score", label: "Score", align: "right" },
               ]}
               rows={rows.slice(0, 25).map(([sample, score], i) => ({
                 rank: i + 1,
