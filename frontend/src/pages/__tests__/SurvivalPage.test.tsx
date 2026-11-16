@@ -126,5 +126,8 @@ describe("SurvivalPage degenerate Cox model", () => {
     });
     expect(screen.getByText((_, node) => node?.textContent === "4.244 – 60.838")).toBeInTheDocument();
     expect(screen.queryByText(/cox model not shown/i)).not.toBeInTheDocument();
+    // The HR is per 1.0 of a 0-1 score; without the unit it reads as a
+    // huge per-unit effect.
+    expect(screen.getByTestId("cox-unit-note")).toHaveTextContent("compares a score of 1 with a score of 0");
   });
 });
