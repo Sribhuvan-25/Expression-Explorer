@@ -83,3 +83,13 @@ def test_no_log_rank_p_for_an_arm_of_one():
     df = pd.DataFrame({"duration": [10.0, 20.0, 30.0], "event": [1, 0, 1]}, index=["a", "b", "c"])
     group = pd.Series(["HIGH", "LOW", None], index=df.index, dtype=object)
     assert kaplan_meier_curves(df, group)["logrank_p_value"] is None
+
+
+def test_mutation_layer_usable_count_counts_mutants_not_non_nulls(client):  # noqa: F811
+    """A true/false layer is never null, so every gene counted as usable
+    (TARGET: 5,762 of 5,762 while 2,916 have no mutant)."""
+    layers = {l["layer"]: l for l in client.get(f"/datasets/{DATASET_ID}/aux-layers").json()["layers"]}
+    mut = layers["mutation_status"]
+    # Fixture: NOTCH1 mutated in 8 of 16 covered samples, NEVER in none.
+    assert mut["n_features"] == 2
+    assert mut["n_usable_features"] == 1

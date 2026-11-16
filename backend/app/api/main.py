@@ -975,7 +975,7 @@ def aux_features(
     if not shared:
         return {"dataset_id": dataset_id, "layer": layer, "n_matching": 0, "features": []}
 
-    counts = aux.matrix[shared].notna().sum(axis=1)
+    counts = aux.usable_counts(shared)
     if usable_only:
         counts = counts[counts >= MIN_AUX_SAMPLES]
 
