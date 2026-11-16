@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatUnit } from "../lib/units";
 import { useQuery } from "@tanstack/react-query";
 import { api, type RankResult } from "../lib/api";
 import {
@@ -54,6 +55,13 @@ export function RankPage() {
   const run = () => {
     if (genes.length > 0 && datasetId) setQuery({ datasetId, genes });
   };
+
+  // Say what the number is: one gene ranks by its expression in the
+  // dataset's unit, several by AUCell score. The column read "Value".
+  const queriedDataset = datasets.find((d) => d.dataset_id === query?.datasetId);
+  const valueLabel = isSingleGene
+    ? `${query?.genes[0] ?? ""} expression${queriedDataset?.expression_unit ? ` (${formatUnit(queriedDataset.expression_unit)})` : ""}`
+    : "AUCell score (0–1)";
 
   const metadataKeys =
     data && data.rows.length > 0
@@ -153,7 +161,7 @@ export function RankPage() {
                         { key: "rank", label: "#" },
                         { key: "sample_id", label: "sample" },
                         ...metadataKeys.map((k) => ({ key: k, label: k })),
-                        { key: "value", label: "value" },
+                        { key: "value", label: valueLabel },
                       ],
                       data.rows.map((row, i) => ({ ...row, rank: i + 1, dataset_id: query!.datasetId })),
                     )
@@ -174,7 +182,7 @@ export function RankPage() {
                 { key: "rank", label: "#", align: "right" },
                 { key: "sample", label: "Sample" },
                 ...metadataKeys.map((k) => ({ key: k, label: k.replace(/_/g, " ") })),
-                { key: "value", label: "Value", align: "right" },
+                { key: "value", label: valueLabel, align: "right" },
               ]}
               rows={data.rows.map((row, i) => ({
                 rank: i + 1,
