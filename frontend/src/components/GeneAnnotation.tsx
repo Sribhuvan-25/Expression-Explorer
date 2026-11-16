@@ -42,14 +42,22 @@ export function GeneAnnotation({ gene, onUseSymbol }: { gene: string; onUseSymbo
       ? [data.aliases]
       : [];
 
+  // Collapsed to its one-line summary (symbol and name) by default, so
+  // the result sits higher on screen -- except for a renamed symbol, whose
+  // warning must be seen without a click.
+  const renamed = typeof data.symbol === "string" && data.symbol.toUpperCase() !== gene.trim().toUpperCase();
+
   return (
-    <details className="group rounded-[3px] border border-rule bg-surface" open>
+    <details className="group rounded-[3px] border border-rule bg-surface" open={renamed}>
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
         <svg width="9" height="9" viewBox="0 0 9 9" className="text-ink-mute transition-transform group-open:rotate-90" fill="none">
           <path d="M2.5 1L6.5 4.5L2.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         {data.symbol}
         {data.name && <span className="truncate font-normal text-ink-mute">— {data.name}</span>}
+        <span className="ml-auto shrink-0 pl-3 text-[11px] font-normal text-ink-mute group-open:hidden">
+          Gene summary and links
+        </span>
       </summary>
       <div className="flex flex-col gap-2 border-t border-rule px-3 py-2.5">
         {/* A renamed gene: datasets annotated with current HGNC symbols know
@@ -57,7 +65,7 @@ export function GeneAnnotation({ gene, onUseSymbol }: { gene: string; onUseSymbo
             a naming gap, not a coverage gap. Say so, and offer the switch --
             explicitly, never by silently changing what was searched
             (METHODS.md 7.4). */}
-        {typeof data.symbol === "string" && data.symbol.toUpperCase() !== gene.trim().toUpperCase() && (
+        {renamed && (
           <p data-testid="renamed-symbol" className="rounded-[3px] border-l-[3px] border-warn bg-warn-soft px-2.5 py-1.5 text-[12px] text-ink">
             &lsquo;{gene}&rsquo; is a previous name: the current symbol is <strong>{data.symbol}</strong>. Datasets
             annotated with current symbols list it only as {data.symbol}.
@@ -74,7 +82,7 @@ export function GeneAnnotation({ gene, onUseSymbol }: { gene: string; onUseSymbo
         {data.summary && <p className="text-[12px] leading-relaxed text-ink-soft">{data.summary}</p>}
         {aliases.length > 0 && (
           <p className="text-[11px] text-ink-mute">
-            <span className="font-mono uppercase tracking-wider text-ink-mute">Aliases</span>{" "}
+            <span className="font-medium text-ink-soft">Aliases</span>{" "}
             {aliases.join(", ")}
           </p>
         )}

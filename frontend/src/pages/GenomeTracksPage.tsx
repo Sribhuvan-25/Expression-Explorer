@@ -196,7 +196,7 @@ export function GenomeTracksPage() {
         description="Raw ChIP-seq and ATAC-seq signal, hg19. These are RPM-normalized coverage tracks — no peaks are called here, this is signal for visual inspection only. Source accessions are listed under Sources."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
         <Panel title="Locus">
           <div className="flex flex-wrap gap-1.5">
             {Object.keys(LOCI).map((gene) => (
@@ -226,7 +226,7 @@ export function GenomeTracksPage() {
             )}
             {!tooNarrow && status === "error" && (
               <div className="rounded-[3px] border-l-[3px] border-hot bg-hot-soft px-4 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-hot">Track load failed</p>
+                <p className="text-[11.5px] font-semibold text-hot">Track load failed</p>
                 <p className="mt-1 text-[13px] text-ink">{errorMsg}</p>
                 <p className="mt-1 text-[12px] text-ink-mute">
                   These files are hosted directly on NCBI's FTP server — this usually means a network or CORS

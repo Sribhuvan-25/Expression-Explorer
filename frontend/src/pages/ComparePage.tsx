@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type CompareMultiDatasetResult } from "../lib/api";
-import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
+import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
+import { useLinkedGene, useWorkbench } from "../lib/workbench";
 import { BoxPlot } from "../components/BoxPlot";
 import { ExportButton } from "../components/ExportButton";
 import { GroupFilter, useGroupFilter } from "../components/GroupFilter";
@@ -83,7 +84,7 @@ export function DatasetPanel({
       title={result.display_name}
       action={
         <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+          <span className="font-mono text-[11px] text-ink-mute">
             {result.assay_type?.replace(/_/g, "-")} · {result.expression_unit?.replace(/_/g, " ")}
           </span>
           <span className="font-mono text-[10.5px] text-ink-mute">
@@ -118,6 +119,11 @@ export function DatasetPanel({
         </div>
       }
     >
+      {/* Chart and statistics side by side once the pane is wide enough,
+          so a result reads in one screen without scrolling between the
+          plot and the numbers that describe it. */}
+      <div className="grid gap-x-5 @5xl:grid-cols-[minmax(0,1fr)_minmax(400px,470px)]">
+      <div className="min-w-0">
       <div className="mb-3">
         <GroupFilter groupCounts={groupCounts} selected={selectedGroups} onChange={setSelectedGroups} />
       </div>
@@ -141,8 +147,9 @@ export function DatasetPanel({
           {result.n_excluded} excluded: {result.exclusion_reason}.
         </p>
       )}
+      </div>
 
-      <div className="mt-4 border-t border-rule pt-3">
+      <div className="mt-4 min-w-0 border-t border-rule pt-3 @5xl:mt-0 @5xl:border-l @5xl:border-t-0 @5xl:pl-5 @5xl:pt-0">
         <div className="mb-3 flex gap-8">
           <Stat
             label="Kruskal-Wallis p"
@@ -211,6 +218,7 @@ export function DatasetPanel({
           <p className="text-[12.5px] text-ink-mute">Only one group present — no pairwise test to show.</p>
         )}
       </div>
+      </div>
     </Panel>
   );
 }
@@ -221,7 +229,7 @@ function SingleGeneCompareTab() {
   const { data: datasetList } = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const datasets = datasetList?.datasets ?? [];
 
-  const [geneInput, setGeneInput] = useState("MYCN");
+  const [geneInput, setGeneInput, geneLink] = useLinkedGene("MYCN");
   const [groupColumn, setGroupColumn] = useState<string>("");
   // null = "follow the default" (every dataset that exposes groupColumn).
   // Becomes an explicit Set the moment the user checks/unchecks anything,
@@ -288,23 +296,38 @@ function SingleGeneCompareTab() {
 
   return (
     <>
-        <Panel title="Query">
-          <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
-            <div className="min-w-[12ch] flex-1">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-                Gene symbol
-              </label>
+        <QueryPanel
+          done={!!data && !!query}
+          runKey={query}
+          dirty={resultsAreStale}
+          summary={
+            query && (
+              <SummaryParts
+                parts={[
+                  <Gene>{query.gene}</Gene>,
+                  <>grouped by <span className="font-mono">{query.groupColumn}</span></>,
+                  `${query.datasetIds.length} dataset${query.datasetIds.length === 1 ? "" : "s"}: ${query.datasetIds
+                    .map((id) => datasets.find((d) => d.dataset_id === id)?.display_name.split(" (")[0] ?? id)
+                    .join(", ")}`,
+                ]}
+              />
+            )
+          }
+        >
+          <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
+            <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
+              <FieldLabel link={geneLink}>Gene symbol</FieldLabel>
               <input
                 aria-label="Gene symbol"
                 value={geneInput}
                 onChange={(e) => setGeneInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && run()}
                 placeholder="e.g. MYCN"
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 font-mono text-[13px] italic text-ink outline-none focus:border-accent"
+                className="wb-field wb-gene"
               />
             </div>
-            <div className="min-w-[14ch] flex-1">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+            <div className="min-w-[14ch] flex-1 @sm:max-w-[32ch]">
+              <label className="wb-label">
                 Group by
               </label>
               <select
@@ -312,7 +335,7 @@ function SingleGeneCompareTab() {
                 value={groupColumn}
                 onChange={(e) => setGroupColumn(e.target.value)}
                 disabled={groupColumnOptions.length === 0}
-                className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
+                className="wb-field"
               >
                 {groupColumnOptions.map((g) => (
                   <option key={g} value={g}>
@@ -327,8 +350,8 @@ function SingleGeneCompareTab() {
           </div>
 
           <div className="mt-4 border-t border-rule pt-3">
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-              Datasets — defaults to every dataset that exposes "{groupColumn || "…"}"
+            <p className="wb-label mb-1.5">
+              Datasets <span className="font-normal text-ink-mute">— defaults to every dataset that exposes "{groupColumn || "…"}"</span>
             </p>
             <div className="flex flex-col gap-1">
               {compatibleDatasets.map((d) => (
@@ -361,7 +384,7 @@ function SingleGeneCompareTab() {
           {groupColumnOptions.length === 0 && (
             <p className="mt-2.5 text-[12px] text-warn">No dataset exposes any grouping columns yet.</p>
           )}
-        </Panel>
+        </QueryPanel>
 
         {error && <ErrorState message={(error as Error).message} />}
 
@@ -374,6 +397,14 @@ function SingleGeneCompareTab() {
             }
             title="No query run yet"
             description="Enter a gene symbol and a grouping, then run a comparison to see the distribution and statistics for every compatible dataset."
+            hint={
+              geneLink.contextValue == null && (
+                <>
+                  Working on one gene across analyses? Set it once in the <strong className="font-semibold text-ink-soft">Gene(s)</strong>{" "}
+                  field at the top (press <span className="wb-kbd">/</span>) and Survival, Correlation and Multi-omics pick it up too.
+                </>
+              )
+            }
           />
         )}
 
@@ -439,6 +470,16 @@ export function DifferentialGenesTab() {
     if (!datasetId && datasets.length > 0)
       setDatasetId((datasets.find((d) => d.group_columns.includes("etp_status")) ?? datasets[0]).dataset_id);
   }, [datasets, datasetId]);
+  // The context dataset, when set, replaces that default (and any later
+  // pick) each time it changes -- see lib/workbench.tsx.
+  const ctxDatasetId = useWorkbench()?.datasetId ?? "";
+  const adoptedDataset = useRef("");
+  useEffect(() => {
+    if (!ctxDatasetId || ctxDatasetId === adoptedDataset.current) return;
+    if (!datasets.some((d) => d.dataset_id === ctxDatasetId)) return;
+    adoptedDataset.current = ctxDatasetId;
+    setDatasetId(ctxDatasetId);
+  }, [ctxDatasetId, datasets]);
 
   const activeDataset = datasets.find((d) => d.dataset_id === datasetId);
   const [groupColumn, setGroupColumn] = useState<string>("");
@@ -460,7 +501,10 @@ export function DifferentialGenesTab() {
   const { data: groupValuesResult } = useQuery({
     queryKey: ["group-values", datasetId, groupColumn],
     queryFn: () => api.groupValues(datasetId, groupColumn),
-    enabled: !!datasetId && !!groupColumn,
+    // Only for a column this dataset has: when the shared context switches
+    // dataset, groupColumn still holds the previous dataset's column for one
+    // render, and the request 404'd (e.g. mycn_status on DepMap).
+    enabled: !!datasetId && !!groupColumn && !!activeDataset?.group_columns.includes(groupColumn),
     retry: false,
   });
   const groupOptions = useMemo(
@@ -505,15 +549,38 @@ export function DifferentialGenesTab() {
 
   return (
     <>
-      <Panel title="Query">
-        <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
-          <div className="min-w-[20ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Dataset</label>
+      <QueryPanel
+        done={!!data && !!query}
+        runKey={query}
+        // The context bar can change the dataset under a collapsed panel;
+        // reopen it then, as every other analysis does.
+        dirty={
+          !!query &&
+          !!data &&
+          (query.datasetId !== datasetId ||
+            query.groupColumn !== groupColumn ||
+            query.groupA !== groupA ||
+            query.groupB !== groupB)
+        }
+        summary={
+          query && (
+            <SummaryParts
+              parts={[
+                datasets.find((d) => d.dataset_id === query.datasetId)?.display_name ?? query.datasetId,
+                <><span className="font-mono">{query.groupColumn}</span>: {query.groupA} vs {query.groupB}</>,
+              ]}
+            />
+          )
+        }
+      >
+        <div className="flex flex-col gap-3 @sm:flex-row @sm:flex-wrap @sm:items-end">
+          <div className="min-w-[20ch] flex-1 @sm:max-w-[44ch]">
+            <label className="wb-label">Dataset</label>
             <select
               aria-label="Dataset"
               value={datasetId}
               onChange={(e) => setDatasetId(e.target.value)}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+              className="wb-field"
             >
               {datasets.map((d) => (
                 <option key={d.dataset_id} value={d.dataset_id}>
@@ -522,8 +589,8 @@ export function DifferentialGenesTab() {
               ))}
             </select>
           </div>
-          <div className="min-w-[14ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group by</label>
+          <div className="min-w-[14ch] flex-1 @sm:max-w-[32ch]">
+            <label className="wb-label">Group by</label>
             <select
               aria-label="Group by"
               value={groupColumn}
@@ -532,7 +599,7 @@ export function DifferentialGenesTab() {
                 setGroupColumn(e.target.value);
               }}
               disabled={!activeDataset || activeDataset.group_columns.length === 0}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
+              className="wb-field"
             >
               {activeDataset?.group_columns.map((g) => (
                 <option key={g} value={g}>
@@ -541,14 +608,14 @@ export function DifferentialGenesTab() {
               ))}
             </select>
           </div>
-          <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group A</label>
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
+            <label className="wb-label">Group A</label>
             <select
               aria-label="Group A"
               value={groupA}
               onChange={(e) => setGroupA(e.target.value)}
               disabled={groupOptions.length < 2}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
+              className="wb-field"
             >
               {groupOptions.map((g) => (
                 <option key={g} value={g}>
@@ -557,14 +624,14 @@ export function DifferentialGenesTab() {
               ))}
             </select>
           </div>
-          <div className="min-w-[12ch] flex-1">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group B</label>
+          <div className="min-w-[12ch] flex-1 @sm:max-w-[30ch]">
+            <label className="wb-label">Group B</label>
             <select
               aria-label="Group B"
               value={groupB}
               onChange={(e) => setGroupB(e.target.value)}
               disabled={groupOptions.length < 2}
-              className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
+              className="wb-field"
             >
               {groupOptions.map((g) => (
                 <option key={g} value={g}>
@@ -614,7 +681,7 @@ export function DifferentialGenesTab() {
             grouping may be temporarily unavailable. Try another grouping column, or check back later.
           </p>
         )}
-      </Panel>
+      </QueryPanel>
 
       {error && <ErrorState message={(error as Error).message} />}
 
@@ -660,7 +727,7 @@ export function DifferentialGenesTab() {
                 )
               }
               title="Download as CSV"
-              className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent"
+              className="wb-btn-quiet"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -717,8 +784,8 @@ export function ComparePage() {
         description="Box plot with pairwise Mann–Whitney tests and FDR correction, faceted per dataset — values are never pooled across assay types or units."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
-        <div className="flex overflow-hidden rounded-[3px] border border-rule self-start">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
+        <div className="flex self-start overflow-hidden rounded-[3px] border border-field-edge bg-surface">
           {([
             { key: "single-gene" as const, label: "Single gene" },
             { key: "differential" as const, label: "Top differential genes" },
@@ -728,8 +795,8 @@ export function ComparePage() {
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`px-3 py-2 text-[12.5px] font-medium transition-colors ${
-                tab === t.key ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+              className={`h-[30px] px-3 text-[12.5px] font-medium transition-colors ${
+                tab === t.key ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
               }`}
             >
               {t.label}

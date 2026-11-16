@@ -34,7 +34,7 @@ export function ExportButton({
       onClick={handleClick}
       disabled={state === "exporting"}
       title="Download as PNG"
-      className="flex items-center gap-1 rounded-[3px] border border-rule-firm bg-surface px-2 py-1 font-mono text-[10.5px] text-ink-mute transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+      className="wb-btn-quiet disabled:opacity-50"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
         <path d="M5 1v6M2.5 5L5 7.5L7.5 5M1.5 8.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />

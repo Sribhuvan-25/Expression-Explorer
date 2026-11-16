@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type TiePolicy } from "../lib/api";
-import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
+import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
+import { useContextHasGenes, useLinkedDataset, useLinkedGenes } from "../lib/workbench";
 import { SurvivalPlot, survivalColorKey } from "../components/SurvivalCurve";
 import { ExportButton } from "../components/ExportButton";
 
@@ -17,13 +18,12 @@ export function SurvivalPage() {
   const datasets = datasetList?.datasets ?? [];
   const survivalCapable = datasets.filter((d) => d.supports_survival);
 
-  const [datasetId, setDatasetId] = useState<string>("");
-  useEffect(() => {
-    if (!datasetId && survivalCapable.length > 0) setDatasetId(survivalCapable[0].dataset_id);
-  }, [survivalCapable, datasetId]);
+  const [datasetId, setDatasetId, datasetLink] = useLinkedDataset(survivalCapable.map((d) => d.dataset_id));
 
-  const [genes, setGenes] = useState<string[]>(PRESETS["ETP-TF5"]);
-  const [activePreset, setActivePreset] = useState<string | null>("ETP-TF5");
+  // The context gene list, once set, replaces the preset (see
+  // lib/workbench.tsx); until then the ETP-TF5 preset is the default.
+  const [activePreset, setActivePreset] = useState<string | null>(useContextHasGenes() ? null : "ETP-TF5");
+  const [genes, setGenes, genesLink] = useLinkedGenes(PRESETS["ETP-TF5"], { onAdopt: () => setActivePreset(null) });
   const [cutoffMethod, setCutoffMethod] = useState<"median" | "quartile" | "custom">("median");
   const [cutoffHighPct, setCutoffHighPct] = useState(25);
   const [cutoffLowPct, setCutoffLowPct] = useState(25);
@@ -76,7 +76,7 @@ export function SurvivalPage() {
         description="Samples are split into LOW and HIGH groups by signature score (at the median, or top vs. bottom quartile or percentile), then compared with a log-rank test and a Cox proportional hazards model."
       />
 
-      <div className="flex flex-col gap-5 px-8 py-6">
+      <div className="flex flex-col gap-3 px-5 py-4 max-sm:px-3">
         {datasetList && survivalCapable.length === 0 && (
           <Panel>
             <p className="text-[13px] text-ink-soft">
@@ -87,17 +87,45 @@ export function SurvivalPage() {
 
         {survivalCapable.length > 0 && (
           <>
-            <Panel title="Query">
+            <QueryPanel
+              done={!!data && !!query}
+              runKey={query}
+              dirty={!!query && !!data && (query.genes.join(",") !== genes.join(",") || query.datasetId !== datasetId)}
+              summary={
+                query && (
+                  <SummaryParts
+                    parts={[
+                      <>
+                        {activePreset && query.genes.join(",") === PRESETS[activePreset]?.join(",") && (
+                          <span className="mr-1.5 font-mono text-[12px] font-medium text-ink">{activePreset}</span>
+                        )}
+                        {query.genes.map((g, i) => (
+                          <span key={g}>
+                            {i > 0 && ", "}
+                            <Gene>{g}</Gene>
+                          </span>
+                        ))}
+                      </>,
+                      query.cutoffMethod === "custom"
+                        ? `top ${query.cutoffHighPct}% vs bottom ${query.cutoffLowPct}%`
+                        : `${query.cutoffMethod} split`,
+                      query.cutoffMethod !== "median" && `ties: ${query.tiePolicy}`,
+                      datasets.find((d) => d.dataset_id === query.datasetId)?.display_name,
+                    ]}
+                  />
+                )
+              }
+            >
               {survivalCapable.length > 1 && (
                 <div className="mb-4 max-w-[28ch]">
-                  <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                  <FieldLabel link={datasetLink} noun="dataset" display={datasetLink.contextValue ? survivalCapable.find((d) => d.dataset_id === datasetLink.contextValue)?.display_name : undefined}>
                     Dataset
-                  </label>
+                  </FieldLabel>
                   <select
                     aria-label="Dataset"
                     value={datasetId}
                     onChange={(e) => setDatasetId(e.target.value)}
-                    className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
+                    className="wb-field"
                   >
                     {survivalCapable.map((d) => (
                       <option key={d.dataset_id} value={d.dataset_id}>
@@ -123,9 +151,9 @@ export function SurvivalPage() {
                 </p>
               )}
 
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+              <FieldLabel link={genesLink} noun="genes">
                 Gene set
-              </label>
+              </FieldLabel>
               <div className="mb-3 flex flex-wrap gap-1.5">
                 {Object.keys(PRESETS).map((name) => (
                   <PresetButton
@@ -149,19 +177,19 @@ export function SurvivalPage() {
               />
 
               <div className="mt-4">
-                <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                <label className="wb-label">
                   Group cutoff
                 </label>
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex overflow-hidden rounded-[3px] border border-rule">
+                  <div className="flex overflow-hidden rounded-[3px] border border-field-edge bg-surface">
                     {(["median", "quartile", "custom"] as const).map((m) => (
                       <button
                         aria-pressed={cutoffMethod === m}
                         key={m}
                         type="button"
                         onClick={() => setCutoffMethod(m)}
-                        className={`px-3 py-1 font-mono text-[11.5px] capitalize transition-colors ${
-                          cutoffMethod === m ? "bg-accent-soft text-accent-ink" : "text-ink-mute hover:text-ink-soft"
+                        className={`h-[26px] px-3 font-mono text-[11.5px] capitalize transition-colors ${
+                          cutoffMethod === m ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-soft hover:bg-ground hover:text-ink"
                         }`}
                       >
                         {m}
@@ -178,7 +206,7 @@ export function SurvivalPage() {
                         max={99}
                         value={cutoffHighPct}
                         onChange={(e) => setCutoffHighPct(Number(e.target.value))}
-                        className="w-14 rounded-[3px] border border-rule bg-ground px-2 py-1 text-[12.5px] text-ink outline-none focus:border-accent"
+                        className="wb-field wb-field-sm !w-14"
                       />
                       <span>% · Low</span>
                       <input
@@ -188,7 +216,7 @@ export function SurvivalPage() {
                         max={99}
                         value={cutoffLowPct}
                         onChange={(e) => setCutoffLowPct(Number(e.target.value))}
-                        className="w-14 rounded-[3px] border border-rule bg-ground px-2 py-1 text-[12.5px] text-ink outline-none focus:border-accent"
+                        className="wb-field wb-field-sm !w-14"
                       />
                       <span>%</span>
                     </div>
@@ -196,10 +224,10 @@ export function SurvivalPage() {
                 </div>
                 {cutoffMethod !== "median" && (
                   <div className="mt-3">
-                    <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                    <label className="wb-label">
                       Tied scores at the cutoff
                     </label>
-                    <div className="flex overflow-hidden rounded-[3px] border border-rule">
+                    <div className="flex overflow-hidden rounded-[3px] border border-field-edge bg-surface">
                       {(
                         [
                           ["trim", "Trim to size"],
@@ -212,7 +240,7 @@ export function SurvivalPage() {
                           key={value}
                           type="button"
                           onClick={() => setTiePolicy(value)}
-                          className={`px-3 py-1 font-mono text-[11.5px] transition-colors ${
+                          className={`h-[26px] px-3 font-mono text-[11.5px] transition-colors ${
                             tiePolicy === value
                               ? "bg-accent-soft text-accent-ink"
                               : "text-ink-mute hover:text-ink-soft"
@@ -240,7 +268,7 @@ export function SurvivalPage() {
                 )}
               </div>
 
-              <div className="mt-4 flex items-center justify-between">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
                 <p className="text-[12px] text-ink-mute">
                   Requires ≥10 patients with both a computable score and clinical follow-up data.
                 </p>
@@ -248,7 +276,7 @@ export function SurvivalPage() {
                   Run survival analysis
                 </PrimaryButton>
               </div>
-            </Panel>
+            </QueryPanel>
 
             {error && <ErrorState message={(error as Error).message} />}
 
@@ -276,7 +304,7 @@ export function SurvivalPage() {
               const armCount = Object.keys(data.curves).length;
               const coxIsDegenerate = armCount < 2;
               return (
-              <>
+              <div className="grid items-start gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(440px,500px)]">
                 <Panel
                   title={`Survival — ${data.genes.join(", ")}`}
                   action={
@@ -361,7 +389,7 @@ export function SurvivalPage() {
                 </Panel>
 
                 <Panel title="Statistics">
-                  <div className="flex flex-wrap gap-8">
+                  <div className="flex flex-wrap gap-x-8 gap-y-3">
                     <Stat
                       label="Log-rank p"
                       value={formatP(data.logrank_p_value)}
@@ -418,7 +446,7 @@ export function SurvivalPage() {
                     </div>
                   )}
                 </Panel>
-              </>
+              </div>
               );
             })()}
           </>

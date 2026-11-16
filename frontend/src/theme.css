@@ -8,6 +8,7 @@
   --color-ink-mute: var(--ink-mute);
   --color-rule: var(--rule);
   --color-rule-firm: var(--rule-firm);
+  --color-field-edge: var(--field-edge);
 
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
@@ -44,18 +45,18 @@
   --dv-tab-border-radius: 0px;
   --dv-sash-border-radius: 0px;
   --dv-dropdown-border-radius: 0px;
-  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tabs-and-actions-container-height: 32px;
   --dv-tabs-and-actions-container-font-size: 12px;
   --dv-spacing-padding: 0px;
   --dv-sash-color: transparent;
   --dv-active-sash-color: var(--accent);
 
   --dv-group-view-background-color: var(--ground);
-  --dv-tabs-and-actions-container-background-color: var(--surface);
+  --dv-tabs-and-actions-container-background-color: var(--surface-sunk);
   --dv-activegroup-visiblepanel-tab-background-color: var(--ground);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface-sunk);
   --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface-sunk);
   --dv-tab-divider-color: var(--rule);
   --dv-activegroup-visiblepanel-tab-color: var(--ink);
   --dv-activegroup-hiddenpanel-tab-color: var(--ink-mute);
@@ -72,4 +73,17 @@
   --dv-tabs-container-scrollbar-color: var(--rule-firm);
 
   font-family: var(--f-body);
+}
+
+/* The tab of the pane you are working in carries a 2px accent cap, so
+   "which pane has focus" is answered without colour-filling the tab. */
+.dockview-theme-expression .dv-tab {
+  padding: 0 10px;
+  font-weight: 500;
+}
+.dockview-theme-expression .dv-groupview.dv-active-group .dv-tab.dv-active-tab {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.dockview-theme-expression .dv-tab:focus-visible {
+  outline-offset: -2px;
 }

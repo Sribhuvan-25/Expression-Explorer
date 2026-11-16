@@ -22,8 +22,8 @@ export function DatasetStatus() {
   });
 
   return (
-    <div className="border-t border-rail-rule px-4 py-3">
-      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-rail-ink-mute">Datasets available</p>
+    <div className="border-t border-rail-rule px-3 py-2.5">
+      <p className="mb-1.5 text-[11px] font-semibold text-rail-ink-mute">Datasets available</p>
       {isLoading && <p className="text-[12px] text-rail-ink-mute">Connecting…</p>}
       {isError && (
         <div className="flex items-start gap-1.5">
@@ -32,7 +32,7 @@ export function DatasetStatus() {
         </div>
       )}
       {data && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           {data.datasets.map((d) => (
             <div key={d.dataset_id} className="flex items-start gap-1.5">
               <span
@@ -41,7 +41,7 @@ export function DatasetStatus() {
                 }`}
               />
               <div className="min-w-0">
-                <p className="text-[12.5px] font-medium leading-snug text-rail-ink">{d.display_name}</p>
+                <p className="text-[12px] font-medium leading-snug text-rail-ink">{d.display_name}</p>
                 {/* A warming dataset has no sample count yet, because the
                     backend refuses to block /datasets on a download that
                     can run for minutes on a cold container. Saying so
