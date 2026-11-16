@@ -41,9 +41,19 @@ function CoverageNote({ layer }: { layer: AuxLayerSummary }) {
         <>
           {" "}
           <span className="text-warn">
-            Note: only {layer.n_usable_features.toLocaleString()} of{" "}
-            {layer.n_features.toLocaleString()} were measured on enough of these samples to analyse — most
-            lookups will not have enough data.
+            {layer.layer === "mutation_status" ? (
+              // Usable means >= 3 mutated samples for this layer, not
+              // "measured" (a mutation call is never missing).
+              <>
+                Note: only {layer.n_usable_features.toLocaleString()} of {layer.n_features.toLocaleString()} genes
+                are mutated in at least 3 of these samples; the list below offers the most-mutated ones.
+              </>
+            ) : (
+              <>
+                Note: only {layer.n_usable_features.toLocaleString()} of {layer.n_features.toLocaleString()} were
+                measured on enough of these samples to analyse — most lookups will not have enough data.
+              </>
+            )}
           </span>
         </>
       )}
