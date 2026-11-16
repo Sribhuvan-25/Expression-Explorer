@@ -371,7 +371,15 @@ def gene_info(symbol: str):
     the annotation is a property of the gene, not of a dataset's own
     feature table. See app/services/gene_info.py for the alias-resolution
     rationale and why this isn't wired into gene lookup elsewhere yet."""
-    info = lookup_gene(symbol)
+    symbol = symbol.strip()
+    # A blank symbol became an empty cache filename and a 5,000-character
+    # one exceeded the filesystem's name limit: both answered 500.
+    if not symbol or len(symbol) > 64:
+        raise HTTPException(422, "A gene symbol of 1 to 64 characters is required.")
+    try:
+        info = lookup_gene(symbol)
+    except Exception:
+        raise HTTPException(503, "The gene annotation service could not be reached; try again later.")
     if info is None:
         raise HTTPException(404, f"No annotation found for '{symbol}'.")
     return info

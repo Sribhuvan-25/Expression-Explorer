@@ -123,3 +123,11 @@ def test_legacy_name_hint_from_gene_annotation(client, monkeypatch):  # noqa: F8
     monkeypatch.setattr(api_main, "lookup_gene", boom)
     r = client.get(f"/datasets/{DATASET_ID}/compare", params={"gene": "NMYC", "group_column": "etp_status"})
     assert r.status_code == 404 and r.json()["detail"] == "Gene 'NMYC' not found in dataset."
+
+
+def test_gene_annotation_rejects_blank_or_oversized_symbols(client):  # noqa: F811
+    """Both answered 500 (empty cache filename; name too long)."""
+    assert client.get("/genes/%20%20%20").status_code == 422
+    assert client.get("/genes/" + "A" * 5000).status_code == 422
+    # Network is blocked in tests: the lookup fails, which is a 503, not a 500.
+    assert client.get("/genes/MYCN").status_code in (200, 503)
