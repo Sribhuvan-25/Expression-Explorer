@@ -137,6 +137,15 @@ signature genes. Unbounded, unlike AUC. `signature.py` →
 Kept because some published figures use a simple mean; the toggle makes
 the choice explicit rather than hidden.
 
+### 2.4a Entering a gene set
+**Decided (2026-11-15).** The gene-set tag input (Signature Score,
+Sample Ranking, PCA, Survival) splits typed or pasted text with the gene
+panel's parser (`frontend/src/lib/geneInput.ts`): spaces, commas,
+newlines, "Heading:" prefixes and "(former name)" notes. Typing "CIP2A
+SET ANP32A ARPP19 PABIR1" then Enter used to make one tag that no
+dataset could resolve; text left in the box when the user clicked
+Score was dropped and is now kept.
+
 ### 2.5 Unknown genes
 **Decided.** Reject the whole request with a clear 404 naming the gene,
 rather than silently dropping it. `backend/app/api/main.py` →
@@ -1837,3 +1846,4 @@ uses the same words.
 | 2026-11-15 | §11.5: the panel's "Across both experiments" column said "Opposite direction, not significant in both" for CIP2A, SET and PPP2R1B, which are q < 0.002 in C4-2B — readable as "significant in neither" — and gave "Same direction in both" to PPP2R2C (q < 0.05 in both) and ARPP19 (in neither) alike. Now names which experiment reaches q < 0.05, and says "Tested only in NCI-H660" for MYCN/PPP2R2B instead of a dash. Found in user-standpoint testing; same session re-checked the 23-gene panel against an independent R edgeR/limma run on the raw GEO counts (44 gene × contrast pairs, max |ΔlogFC| 4.5e-15, max relative Δp and Δq 1.5e-12) and all 184 replicate TPMs against the raw TPM file (0 mismatches). Test validated by restoring the old wording. |
 | 2026-11-15 | §5.1/5.2/5.7, from user-standpoint testing of GSE66586 in Expression Compare: box plots of log-scale units (log2 intensity, log2 TPM) no longer start the axis at 0 or offer log-of-log; ticks are round and of one precision; the axis names the unit; groups 1 and 3 no longer share near-identical blues; small-n sample dots are visible; box-plot PNGs print FDR q beside p; export date is local. `/compare-by-mutation` now returns `expression_unit` so the Multi-omics box plot gets the same axis. Statistics unchanged: PPP2R5B by MYCN status re-derived by hand (exact Mann–Whitney 2/56, 2/21, 2/10; BH 0.107/0.143/0.2) and matches the served table. Each fix has a test validated by reintroducing the defect; frontend 67 passed, backend 264 passed. |
 | 2026-11-15 | §5.7 correlation/PCA scatter, from user-standpoint testing: correlation scatter coloured by group with a pooled-groups note (GSE66586 MYCN vs PPP2R5B r = −0.847 re-derived from the raw series matrix); PCA on TARGET coloured nothing by `etp_status` (top-level column ignored) — both endpoints now use `_sample_groups`, verified against `/group-values` (146 non-ETP / 25 near-ETP / 19 ETP); ungrouped points grey instead of the first group's blue; units and round ticks on scatter axes. Tests validated by reintroducing each defect; backend 265 passed, frontend 72 passed. |
+| 2026-11-15 | §2.4a: gene-set tag input split nothing — a typed or pasted list became one unresolvable tag, and unconfirmed text was dropped on clicking Score. Now parsed like the gene panel; tests validated by reintroducing each defect. Found scoring the PP2A inhibitors on GSE66586 as a user. |

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { parseGeneInput } from "../lib/geneInput";
 
 export function PageHeader({
   eyebrow,
@@ -53,6 +54,15 @@ export function GeneTagInput({
   onChange: (genes: string[]) => void;
   placeholder?: string;
 }) {
+  // "CIP2A SET ANP32A" typed or pasted used to become ONE tag that no
+  // dataset could resolve. Split with the gene panel's parser: spaces,
+  // commas, newlines, "Heading:" prefixes and "(old name)" notes.
+  const commit = (text: string) => {
+    const add = parseGeneInput(text)
+      .map((g) => g.gene.toUpperCase())
+      .filter((g) => !genes.includes(g));
+    if (add.length) onChange([...genes, ...add]);
+  };
   return (
     <div>
       <div className="flex flex-wrap gap-1.5 rounded-[3px] border border-rule bg-ground p-2 focus-within:border-accent">
@@ -77,14 +87,28 @@ export function GeneTagInput({
           placeholder={genes.length === 0 ? placeholder : "Add another"}
           className="min-w-[10ch] flex-1 bg-transparent px-1 py-0.5 font-mono text-[12.5px] text-ink outline-none placeholder:text-ink-mute placeholder:font-sans placeholder:not-italic"
           onKeyDown={(e) => {
-            const val = e.currentTarget.value.trim().toUpperCase();
-            if ((e.key === "Enter" || e.key === ",") && val) {
+            if ((e.key === "Enter" || e.key === ",") && e.currentTarget.value.trim()) {
               e.preventDefault();
-              if (!genes.includes(val)) onChange([...genes, val]);
+              commit(e.currentTarget.value);
               e.currentTarget.value = "";
             } else if (e.key === "Backspace" && !e.currentTarget.value && genes.length) {
               onChange(genes.slice(0, -1));
             }
+          }}
+          // Text left in the box when the user clicks Score would
+          // otherwise be silently dropped from the gene set.
+          onBlur={(e) => {
+            if (e.currentTarget.value.trim()) {
+              commit(e.currentTarget.value);
+              e.currentTarget.value = "";
+            }
+          }}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text");
+            if (!/[\s,;:()]/.test(text)) return; // a single symbol: let it paste normally
+            e.preventDefault();
+            commit(`${e.currentTarget.value} ${text}`);
+            e.currentTarget.value = "";
           }}
         />
       </div>
