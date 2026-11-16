@@ -137,6 +137,17 @@ signature genes. Unbounded, unlike AUC. `signature.py` →
 Kept because some published figures use a simple mean; the toggle makes
 the choice explicit rather than hidden.
 
+**Update 2026-11-15.** For datasets already stored on a log2 scale
+(`log2_tpm`: DepMap; `log2_intensity`: GDS4299, GSE66586) the values are
+averaged as they are; log2(x+1) is applied only to linear units (TPM).
+Previously every matrix was transformed, so on three of five datasets
+the score was a mean of log2(log2(x)+1) — GSE66586 samples at 9–11 log2
+units scored about 3.3. `is_log2_unit` / `already_log2` in
+`app/analysis/signature.py`, used by `/signature-score` and
+`/rank-signature`. Verified: GSE66586 PP2A-inhibitor log2-mean scores
+equal the raw series-matrix probe means exactly (highest-mean probe per
+gene, §7.1).
+
 ### 2.4a Entering a gene set
 **Decided (2026-11-15).** The gene-set tag input (Signature Score,
 Sample Ranking, PCA, Survival) splits typed or pasted text with the gene
@@ -1847,3 +1858,4 @@ uses the same words.
 | 2026-11-15 | §5.1/5.2/5.7, from user-standpoint testing of GSE66586 in Expression Compare: box plots of log-scale units (log2 intensity, log2 TPM) no longer start the axis at 0 or offer log-of-log; ticks are round and of one precision; the axis names the unit; groups 1 and 3 no longer share near-identical blues; small-n sample dots are visible; box-plot PNGs print FDR q beside p; export date is local. `/compare-by-mutation` now returns `expression_unit` so the Multi-omics box plot gets the same axis. Statistics unchanged: PPP2R5B by MYCN status re-derived by hand (exact Mann–Whitney 2/56, 2/21, 2/10; BH 0.107/0.143/0.2) and matches the served table. Each fix has a test validated by reintroducing the defect; frontend 67 passed, backend 264 passed. |
 | 2026-11-15 | §5.7 correlation/PCA scatter, from user-standpoint testing: correlation scatter coloured by group with a pooled-groups note (GSE66586 MYCN vs PPP2R5B r = −0.847 re-derived from the raw series matrix); PCA on TARGET coloured nothing by `etp_status` (top-level column ignored) — both endpoints now use `_sample_groups`, verified against `/group-values` (146 non-ETP / 25 near-ETP / 19 ETP); ungrouped points grey instead of the first group's blue; units and round ticks on scatter axes. Tests validated by reintroducing each defect; backend 265 passed, frontend 72 passed. |
 | 2026-11-15 | §2.4a: gene-set tag input split nothing — a typed or pasted list became one unresolvable tag, and unconfirmed text was dropped on clicking Score. Now parsed like the gene panel; tests validated by reintroducing each defect. Found scoring the PP2A inhibitors on GSE66586 as a user. |
+| 2026-11-15 | §2.4: "log2 mean" signature scores re-logged data already on a log2 scale (DepMap, GDS4299, GSE66586), giving mean log2(log2(x)+1). Fixed for both endpoints; GSE66586 scores now match the raw GEO probe means exactly. AUC scoring and survival unaffected. Tests validated by reintroducing the defect; backend 270 passed. |

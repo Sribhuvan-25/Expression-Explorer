@@ -66,13 +66,28 @@ def auc_signature_score(
     return pd.Series(scores, name="signature_score")
 
 
-def log2_mean_signature_score(matrix: pd.DataFrame, gene_ids: list[str]) -> pd.Series:
+LOG2_UNITS = {"log2_tpm", "log2_intensity"}
+
+
+def is_log2_unit(unit) -> bool:
+    """True for expression units already on a log2 scale."""
+    return getattr(unit, "value", unit) in LOG2_UNITS
+
+
+def log2_mean_signature_score(
+    matrix: pd.DataFrame, gene_ids: list[str], already_log2: bool = False
+) -> pd.Series:
     """Simpler alternative used in a few of the paper's figures (e.g. Fig.
     10A/B): mean of log2-transformed expression across signature genes.
     Offered alongside AUC scoring since the paper switches between both
-    depending on the figure."""
+    depending on the figure.
+
+    `already_log2`: the matrix is already log2 (DepMap log2(TPM+1),
+    microarray log2 intensity) and is averaged as is. Transforming it
+    again gave the mean of log2(log2(x)+1) on three of five datasets
+    (METHODS.md 2.4)."""
     present = [g for g in gene_ids if g in matrix.index]
     if not present:
         return pd.Series(np.nan, index=matrix.columns)
-    log_vals = np.log2(matrix.loc[present] + 1)
+    log_vals = matrix.loc[present] if already_log2 else np.log2(matrix.loc[present] + 1)
     return log_vals.mean(axis=0).rename("signature_score")

@@ -25,7 +25,7 @@ from app.analysis.correlation import co_expression_network, gene_correlation
 from app.analysis.differential import top_differential_genes
 from app.analysis.dimensionality import pca
 from app.analysis.ranking import rank_by_gene, rank_by_signature
-from app.analysis.signature import auc_signature_score, log2_mean_signature_score
+from app.analysis.signature import auc_signature_score, is_log2_unit, log2_mean_signature_score
 from app.analysis.survival import binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
@@ -738,8 +738,12 @@ def signature_score(dataset_id: str, body: SignatureRequest):
         raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
     feature_ids = [_resolve_gene(ds, g) for g in body.genes]
-    scorer = auc_signature_score if body.method == "auc" else log2_mean_signature_score
-    scores = scorer(ds.matrix, feature_ids)
+    if body.method == "auc":
+        scores = auc_signature_score(ds.matrix, feature_ids)
+    else:
+        scores = log2_mean_signature_score(
+            ds.matrix, feature_ids, already_log2=is_log2_unit(ds.source.expression_unit)
+        )
     return {"genes": body.genes, "method": body.method, "scores": scores.to_dict()}
 
 
@@ -766,7 +770,10 @@ def rank_signature(dataset_id: str, body: RankSignatureRequest):
         raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
     feature_ids = [_resolve_gene(ds, g) for g in body.genes]
-    df = rank_by_signature(ds.matrix, ds.samples, feature_ids, method=body.method)
+    df = rank_by_signature(
+        ds.matrix, ds.samples, feature_ids, method=body.method,
+        already_log2=is_log2_unit(ds.source.expression_unit),
+    )
     return {"genes": body.genes, "method": body.method, "n": len(df), "rows": df.to_dict("records")}
 
 
