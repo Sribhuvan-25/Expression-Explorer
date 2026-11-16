@@ -134,6 +134,11 @@ export function DatasetPanel({
             tone={result.kruskal_wallis?.p_value != null && result.kruskal_wallis.p_value < 0.05 ? "hot" : "neutral"}
           />
         </div>
+        {result.kruskal_wallis?.note && (
+          <p data-testid="kw-note" className="mb-3 text-[11.5px] text-ink-mute">
+            {gene}: {result.kruskal_wallis.note}
+          </p>
+        )}
         <MinPNotice
           tests={pairwise}
           hasContrasts={hasContrasts}

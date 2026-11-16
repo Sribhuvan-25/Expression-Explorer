@@ -120,3 +120,17 @@ describe("Expression Compare export prints the FDR q it claims", () => {
     );
   });
 });
+
+describe("Expression Compare with a gene whose values are all identical", () => {
+  it("says why there is no Kruskal-Wallis p instead of failing", () => {
+    const flat = result("gse324984", "GSE324984");
+    flat.points = flat.points!.map((p) => ({ ...p, value: 0 }));
+    flat.kruskal_wallis = {
+      h_stat: null,
+      p_value: null,
+      note: "Every value is identical, so there is nothing to rank and no test is possible.",
+    };
+    render(<DatasetPanel result={flat} gene="TNMD" />);
+    expect(screen.getByTestId("kw-note")).toHaveTextContent("TNMD: Every value is identical");
+  });
+});

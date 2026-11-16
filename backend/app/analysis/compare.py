@@ -141,5 +141,14 @@ def kruskal_wallis(df: pd.DataFrame) -> dict:
     groups = [g["value"].to_numpy() for _, g in df.groupby("group") if len(g) >= 2]
     if len(groups) < 2:
         return {"h_stat": None, "p_value": None}
+    # Every value identical (an unexpressed gene: all-zero TPM): H is 0/0,
+    # scipy raises and /compare returned 500 for 47% of GSE324984's genes
+    # and 3,169 of TARGET's. R's kruskal.test gives NA; so do we, saying why.
+    if len(np.unique(np.concatenate(groups))) == 1:
+        return {
+            "h_stat": None,
+            "p_value": None,
+            "note": "Every value is identical, so there is nothing to rank and no test is possible.",
+        }
     h, p = stats.kruskal(*groups)
     return {"h_stat": h, "p_value": p}

@@ -415,3 +415,17 @@ def test_pca_and_correlation_points_carry_top_level_group_columns(client):
         assert by_sample["S00"]["vital_status"] == "Dead"
         # Declared but never populated: present as null, never NaN.
         assert by_sample["S00"]["mrd_status"] is None
+
+
+def test_compare_gene_with_identical_values_is_not_a_500():
+    """An unexpressed gene (all-zero TPM) made scipy's kruskal raise, so
+    /compare 500'd for 47% of GSE324984's genes and compare-multi lost
+    every dataset when one of them had such a gene."""
+    from app.analysis.compare import kruskal_wallis
+
+    df = pd.DataFrame({"group": ["A"] * 3 + ["B"] * 3 + ["C"] * 3, "value": [0.0] * 9})
+    out = kruskal_wallis(df)
+    assert out["p_value"] is None and out["h_stat"] is None
+    assert "identical" in out["note"]
+    df.loc[0, "value"] = 1.0
+    assert kruskal_wallis(df)["p_value"] is not None

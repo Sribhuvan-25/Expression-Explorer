@@ -90,7 +90,7 @@ export interface CompareResult {
   group_column: string;
   points: ComparePoint[];
   pairwise_tests: PairwiseTest[];
-  kruskal_wallis: { h_stat: number | null; p_value: number | null };
+  kruskal_wallis: { h_stat: number | null; p_value: number | null; note?: string };
   // How much of the cohort this comparison actually ran on. A grouping
   // column populated for only part of a dataset (TARGET classifies
   // etp_status for 190 of 469) otherwise silently narrows the analysis.
@@ -116,7 +116,7 @@ export interface CompareMultiDatasetResult {
   exclusion_reason?: string | null;
   points?: ComparePoint[];
   pairwise_tests?: PairwiseTest[];
-  kruskal_wallis?: { h_stat: number | null; p_value: number | null };
+  kruskal_wallis?: { h_stat: number | null; p_value: number | null; note?: string };
   stratum_caveat?: string | null;
 }
 
