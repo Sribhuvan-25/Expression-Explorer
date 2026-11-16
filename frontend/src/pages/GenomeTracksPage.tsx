@@ -64,7 +64,9 @@ export function GenomeTracksPage() {
   const browserRef = useRef<any>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "too-narrow">("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  // "" once the user has moved away from every preset inside IGV.
   const [locus, setLocus] = useState("MYB");
+  const presetJumpAt = useRef(0);
   const [tooNarrow, setTooNarrow] = useState(false);
   // Distinct from tooNarrow=false: that only means "not known to be too
   // narrow," which is also true before the pane has been laid out at all
@@ -152,6 +154,12 @@ export function GenomeTracksPage() {
           return;
         }
         browserRef.current = browser;
+        // Panning, zooming or searching inside IGV leaves the preset
+        // locus: un-highlight the preset button, which stayed "MYB" while
+        // IGV showed MYCN. Changes right after a preset jump are the jump.
+        browser.on("locuschange", () => {
+          if (Date.now() - presetJumpAt.current > 1500) setLocus("");
+        });
         setStatus("ready");
       })
       .catch((err: unknown) => {
@@ -174,7 +182,8 @@ export function GenomeTracksPage() {
   }, [tooNarrow, hasMeasured]);
 
   useEffect(() => {
-    if (browserRef.current && status === "ready") {
+    if (browserRef.current && status === "ready" && LOCI[locus]) {
+      presetJumpAt.current = Date.now();
       browserRef.current.search(LOCI[locus]);
     }
   }, [locus, status]);

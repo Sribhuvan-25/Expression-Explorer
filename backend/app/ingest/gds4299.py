@@ -70,6 +70,11 @@ _SYMBOL_ALIASES = {
     "PME1": "PPME1",
 }
 
+def legacy_aliases(symbols) -> list[list[str]]:
+    """Per current symbol, the GPL13158 names remapped onto it."""
+    return [[legacy for legacy, current in _SYMBOL_ALIASES.items() if current == s] for s in symbols]
+
+
 # Normalize to the hyphenated labels used everywhere else in this project
 # (TARGET's Liu-2017 enrichment emits 'ETP' / 'near-ETP' / 'non-ETP').
 _SUBTYPE_MAP = {"ETP": "ETP", "nonETP": "non-ETP", "non-ETP": "non-ETP"}
@@ -126,7 +131,10 @@ def load(use_cache: bool = True) -> Dataset:
         {
             "feature_id": matrix.index,
             "symbol": matrix.index,
-            "aliases": [[] for _ in range(len(matrix))],
+            # The legacy names remapped above, so a search for KIAA1524 is
+            # told "older name for CIP2A" instead of a bare "not found"
+            # (METHODS.md 7.4); empty lists made that hint unreachable.
+            "aliases": legacy_aliases(matrix.index),
         }
     )
 

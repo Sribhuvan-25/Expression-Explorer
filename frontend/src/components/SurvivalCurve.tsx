@@ -53,9 +53,9 @@ export function SurvivalPlot({
     return () => observer.disconnect();
   }, []);
 
-  const width = Math.max(containerWidth || 720, 320);
+  const width = Math.max(containerWidth || 720, 220); // lay out at a phone-width container rather than scaling down
   const margin = { top: 20, right: 24, bottom: 46, left: 56 };
-  const plotW = Math.max(width - margin.left - margin.right, 160);
+  const plotW = Math.max(width - margin.left - margin.right, 130);
   // Keep a readable aspect ratio rather than a fixed height: a wide pane
   // gets a proportionally taller plot, bounded so it never becomes a
   // letterbox strip or a tower.

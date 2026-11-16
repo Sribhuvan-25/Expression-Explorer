@@ -13,6 +13,55 @@ import numpy as np
 from scipy import stats
 
 
+# Placeholders some cohorts record instead of a value. TARGET vital_status
+# has 'Unknown' (3) and 'Not Reported' (2): treated as groups, they entered
+# Kruskal-Wallis and the BH family (MYCN KW p 8.1e-4 vs 1.3e-4 on
+# Alive/Dead) and gave a "Dead vs Not Reported" p = 0.044.
+MISSING_GROUP_LABELS = {"unknown", "not reported", "not available", "missing", "n/a", "na", ""}
+
+
+def clean_group_label(value):
+    """None for a missing value or a missing-value placeholder."""
+    if value is None or (isinstance(value, float) and value != value):
+        return None
+    if isinstance(value, str) and value.strip().lower() in MISSING_GROUP_LABELS:
+        return None
+    return value
+
+
+def group_labels(samples: pd.DataFrame, group_column: str) -> pd.Series:
+    """One group label per sample (None where missing), from a top-level
+    samples column or the nested `group_columns` dict."""
+    if group_column in samples.columns:
+        raw = samples[group_column]
+    else:
+        raw = samples["group_columns"].apply(lambda d: d.get(group_column) if isinstance(d, dict) else None)
+    return raw.map(clean_group_label).astype(object)
+
+
+def missing_group_reason(samples: pd.DataFrame, group_column: str, excluded_ids) -> str | None:
+    """Why `excluded_ids` have no group, naming placeholders only when
+    some occurred, each counted (METHODS.md 6.1)."""
+    excluded = set(excluded_ids)
+    if not excluded:
+        return None
+    if group_column in samples.columns:
+        raw = samples[group_column]
+    else:
+        raw = samples["group_columns"].apply(lambda d: d.get(group_column) if isinstance(d, dict) else None)
+    raw = raw[samples["sample_id"].isin(excluded).to_numpy()]
+    placeholders = raw[raw.map(lambda v: isinstance(v, str) and v.strip().lower() in MISSING_GROUP_LABELS)]
+    n_blank = len(raw) - len(placeholders)
+    parts = []
+    if n_blank:
+        parts.append(f"{n_blank} with no value recorded for '{group_column}'")
+    for label, n in placeholders.value_counts().items():
+        parts.append(f"{n} recorded as '{label}'")
+    if len(raw) < len(excluded):
+        parts.append(f"{len(excluded) - len(raw)} with no expression value")
+    return "; ".join(parts)
+
+
 def expression_by_group(
     matrix: pd.DataFrame,
     samples: pd.DataFrame,
@@ -26,10 +75,7 @@ def expression_by_group(
         raise KeyError(f"{gene_id} not found in this dataset's matrix.")
 
     values = matrix.loc[gene_id]
-    if group_column in samples.columns:
-        groups = samples[group_column]
-    else:
-        groups = samples["group_columns"].apply(lambda d: d.get(group_column))
+    groups = group_labels(samples, group_column)
 
     df = pd.DataFrame({"sample_id": samples["sample_id"], "group": groups, "value": values.reindex(samples["sample_id"]).to_numpy()})
     return df.dropna(subset=["group", "value"])
@@ -141,5 +187,14 @@ def kruskal_wallis(df: pd.DataFrame) -> dict:
     groups = [g["value"].to_numpy() for _, g in df.groupby("group") if len(g) >= 2]
     if len(groups) < 2:
         return {"h_stat": None, "p_value": None}
+    # Every value identical (an unexpressed gene: all-zero TPM): H is 0/0,
+    # scipy raises and /compare returned 500 for 47% of GSE324984's genes
+    # and 3,169 of TARGET's. R's kruskal.test gives NA; so do we, saying why.
+    if len(np.unique(np.concatenate(groups))) == 1:
+        return {
+            "h_stat": None,
+            "p_value": None,
+            "note": "Every value is identical, so there is nothing to rank and no test is possible.",
+        }
     h, p = stats.kruskal(*groups)
     return {"h_stat": h, "p_value": p}

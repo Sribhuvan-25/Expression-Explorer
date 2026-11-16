@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuxLayerSummary } from "../lib/api";
 import { EmptyState, ErrorState, PageHeader, Panel, PrimaryButton, Stat } from "../components/ui";
+import { formatUnit } from "../lib/units";
 import { BoxPlot } from "../components/BoxPlot";
 import { ScatterPlot } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
@@ -39,9 +41,19 @@ function CoverageNote({ layer }: { layer: AuxLayerSummary }) {
         <>
           {" "}
           <span className="text-warn">
-            Note: only {layer.n_usable_features.toLocaleString()} of{" "}
-            {layer.n_features.toLocaleString()} were measured on enough of these samples to analyse — most
-            lookups will not have enough data.
+            {layer.layer === "mutation_status" ? (
+              // Usable means >= 3 mutated samples for this layer, not
+              // "measured" (a mutation call is never missing).
+              <>
+                Note: only {layer.n_usable_features.toLocaleString()} of {layer.n_features.toLocaleString()} genes
+                are mutated in at least 3 of these samples; the list below offers the most-mutated ones.
+              </>
+            ) : (
+              <>
+                Note: only {layer.n_usable_features.toLocaleString()} of {layer.n_features.toLocaleString()} were
+                measured on enough of these samples to analyse — most lookups will not have enough data.
+              </>
+            )}
           </span>
         </>
       )}
@@ -85,6 +97,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               Expression of
             </label>
             <input
+              aria-label="Expression of"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -96,6 +109,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               Split by mutation in
             </label>
             <select
+              aria-label="Split by mutation in"
               value={mutatedGene}
               onChange={(e) => setMutatedGene(e.target.value)}
               disabled={!topMutated?.genes.length}
@@ -142,12 +156,12 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
               </span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${data.gene}-by-${data.mutated_gene}-mutation`}
+                filename={`${datasetId}-${data.gene}-by-${data.mutated_gene}-mutation`}
                 title={`${data.gene} by ${data.mutated_gene} mutation status`}
                 subtitle={`${data.n_mutated} mutated vs ${data.n_wildtype} wild-type`}
                 statLines={[
                   `Mann-Whitney p = ${
-                    data.test.p_value != null ? data.test.p_value.toExponential(2) : "—"
+                    formatP(data.test.p_value)
                   }`,
                 ]}
               />
@@ -164,7 +178,7 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
             <Stat label="Wild-type" value={String(data.n_wildtype)} />
             <Stat
               label="Mann-Whitney p"
-              value={data.test.p_value != null ? data.test.p_value.toExponential(2) : "—"}
+              value={formatP(data.test.p_value)}
               tone={data.test.p_value != null && data.test.p_value < 0.05 ? "hot" : "neutral"}
             />
           </div>
@@ -242,6 +256,7 @@ function AuxFeaturePicker({
     <div ref={boxRef} className="relative">
       <div className="flex gap-1">
         <input
+          aria-label="Feature"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSubmit()}
@@ -262,6 +277,7 @@ function AuxFeaturePicker({
         <div className="absolute z-20 mt-1 max-h-[280px] w-full overflow-y-auto rounded-[3px] border border-rule-firm bg-surface shadow-lg">
           <div className="sticky top-0 border-b border-rule bg-surface p-2">
             <input
+              aria-label="Search features"
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -315,15 +331,17 @@ function AuxCorrelationTab({
   auxLayerKey,
   featurePlaceholder,
   featureLabel,
+  defaultGene = "MYCN",
 }: {
   datasetId: string;
   layer: AuxLayerSummary;
   auxLayerKey: "crispr_gene_effect" | "drug_sensitivity";
   featurePlaceholder: string;
   featureLabel: string;
+  defaultGene?: string;
 }) {
   const chartRef = useRef<SVGSVGElement>(null);
-  const [gene, setGene] = useState("MYCN");
+  const [gene, setGene] = useState(defaultGene);
   const [auxFeature, setAuxFeature] = useState(featurePlaceholder);
   const [method, setMethod] = useState<"pearson" | "spearman">("pearson");
   const [query, setQuery] = useState<{
@@ -354,6 +372,7 @@ function AuxCorrelationTab({
               Expression of
             </label>
             <input
+              aria-label="Expression of"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -378,6 +397,7 @@ function AuxCorrelationTab({
             <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-rule">
               {(["pearson", "spearman"] as const).map((m) => (
                 <button
+                  aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
@@ -427,7 +447,7 @@ function AuxCorrelationTab({
               </span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${data.gene}-vs-${data.aux_feature_label}`}
+                filename={`${datasetId}-${data.gene}-vs-${data.aux_feature_label}`}
                 title={`${data.gene} vs ${data.aux_feature_label}`}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[
@@ -443,7 +463,7 @@ function AuxCorrelationTab({
           )}
           <ScatterPlot
             points={data.points}
-            xLabel={`${data.gene} expression`}
+            xLabel={`${data.gene} expression${data.expression_value_unit ? ` (${formatUnit(data.expression_value_unit)})` : ""}`}
             yLabel={data.value_label}
             svgRef={chartRef}
           />
@@ -520,6 +540,7 @@ export function MultiOmicsPage() {
                 Dataset
               </label>
               <select
+                aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -537,6 +558,7 @@ export function MultiOmicsPage() {
               const available = layers.has(TAB_LAYER[t]);
               return (
                 <button
+                  aria-pressed={tab === t && available}
                   key={t}
                   type="button"
                   onClick={() => available && setTab(t)}
@@ -585,7 +607,12 @@ export function MultiOmicsPage() {
             datasetId={datasetId}
             layer={activeLayer}
             auxLayerKey="crispr_gene_effect"
-            featurePlaceholder="RPL13A"
+            // MYB expression vs MYB dependency: screened on all 91 covered
+            // lines, and the known MYB addiction (r = -0.65, METHODS.md 8).
+            // RPL13A was screened on 13, so the first thing a user saw was
+            // an underpowered result.
+            defaultGene="MYB"
+            featurePlaceholder="MYB"
             featureLabel="Dependency on gene"
           />
         )}

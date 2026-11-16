@@ -34,3 +34,16 @@ describe("scatter points with no group value", () => {
     expect(screen.queryByText("no value")).toBeNull();
   });
 });
+
+describe("scatter axis for non-negative data", () => {
+  it("does not extend below 0", async () => {
+    const { render } = await import("@testing-library/react");
+    const { ScatterPlot } = await import("../ScatterPlot");
+    const pts = [0, 0, 0.1, 2.5, 6.4].map((v, i) => ({ sample_id: `S${i}`, x: v, y: 5 + i }));
+    const { container } = render(<ScatterPlot points={pts} xLabel="MYCN" yLabel="MYC" />);
+    const xTicks = [...container.querySelectorAll("svg text[text-anchor='middle']")]
+      .map((t) => Number(t.textContent))
+      .filter((v) => Number.isFinite(v));
+    expect(Math.min(...xTicks)).toBe(0);
+  });
+});

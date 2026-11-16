@@ -74,7 +74,7 @@ export function histogramBinCount(scores: number[]): number {
  * distinct population or the tail of one continuous distribution -- which
  * is the actual question when picking candidates.
  */
-function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number }) {
+export function ScoreDistribution({ scores, shown, scoreLabel = "Score" }: { scores: number[]; shown: number; scoreLabel?: string }) {
   if (scores.length < 4) return null;
   const min = Math.min(...scores);
   const max = Math.max(...scores);
@@ -97,13 +97,19 @@ function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number 
     <div className="mb-4">
       <div className="mb-1.5 flex items-baseline justify-between">
         <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
-          Score distribution · {scores.length} samples
+          Score distribution · {scores.length} samples ·{" "}
+          {/* Count scale: without it a bar's height meant nothing. */}
+          <span data-testid="hist-peak">tallest bar {peak}</span>
         </span>
         <span className="font-mono text-[10px] text-ink-mute">
           shaded = top {shown} shown below
         </span>
       </div>
-      <div className="flex h-14 items-end gap-[1.5px] rounded-[3px] border border-rule bg-ground px-2 pt-2">
+      <div
+        role="img"
+        aria-label={`Histogram of ${scores.length} ${scoreLabel.toLowerCase()}s from ${min.toFixed(3)} to ${max.toFixed(3)}; tallest bar ${peak} samples`}
+        className="flex h-14 items-end gap-[1.5px] rounded-[3px] border border-rule bg-ground px-2 pt-2"
+      >
         {counts.map((c, i) => {
           // A bin is "in the table" if its right edge is past the cutoff --
           // using the left edge (i / BINS) excluded the bin the cutoff
@@ -113,7 +119,7 @@ function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number 
           return (
             <span
               key={i}
-              title={`${c} sample${c === 1 ? "" : "s"}`}
+              title={`${(min + ((max - min) * i) / BINS).toFixed(3)}–${(min + ((max - min) * (i + 1)) / BINS).toFixed(3)}: ${c} sample${c === 1 ? "" : "s"}`}
               className={`flex-1 rounded-t-[1px] ${inTable ? "bg-accent" : "bg-rule-firm"}`}
               style={{ height: `${peak ? Math.max((c / peak) * 100, c > 0 ? 4 : 0) : 0}%` }}
             />
@@ -122,8 +128,10 @@ function ScoreDistribution({ scores, shown }: { scores: number[]; shown: number 
       </div>
       <div className="mt-1 flex justify-between font-mono text-[9.5px] text-ink-mute">
         <span>{min.toFixed(3)}</span>
+        <span>{((min + max) / 2).toFixed(3)}</span>
         <span>{max.toFixed(3)}</span>
       </div>
+      <p className="mt-0.5 text-center font-mono text-[9.5px] uppercase tracking-wider text-ink-mute">{scoreLabel}</p>
     </div>
   );
 }
@@ -195,6 +203,7 @@ export function SignaturePage() {
                 Dataset
               </label>
               <select
+                aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -240,6 +249,7 @@ export function SignaturePage() {
               <div className="flex overflow-hidden rounded-[3px] border border-rule">
                 {(["auc", "log2_mean"] as const).map((m) => (
                   <button
+                    aria-pressed={method === m}
                     key={m}
                     type="button"
                     onClick={() => setMethod(m)}
@@ -287,14 +297,18 @@ export function SignaturePage() {
               </p>
             )}
             <div className={resultsAreStale ? "opacity-50" : undefined}>
-            <ScoreDistribution scores={rows.map(([, v]) => v)} shown={Math.min(25, rows.length)} />
+            <ScoreDistribution
+              scores={rows.map(([, v]) => v)}
+              shown={Math.min(25, rows.length)}
+              scoreLabel={query?.method === "log2_mean" ? "log2-mean score" : "AUCell score (0–1)"}
+            />
             <DataTable
               columns={[
                 { key: "rank", label: "#", align: "right" },
                 { key: "sample", label: "Sample" },
                 { key: "about", label: "Annotation" },
-                { key: "bar", label: "Score" },
-                { key: "score", label: "", align: "right" },
+                { key: "bar", label: "", srLabel: "Score bar" },
+                { key: "score", label: "Score", align: "right" },
               ]}
               rows={rows.slice(0, 25).map(([sample, score], i) => ({
                 rank: i + 1,

@@ -29,6 +29,7 @@
   --color-rail-active-bg: var(--rail-active-bg);
   --color-rail-active-ink: var(--rail-active-ink);
   --color-rail-accent: var(--rail-accent);
+  --color-rail-warn: var(--rail-warn);
 
   --font-display: var(--f-display);
   --font-sans: var(--f-body);

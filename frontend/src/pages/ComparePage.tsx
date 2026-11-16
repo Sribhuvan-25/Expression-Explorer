@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type CompareMultiDatasetResult } from "../lib/api";
 import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
@@ -14,10 +15,13 @@ import { MinPNotice, underpoweredSizes } from "../components/MinPNotice";
 // checked -- picking the column first, then seeing which datasets qualify,
 // is the natural order (the alternative, deriving options only from
 // checked datasets, means unchecking everything empties the dropdown).
-function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
-  const seen = new Set<string>();
-  for (const d of datasets) for (const g of d.group_columns) seen.add(g);
-  return Array.from(seen);
+// Ordered by how many datasets expose the column, so the default is one
+// most datasets can answer. Registration order made the default DepMap's
+// `lineage`, where all 186 lines are Lymphoid: nothing to compare.
+export function allGroupColumns(datasets: { group_columns: string[] }[]): string[] {
+  const count = new Map<string, number>();
+  for (const d of datasets) for (const g of d.group_columns) count.set(g, (count.get(g) ?? 0) + 1);
+  return Array.from(count.keys()).sort((a, b) => count.get(b)! - count.get(a)!);
 }
 
 // `gene` is passed down rather than read off `result`: /compare-multi
@@ -68,6 +72,11 @@ export function DatasetPanel({
 
   const points = result.points ?? [];
   const pairwise = result.pairwise_tests ?? [];
+  const distinctGroups = Array.from(new Set(points.map((p) => p.group)));
+  const singleGroup = points.length > 0 && distinctGroups.length === 1 ? distinctGroups[0] : null;
+  // A per-sample identifier (cell_line_name: 186 groups of 1) drew a
+  // 5,640 px plot with no test possible; say so instead of plotting.
+  const everySampleOwnGroup = points.length > 2 && distinctGroups.length === points.length;
 
   return (
     <Panel
@@ -88,7 +97,7 @@ export function DatasetPanel({
             subtitle={`n = ${filteredPoints.length} · Mann–Whitney with FDR correction`}
             statLines={[
               `Kruskal-Wallis p = ${
-                result.kruskal_wallis?.p_value != null ? result.kruskal_wallis.p_value.toExponential(2) : "—"
+                formatP(result.kruskal_wallis?.p_value)
               }`,
               ...pairwise.map(
                 (t) =>
@@ -113,7 +122,14 @@ export function DatasetPanel({
         <GroupFilter groupCounts={groupCounts} selected={selectedGroups} onChange={setSelectedGroups} />
       </div>
       {filteredPoints.length > 0 ? (
-        <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
+        everySampleOwnGroup ? (
+          <p data-testid="own-group-note" className="text-[12.5px] text-ink-mute">
+            Every one of the {points.length} samples is its own group here, so there is nothing to compare — choose a
+            grouping that puts several samples together. Sample Ranking lists every sample by expression.
+          </p>
+        ) : (
+          <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
+        )
       ) : (
         <p className="py-8 text-center text-[12.5px] text-ink-mute">
           No groups selected — check at least one group above to see the chart.
@@ -122,7 +138,7 @@ export function DatasetPanel({
       {(result.n_excluded ?? 0) > 0 && (
         <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
           This grouping covers {points.length} of {result.n_dataset_total} samples in the dataset —{" "}
-          {result.n_excluded} excluded ({result.exclusion_reason}).
+          {result.n_excluded} excluded: {result.exclusion_reason}.
         </p>
       )}
 
@@ -130,10 +146,21 @@ export function DatasetPanel({
         <div className="mb-3 flex gap-8">
           <Stat
             label="Kruskal-Wallis p"
-            value={result.kruskal_wallis?.p_value != null ? result.kruskal_wallis.p_value.toExponential(2) : "—"}
+            value={formatP(result.kruskal_wallis?.p_value)}
             tone={result.kruskal_wallis?.p_value != null && result.kruskal_wallis.p_value < 0.05 ? "hot" : "neutral"}
           />
         </div>
+        {singleGroup && (
+          <p data-testid="single-group-note" className="mb-3 text-[11.5px] text-ink-mute">
+            All {points.length} samples fall in one group ({singleGroup}), so there is nothing to compare — choose
+            another grouping.
+          </p>
+        )}
+        {result.kruskal_wallis?.note && (
+          <p data-testid="kw-note" className="mb-3 text-[11.5px] text-ink-mute">
+            {gene}: {result.kruskal_wallis.note}
+          </p>
+        )}
         <MinPNotice
           tests={pairwise}
           hasContrasts={hasContrasts}
@@ -268,6 +295,7 @@ function SingleGeneCompareTab() {
                 Gene symbol
               </label>
               <input
+                aria-label="Gene symbol"
                 value={geneInput}
                 onChange={(e) => setGeneInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && run()}
@@ -280,6 +308,7 @@ function SingleGeneCompareTab() {
                 Group by
               </label>
               <select
+                aria-label="Group by"
                 value={groupColumn}
                 onChange={(e) => setGroupColumn(e.target.value)}
                 disabled={groupColumnOptions.length === 0}
@@ -292,7 +321,7 @@ function SingleGeneCompareTab() {
                 ))}
               </select>
             </div>
-            <PrimaryButton onClick={run} loading={isFetching} disabled={!groupColumn || effectiveSelected.size === 0}>
+            <PrimaryButton onClick={run} loading={isFetching} disabled={!geneInput.trim() || !groupColumn || effectiveSelected.size === 0}>
               Run comparison
             </PrimaryButton>
           </div>
@@ -403,8 +432,12 @@ export function DifferentialGenesTab() {
   const datasets = datasetList?.datasets ?? [];
 
   const [datasetId, setDatasetId] = useState<string>("");
+  // Default to a dataset with an ETP grouping -- the app's core two-group
+  // comparison. The first registered dataset is DepMap, whose first column
+  // (lineage) has one value, so the tab opened on a disabled button.
   useEffect(() => {
-    if (!datasetId && datasets.length > 0) setDatasetId(datasets[0].dataset_id);
+    if (!datasetId && datasets.length > 0)
+      setDatasetId((datasets.find((d) => d.group_columns.includes("etp_status")) ?? datasets[0]).dataset_id);
   }, [datasets, datasetId]);
 
   const activeDataset = datasets.find((d) => d.dataset_id === datasetId);
@@ -412,9 +445,11 @@ export function DifferentialGenesTab() {
   const [groupA, setGroupA] = useState<string>("");
   const [groupB, setGroupB] = useState<string>("");
 
+  const columnChosen = useRef(false);
   useEffect(() => {
     if (activeDataset && activeDataset.group_columns.length > 0) {
-      setGroupColumn((prev) => (activeDataset.group_columns.includes(prev) ? prev : activeDataset.group_columns[0]));
+      const preferred = activeDataset.group_columns.includes("etp_status") ? "etp_status" : activeDataset.group_columns[0];
+      setGroupColumn((prev) => (activeDataset.group_columns.includes(prev) ? prev : preferred));
     }
   }, [activeDataset]);
 
@@ -436,6 +471,14 @@ export function DifferentialGenesTab() {
     () => new Map((groupValuesResult?.values ?? []).map((v) => [v.value, v.n])),
     [groupValuesResult],
   );
+
+  // Until the user picks a column, step past one with a single value.
+  useEffect(() => {
+    if (!activeDataset || columnChosen.current || !groupValuesResult || groupOptions.length >= 2) return;
+    const cols = activeDataset.group_columns;
+    const next = cols[cols.indexOf(groupColumn) + 1];
+    if (next) setGroupColumn(next);
+  }, [groupValuesResult, groupOptions, activeDataset, groupColumn]);
 
   useEffect(() => {
     if (groupOptions.length >= 2) {
@@ -467,6 +510,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[20ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Dataset</label>
             <select
+              aria-label="Dataset"
               value={datasetId}
               onChange={(e) => setDatasetId(e.target.value)}
               className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -481,8 +525,12 @@ export function DifferentialGenesTab() {
           <div className="min-w-[14ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group by</label>
             <select
+              aria-label="Group by"
               value={groupColumn}
-              onChange={(e) => setGroupColumn(e.target.value)}
+              onChange={(e) => {
+                columnChosen.current = true;
+                setGroupColumn(e.target.value);
+              }}
               disabled={!activeDataset || activeDataset.group_columns.length === 0}
               className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent disabled:opacity-50"
             >
@@ -496,6 +544,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group A</label>
             <select
+              aria-label="Group A"
               value={groupA}
               onChange={(e) => setGroupA(e.target.value)}
               disabled={groupOptions.length < 2}
@@ -511,6 +560,7 @@ export function DifferentialGenesTab() {
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Group B</label>
             <select
+              aria-label="Group B"
               value={groupB}
               onChange={(e) => setGroupB(e.target.value)}
               disabled={groupOptions.length < 2}
@@ -627,6 +677,12 @@ export function DifferentialGenesTab() {
           <p className="mb-3 text-[12px] text-ink-mute">
             n = {data.n_a} ({data.group_a}) vs {data.n_b} ({data.group_b}) · {data.n_genes_tested.toLocaleString()}{" "}
             genes tested, Mann–Whitney with genome-wide FDR correction.
+            {data.exclusion_breakdown && data.exclusion_breakdown.length > 0 && (
+              <span data-testid="differential-exclusions" className="block">
+                {data.n_a + data.n_b} of {data.n_dataset_total} samples compared —{" "}
+                {data.exclusion_breakdown.map((e) => `${e.n} ${e.reason}`).join("; ")}.
+              </span>
+            )}
           </p>
           <DataTable
             columns={[
@@ -668,6 +724,7 @@ export function ComparePage() {
             { key: "differential" as const, label: "Top differential genes" },
           ]).map((t) => (
             <button
+              aria-pressed={tab === t.key}
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}

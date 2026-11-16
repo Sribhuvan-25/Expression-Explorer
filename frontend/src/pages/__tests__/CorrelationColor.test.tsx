@@ -67,3 +67,28 @@ describe("correlation scatter shows what r pools", () => {
     expect(screen.queryByTestId("pools-groups-note")).toBeNull();
   });
 });
+
+describe("correlation axes name the scale the points are on", () => {
+  it("labels TPM data as log2(TPM+1) when the response says so", async () => {
+    setup();
+    vi.mocked(api.correlation).mockResolvedValue({
+      ...(await api.correlation("gse66586", "MYCN", "PPP2R5B", "pearson")),
+      value_unit: "log2_tpm",
+    } as unknown as Awaited<ReturnType<typeof api.correlation>>);
+    await screen.findByDisplayValue("mycn_status");
+    await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
+    expect(await screen.findByText("MYCN (LOG2(TPM+1))")).toBeInTheDocument();
+  });
+});
+
+describe("correlation PNG names the dataset", () => {
+  it("so the same pair from two datasets does not overwrite", async () => {
+    const exportFigure = await import("../../lib/exportFigure");
+    const spy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    setup();
+    await screen.findByDisplayValue("mycn_status");
+    await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /png/i }));
+    expect(spy.mock.calls.at(-1)![1]).toBe("gse66586-MYCN-vs-PPP2R5B-pearson-correlation");
+  });
+});

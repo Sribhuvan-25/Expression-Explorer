@@ -131,3 +131,68 @@ describe("SurvivalPage degenerate Cox model", () => {
     expect(screen.getByTestId("cox-unit-note")).toHaveTextContent("compares a score of 1 with a score of 0");
   });
 });
+
+describe("SurvivalPage sample accounting and captions follow the cutoff", () => {
+  it("lists each exclusion reason on its own and names the quartile split", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue({
+      ...NORMAL_RESULT,
+      n: 234,
+      n_excluded: 235,
+      exclusion_reason: "3 with no follow-up time recorded; 232 with a score between the low (25%) and high (25%) cutoffs",
+      exclusion_breakdown: [
+        { reason: "with no follow-up time recorded", n: 3 },
+        { reason: "with a score between the low (25%) and high (25%) cutoffs", n: 232 },
+      ],
+    } as unknown as SurvivalResult);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "quartile" }));
+    fireEvent.click(screen.getByRole("button", { name: /run survival analysis/i }));
+
+    const list = await screen.findByTestId("survival-exclusions");
+    expect(list.children).toHaveLength(2);
+    expect(list).toHaveTextContent("3 with no follow-up time recorded");
+    expect(list).toHaveTextContent("232 with a score between the low (25%) and high (25%) cutoffs");
+    expect(screen.getByTestId("cox-unit-note")).toHaveTextContent("quartile");
+    expect(screen.getByTestId("cox-unit-note")).not.toHaveTextContent("median-split");
+  });
+});
+
+describe("SurvivalPage tie-break sensitivity", () => {
+  it("shows how far the log-rank p moves with the choice of tied samples", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue({
+      ...NORMAL_RESULT,
+      logrank_p_value: 0.0041,
+      tie_note: {
+        n_tied_at_cutoff: 246,
+        tie_policy: "trim",
+        message: "246 samples share the exact score at a cutoff boundary.",
+        sensitivity: { n_draws: 200, p_median: 0.044, p_low: 0.0034, p_high: 0.32 },
+      },
+    } as unknown as SurvivalResult);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "quartile" }));
+    fireEvent.click(screen.getByRole("button", { name: /run survival analysis/i }));
+    const note = await screen.findByTestId("tie-sensitivity");
+    expect(note).toHaveTextContent("across 200 random choices, the log-rank p ranged 0.003 to 0.320");
+    expect(note).toHaveTextContent("median 0.044");
+    expect(note).toHaveTextContent("against 0.004 shown");
+  });
+});
+
+describe("survival PNG name carries the cutoff", () => {
+  it("so median and quartile exports do not overwrite each other", async () => {
+    const exportFigure = await import("../../lib/exportFigure");
+    const spy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue(NORMAL_RESULT);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "quartile" }));
+    fireEvent.click(screen.getByRole("button", { name: /run survival analysis/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls.at(-1)![1]).toBe("target_all_p2-survival-MEF2C-quartile-trim");
+  });
+});

@@ -20,6 +20,31 @@ const POOLED_EXPORT_NOTE =
 
 /** Exported for tests. Shown (and printed in the PNG) whenever the
  * points span more than one group of the colouring column. */
+/**
+ * The grouping worth colouring by: the first column with 2-8 groups among
+ * the plotted samples. DepMap's first column, lineage, is one group (all
+ * Lymphoid), so its default colouring showed nothing; cell_line_name is
+ * one group per sample. With none, no colouring.
+ */
+export function pickColorColumn(
+  columns: string[],
+  points: { group_columns?: Record<string, string | null> }[],
+  preferred?: string,
+): string {
+  const usable = (col: string) => {
+    const n = new Set(points.map((p) => p.group_columns?.[col]).filter((v) => v != null)).size;
+    return n >= 2 && n <= 8;
+  };
+  if (preferred && columns.includes(preferred) && usable(preferred)) return preferred;
+  return columns.find(usable) ?? "";
+}
+
+/** "PC1 (73.2% of variance)" -- the axis alone said "PC1". */
+export function pcLabel(k: number, varianceExplained: number[] | undefined): string {
+  const v = varianceExplained?.[k - 1];
+  return v == null ? `PC${k}` : `PC${k} (${(v * 100).toFixed(1)}% of variance)`;
+}
+
 export function poolsGroupsNote(n: number, nGroups: number, column: string): string {
   return `r is computed across all ${n} samples together, spanning ${nGroups} ${column} groups. A difference between groups alone can produce a strong r; check whether the trend also holds within each colour.`;
 }
@@ -49,6 +74,13 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
     queryFn: () => api.correlation(query!.datasetId, query!.geneA, query!.geneB, query!.method),
     enabled: !!query,
   });
+  // Until the user picks a colouring, choose one that separates the
+  // plotted samples (see pickColorColumn).
+  const colorChosen = useRef(false);
+  useEffect(() => {
+    if (!data || !activeDataset || colorChosen.current) return;
+    setColorBy(pickColorColumn(activeDataset.group_columns, data.points));
+  }, [data, activeDataset]);
 
   const run = () => {
     const a = geneA.trim().toUpperCase();
@@ -67,7 +99,10 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
     [data, colorBy],
   );
   const nColorGroups = new Set(plotPoints.map((p) => p.group).filter((g) => g != null)).size;
-  const unitSuffix = activeDataset?.expression_unit ? ` (${formatUnit(activeDataset.expression_unit)})` : "";
+  // The response says which scale the points are on (log2(TPM+1) for TPM
+  // data, METHODS.md 7.6a); the dataset's own unit is the fallback.
+  const shownUnit = data?.value_unit ?? activeDataset?.expression_unit;
+  const unitSuffix = shownUnit ? ` (${formatUnit(shownUnit)})` : "";
 
   return (
     <>
@@ -76,6 +111,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene A</label>
             <input
+              aria-label="Gene A"
               value={geneA}
               onChange={(e) => setGeneA(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -85,6 +121,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene B</label>
             <input
+              aria-label="Gene B"
               value={geneB}
               onChange={(e) => setGeneB(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -104,6 +141,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
             <div className="flex flex-wrap overflow-hidden rounded-[3px] border border-rule">
               {(["pearson", "spearman", "kendall"] as const).map((m) => (
                 <button
+                  aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
@@ -122,8 +160,12 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
                 Color by
               </label>
               <select
+                aria-label="Color by"
                 value={colorBy}
-                onChange={(e) => setColorBy(e.target.value)}
+                onChange={(e) => {
+                  colorChosen.current = true;
+                  setColorBy(e.target.value);
+                }}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
               >
                 <option value="">None</option>
@@ -177,7 +219,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n}</span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${data.gene_a}-vs-${data.gene_b}-correlation`}
+                filename={`${datasetId}-${data.gene_a}-vs-${data.gene_b}-${data.method}-correlation`}
                 title={`${data.gene_a} vs ${data.gene_b}${datasetName ? ` — ${datasetName}` : ""}`}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[
@@ -251,6 +293,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
           <div className="min-w-[12ch] flex-1">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Gene</label>
             <input
+              aria-label="Gene"
               value={gene}
               onChange={(e) => setGene(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
@@ -260,6 +303,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
           <div className="min-w-[10ch]">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-ink-mute">Top N</label>
             <input
+              aria-label="Top N"
               type="number"
               min={1}
               max={200}
@@ -273,6 +317,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             <div className="flex overflow-hidden rounded-[3px] border border-rule">
               {(["pearson", "spearman"] as const).map((m) => (
                 <button
+                  aria-pressed={method === m}
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
@@ -290,6 +335,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             <div className="flex overflow-hidden rounded-[3px] border border-rule">
               {(["positive", "negative"] as const).map((d) => (
                 <button
+                  aria-pressed={direction === d}
                   key={d}
                   type="button"
                   onClick={() => setDirection(d)}
@@ -338,7 +384,7 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
                   // Dataset in the name and every row, as for the other CSVs
                   // (METHODS.md 5.7): one gene's network from two datasets
                   // used to overwrite one file with no provenance inside.
-                  `${datasetId}-${data.gene}-${data.direction}-network`,
+                  `${datasetId}-${data.gene}-${data.method}-${data.direction}-network`,
                   [
                     { key: "dataset_id", label: "dataset_id" },
                     { key: "rank", label: "#" },
@@ -358,6 +404,14 @@ export function NetworkTab({ datasetId }: { datasetId: string }) {
             </button>
           }
         >
+          {data.n != null && (
+            <p data-testid="network-caption" className="mb-3 text-[11.5px] text-ink-mute">
+              {data.method === "pearson" ? "Pearson" : "Spearman"} r across {data.n} samples
+              {data.value_unit ? `, on ${formatUnit(data.value_unit)}` : ""}. Ranked by r only, with no p-value or
+              multiple-testing correction across the genes searched
+              {data.n < 20 ? `; with ${data.n} samples a high r is easily reached by chance` : ""}.
+            </p>
+          )}
           <DataTable
             columns={[
               { key: "rank", label: "#", align: "right" },
@@ -403,6 +457,11 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
     queryFn: () => api.pca(query!.datasetId, query!.genes),
     enabled: !!query,
   });
+  const colorChosen = useRef(false);
+  useEffect(() => {
+    if (!data || !activeDataset || colorChosen.current) return;
+    setColorBy(pickColorColumn(activeDataset.group_columns, data.points, "etp_status"));
+  }, [data, activeDataset]);
 
   const run = () => {
     if (genes.length >= 2 && datasetId) setQuery({ datasetId, genes });
@@ -450,8 +509,12 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
                 Color by
               </label>
               <select
+                aria-label="Color by"
                 value={colorBy}
-                onChange={(e) => setColorBy(e.target.value)}
+                onChange={(e) => {
+                  colorChosen.current = true;
+                  setColorBy(e.target.value);
+                }}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
               >
                 <option value="">None</option>
@@ -496,7 +559,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
               <span className="font-mono text-[10.5px] text-ink-mute">n = {data.n_samples}</span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`pca-${data.genes_used.join("-")}`}
+                filename={`${datasetId}-pca-${data.genes_used.join("-")}`}
                 title={`PCA — ${data.genes_used.slice(0, 4).join(", ")}${
                   data.genes_used.length > 4 ? ` +${data.genes_used.length - 4} more` : ""
                 }${datasetName ? ` — ${datasetName}` : ""}`}
@@ -513,7 +576,12 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
             </div>
           }
         >
-          <ScatterPlot points={plotPoints} xLabel="PC1" yLabel="PC2" svgRef={chartRef} />
+          <ScatterPlot
+            points={plotPoints}
+            xLabel={pcLabel(1, data.variance_explained)}
+            yLabel={pcLabel(2, data.variance_explained)}
+            svgRef={chartRef}
+          />
           <div className="mt-4 flex gap-8 border-t border-rule pt-3">
             <Stat label="PC1 variance" value={`${(data.variance_explained[0] * 100).toFixed(1)}%`} tone="accent" />
             {data.variance_explained[1] != null && (
@@ -562,6 +630,7 @@ export function CorrelationPage() {
                 Dataset
               </label>
               <select
+                aria-label="Dataset"
                 value={datasetId}
                 onChange={(e) => setDatasetId(e.target.value)}
                 className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -587,6 +656,7 @@ export function CorrelationPage() {
               { key: "pca" as const, label: "PCA" },
             ]).map((t) => (
               <button
+                aria-pressed={tab === t.key}
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}

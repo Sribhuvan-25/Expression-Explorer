@@ -8,12 +8,45 @@ ingestion pipeline change.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
+from app.analysis.spearman import spearman_test
+
+def _require_variance(values: pd.Series, label: str) -> None:
+    """A gene with one value in every sample (unexpressed: all-zero TPM)
+    has no variance, so r is 0/0. scipy returns NaN, which is not valid
+    JSON, and the endpoint answered 500 -- easy to hit, since 30,809 of
+    GSE324984's genes and 2,445 of TARGET's are constant."""
+    if values.nunique() <= 1:
+        raise ValueError(
+            f"{label} has the same value ({values.iloc[0]:g}) in every sample, so it has no "
+            f"variance and cannot be correlated with anything."
+        )
+
+
+def _correlate_rows(others: pd.DataFrame, query: pd.Series, method: str) -> pd.Series:
+    """Pearson or Spearman r of every row of `others` with `query`, as one
+    matrix product. `others.T.corrwith(query)` took ~3 s on TARGET's
+    60,660 x 469 matrix; this gives the same coefficients (max difference
+    ~1e-15 on real data, same top-N) in a fraction of that. Constant rows
+    come back NaN, as before."""
+    x = others.to_numpy(dtype=float)
+    q = query.reindex(others.columns).to_numpy(dtype=float)
+    if method == "spearman":
+        x = stats.rankdata(x, axis=1)
+        q = stats.rankdata(q)
+    xc = x - x.mean(axis=1, keepdims=True)
+    qc = q - q.mean()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = (xc @ qc) / (np.sqrt((xc * xc).sum(axis=1)) * np.sqrt((qc * qc).sum()))
+    return pd.Series(r, index=others.index)
+
+
 _METHODS = {
     "pearson": stats.pearsonr,
-    "spearman": stats.spearmanr,
+    "spearman": spearman_test,
     "kendall": stats.kendalltau,
 }
 
@@ -55,6 +88,8 @@ def gene_correlation(
             f"Only {n} samples have values for both genes -- need at least 3 to compute a correlation."
         )
 
+    _require_variance(paired[gene_a], gene_a)
+    _require_variance(paired[gene_b], gene_b)
     stat, p_value = _METHODS[method](paired[gene_a], paired[gene_b])
     return {
         "gene_a": gene_a,
@@ -102,7 +137,9 @@ def co_expression_network(
 
     others = matrix.drop(index=gene)
     query = matrix.loc[gene]
-    corr = others.T.corrwith(query, method=method).dropna()
+    # It used to return an empty network with no explanation.
+    _require_variance(query, gene)
+    corr = _correlate_rows(others, query, method).dropna()
 
     ranked = corr.sort_values(ascending=(direction == "negative"))
     top = ranked.head(top_n)

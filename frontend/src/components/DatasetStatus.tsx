@@ -48,7 +48,7 @@ export function DatasetStatus() {
                     outright beats an unexplained blank line, which reads
                     as a broken dataset rather than a pending one. */}
                 {d.warming ? (
-                  <p className="font-mono text-[10px] text-warn">preparing — downloading source data…</p>
+                  <p className="font-mono text-[10px] text-rail-warn">preparing — downloading source data…</p>
                 ) : (
                   <p className="font-mono text-[10px] text-rail-ink-mute">
                     {d.n_samples != null && `${d.n_samples} samples`}
@@ -61,7 +61,7 @@ export function DatasetStatus() {
                     not buried behind a per-dataset API call nothing in the
                     UI ever made -- see METHODS.md 7.5. */}
                 {d.notes && /quarters behind/.test(d.notes) && (
-                  <p className="mt-0.5 text-[10.5px] leading-snug text-warn">
+                  <p className="mt-0.5 text-[10.5px] leading-snug text-rail-warn">
                     {d.notes.match(/This is [^.]+\./)?.[0] ?? d.notes}
                   </p>
                 )}

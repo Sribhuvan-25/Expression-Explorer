@@ -67,4 +67,44 @@ def test_survival_pipeline_runs():
     group = binarize_by_median(surv_df)
     result = kaplan_meier_curves(surv_df, group)
     assert "curves" in result and len(result["curves"]) == 2
-    assert "logrank_p_value" in result
+    assert result["logrank_p_value"] is not None
+
+
+def test_placeholder_group_labels_are_missing_not_groups():
+    """TARGET vital_status records 'Unknown' (3) and 'Not Reported' (2);
+    as groups they entered Kruskal-Wallis and the FDR family."""
+    import pandas as pd
+
+    from app.analysis.compare import expression_by_group, group_labels
+
+    samples = pd.DataFrame(
+        {
+            "sample_id": [f"S{i}" for i in range(6)],
+            "vital_status": ["Alive", "Dead", "Unknown", "Not Reported", None, "Alive"],
+            "group_columns": [{"x": v} for v in ["a", "unknown", " N/A ", "b", None, "a"]],
+        }
+    )
+    matrix = pd.DataFrame([[1.0, 2, 3, 4, 5, 6]], index=["G"], columns=samples["sample_id"])
+    df = expression_by_group(matrix, samples, "G", "vital_status")
+    assert sorted(df["group"].unique()) == ["Alive", "Dead"]
+    assert len(df) == 3
+    assert group_labels(samples, "x").tolist() == ["a", None, None, "b", None, "a"]
+
+
+def test_exclusion_reason_counts_blanks_and_each_placeholder():
+    import pandas as pd
+
+    from app.analysis.compare import missing_group_reason
+
+    samples = pd.DataFrame(
+        {
+            "sample_id": list("ABCDEF"),
+            "vital_status": ["Alive", None, "Unknown", "Unknown", "Not Reported", "Dead"],
+            "group_columns": [{} for _ in range(6)],
+        }
+    )
+    assert missing_group_reason(samples, "vital_status", {"B", "C", "D", "E"}) == (
+        "1 with no value recorded for 'vital_status'; 2 recorded as 'Unknown'; 1 recorded as 'Not Reported'"
+    )
+    assert missing_group_reason(samples, "vital_status", {"B"}) == "1 with no value recorded for 'vital_status'"
+    assert missing_group_reason(samples, "vital_status", set()) is None

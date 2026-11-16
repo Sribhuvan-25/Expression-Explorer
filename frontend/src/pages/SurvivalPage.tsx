@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type TiePolicy } from "../lib/api";
 import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable } from "../components/ui";
@@ -72,7 +73,7 @@ export function SurvivalPage() {
       <PageHeader
         eyebrow="Survival"
         title="Kaplan–Meier by signature score"
-        description="Samples are binarized at the median signature score into LOW/HIGH groups, then compared with a log-rank test and a Cox proportional hazards model."
+        description="Samples are split into LOW and HIGH groups by signature score (at the median, or top vs. bottom quartile or percentile), then compared with a log-rank test and a Cox proportional hazards model."
       />
 
       <div className="flex flex-col gap-5 px-8 py-6">
@@ -93,6 +94,7 @@ export function SurvivalPage() {
                     Dataset
                   </label>
                   <select
+                    aria-label="Dataset"
                     value={datasetId}
                     onChange={(e) => setDatasetId(e.target.value)}
                     className="w-full rounded-[3px] border border-rule bg-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-accent"
@@ -154,6 +156,7 @@ export function SurvivalPage() {
                   <div className="flex overflow-hidden rounded-[3px] border border-rule">
                     {(["median", "quartile", "custom"] as const).map((m) => (
                       <button
+                        aria-pressed={cutoffMethod === m}
                         key={m}
                         type="button"
                         onClick={() => setCutoffMethod(m)}
@@ -169,6 +172,7 @@ export function SurvivalPage() {
                     <div className="flex items-center gap-2 text-[12px] text-ink-soft">
                       <span>High</span>
                       <input
+                        aria-label="High cutoff percent"
                         type="number"
                         min={1}
                         max={99}
@@ -178,6 +182,7 @@ export function SurvivalPage() {
                       />
                       <span>% · Low</span>
                       <input
+                        aria-label="Low cutoff percent"
                         type="number"
                         min={1}
                         max={99}
@@ -203,6 +208,7 @@ export function SurvivalPage() {
                         ] as const
                       ).map(([value, label]) => (
                         <button
+                          aria-pressed={tiePolicy === value}
                           key={value}
                           type="button"
                           onClick={() => setTiePolicy(value)}
@@ -254,7 +260,7 @@ export function SurvivalPage() {
                   </svg>
                 }
                 title="No survival analysis run yet"
-                description="Choose a gene set and run to see Kaplan–Meier curves split at the median signature score."
+                description="Choose a gene set and a cutoff, then run to see Kaplan–Meier curves for the LOW and HIGH score groups."
               />
             )}
 
@@ -281,7 +287,11 @@ export function SurvivalPage() {
                       </span>
                       <ExportButton
                         svgRef={chartRef}
-                        filename={`survival-${data.genes.join("-")}`}
+                        filename={`${datasetId}-survival-${data.genes.join("-")}-${
+                          query?.cutoffMethod === "custom"
+                            ? `top${query.cutoffHighPct}-bottom${query.cutoffLowPct}`
+                            : query?.cutoffMethod ?? "median"
+                        }${query?.cutoffMethod && query.cutoffMethod !== "median" ? `-${query.tiePolicy}` : ""}`}
                         title={`Survival — ${data.genes.join(", ")}${
                           datasets.find((d) => d.dataset_id === datasetId)?.display_name
                             ? ` — ${datasets.find((d) => d.dataset_id === datasetId)!.display_name}`
@@ -290,9 +300,9 @@ export function SurvivalPage() {
                         subtitle={`n = ${data.n} · LOW/HIGH split by ${cutoffDescription}`}
                         statLines={[
                           `Curves: ${survivalColorKey(data.curves)}`,
-                          `Log-rank p = ${data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}`,
+                          `Log-rank p = ${formatP(data.logrank_p_value)}`,
                           ...(data.cox && !coxIsDegenerate
-                            ? [`Cox model p = ${data.cox.log_likelihood_p_value.toExponential(2)}`]
+                            ? [`Cox model p = ${formatP(data.cox.log_likelihood_p_value)}`]
                             : []),
                         ]}
                       />
@@ -313,13 +323,39 @@ export function SurvivalPage() {
                         .map(([label, c]) => `${label} n=${c.n}`)
                         .join(" · ")}
                       . Change <span className="font-mono">Tied scores at the cutoff</span> to compare policies.
+                      {data.tie_note.sensitivity && (
+                        <span data-testid="tie-sensitivity" className="mt-1 block">
+                          Which tied samples are kept matters: across {data.tie_note.sensitivity.n_draws} random
+                          choices, the log-rank p ranged {fmtP(data.tie_note.sensitivity.p_low)} to{" "}
+                          {fmtP(data.tie_note.sensitivity.p_high)} (middle 95%; median{" "}
+                          {fmtP(data.tie_note.sensitivity.p_median)}), against {fmtP(data.logrank_p_value)} shown.
+                        </span>
+                      )}
                     </p>
                   )}
                   <SurvivalPlot curves={data.curves} svgRef={chartRef} />
                   {data.n_excluded > 0 && (
                     <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
-                      Showing {data.n} of {data.n_dataset_total} samples in this dataset —{" "}
-                      {data.n_excluded} excluded ({data.exclusion_reason}).
+                      Showing {data.n} of {data.n_dataset_total} samples in this dataset — {data.n_excluded} excluded
+                      {data.exclusion_breakdown && data.exclusion_breakdown.length === 1 ? (
+                        <> {data.exclusion_breakdown[0].reason}.</>
+                      ) : data.exclusion_breakdown && data.exclusion_breakdown.length > 1 ? (
+                        // One line per reason (METHODS.md 6.1): a merged count
+                        // put patients without follow-up and patients cut by
+                        // the quartile split behind the same number.
+                        <>
+                          :
+                          <span data-testid="survival-exclusions" className="mt-1 flex flex-col">
+                            {data.exclusion_breakdown.map((e) => (
+                              <span key={e.reason}>
+                                <span className="font-mono">{e.n}</span> {e.reason}
+                              </span>
+                            ))}
+                          </span>
+                        </>
+                      ) : (
+                        <> ({data.exclusion_reason}).</>
+                      )}
                     </p>
                   )}
                 </Panel>
@@ -328,13 +364,13 @@ export function SurvivalPage() {
                   <div className="flex flex-wrap gap-8">
                     <Stat
                       label="Log-rank p"
-                      value={data.logrank_p_value != null ? data.logrank_p_value.toExponential(2) : "—"}
+                      value={formatP(data.logrank_p_value)}
                       tone={data.logrank_p_value != null && data.logrank_p_value < 0.05 ? "hot" : "neutral"}
                     />
                     {data.cox && !coxIsDegenerate && (
                       <Stat
                         label="Cox model p"
-                        value={data.cox.log_likelihood_p_value.toExponential(2)}
+                        value={formatP(data.cox.log_likelihood_p_value)}
                         tone={data.cox.log_likelihood_p_value < 0.05 ? "hot" : "neutral"}
                       />
                     )}
@@ -374,8 +410,9 @@ export function SurvivalPage() {
                         // AUC bounded to [0, 1], so one unit is its full range.
                         <p data-testid="cox-unit-note" className="mt-2 text-[11.5px] text-ink-mute">
                           signature_score is the continuous AUC score (0–1); its hazard ratio compares a score of 1
-                          with a score of 0 — the whole range, not a typical difference between two patients. The
-                          HIGH/LOW curves and log-rank p above are the median-split comparison.
+                          with a score of 0 — the whole range, not a typical difference between two patients. It is
+                          fit on the {data.n} patients shown. The HIGH/LOW curves and log-rank p above compare groups
+                          split by {cutoffDescription}.
                         </p>
                       )}
                     </div>
@@ -389,4 +426,9 @@ export function SurvivalPage() {
       </div>
     </div>
   );
+}
+
+function fmtP(p: number | null | undefined): string {
+  if (p == null) return "—";
+  return p < 0.001 ? p.toExponential(2) : p.toFixed(3);
 }

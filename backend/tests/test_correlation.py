@@ -38,15 +38,18 @@ def test_gene_correlation_perfect_negative():
     assert result["coefficient"] == pytest.approx(-1.0)
 
 
-def test_gene_correlation_spearman_matches_scipy_directly():
+def test_gene_correlation_spearman_uses_rs_cor_test_p():
+    """rho as scipy; p as R's cor.test (AS 89), not scipy's
+    t-approximation (METHODS.md 7.6, tests/test_spearman_exact.py)."""
     from scipy import stats
+
+    from app.analysis.spearman import spearman_test
 
     matrix = _matrix(seed=1)
     result = gene_correlation(matrix, "GENE2", "GENE5", method="spearman")
 
-    expected_stat, expected_p = stats.spearmanr(matrix.loc["GENE2"], matrix.loc["GENE5"])
-    assert result["coefficient"] == pytest.approx(expected_stat)
-    assert result["p_value"] == pytest.approx(expected_p)
+    assert result["coefficient"] == pytest.approx(stats.spearmanr(matrix.loc["GENE2"], matrix.loc["GENE5"])[0])
+    assert result["p_value"] == pytest.approx(spearman_test(matrix.loc["GENE2"], matrix.loc["GENE5"])[1])
 
 
 def test_gene_correlation_unknown_gene_raises_keyerror():

@@ -19,14 +19,22 @@ from app.analysis.aux_analysis import (
     expression_vs_aux_correlation,
     most_mutated_genes,
 )
-from app.analysis.compare import expression_by_group, kruskal_wallis, pairwise_tests
+from app.analysis.compare import (
+    clean_group_label,
+    expression_by_group,
+    group_labels,
+    kruskal_wallis,
+    missing_group_reason,
+    pairwise_tests,
+)
 from app.analysis.contrast import contrast_gene_stats, top_contrast_genes
 from app.analysis.correlation import co_expression_network, gene_correlation
 from app.analysis.differential import top_differential_genes
 from app.analysis.dimensionality import pca
 from app.analysis.ranking import rank_by_gene, rank_by_signature
 from app.analysis.signature import auc_signature_score, is_log2_unit, log2_mean_signature_score
-from app.analysis.survival import binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
+from app.analysis.scale import on_analysis_scale
+from app.analysis.survival import tie_sensitivity, binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, AuxMatrix, Dataset
@@ -67,13 +75,30 @@ app.add_middleware(
 )
 
 
-@lru_cache(maxsize=8)
-def _get_dataset(dataset_id: str) -> Dataset:
+def _descriptor(dataset_id: str):
+    """The dataset's descriptor, or a 404 (a bare get_descriptor raised
+    KeyError, and /survival and /group-values answered 500)."""
     try:
-        descriptor = get_descriptor(dataset_id)
+        return get_descriptor(dataset_id)
     except KeyError:
         raise HTTPException(404, f"Unknown dataset: {dataset_id}")
-    return descriptor.loader()
+
+
+@lru_cache(maxsize=8)
+def _get_dataset(dataset_id: str) -> Dataset:
+    return _descriptor(dataset_id).loader()
+
+
+def _require_group_column(dataset_id: str, group_column: str) -> None:
+    """Only declared grouping columns can group samples: /compare accepted
+    days_to_death (about 100 'groups') or sample_id."""
+    descriptor = _descriptor(dataset_id)
+    if group_column not in descriptor.group_columns:
+        raise HTTPException(
+            422,
+            f"'{group_column}' is not a grouping column on '{descriptor.display_name}' "
+            f"(available: {', '.join(descriptor.group_columns) or 'none'}).",
+        )
 
 
 def _sample_groups(dataset_id: str, ds: Dataset) -> dict[str, dict]:
@@ -95,7 +120,7 @@ def _sample_groups(dataset_id: str, ds: Dataset) -> dict[str, dict]:
         groups = {}
         for col in declared:
             v = row[col] if col in samples.columns else nested.get(col)
-            groups[col] = None if v is None or (isinstance(v, float) and v != v) else v
+            groups[col] = clean_group_label(v)
         out[str(sid)] = groups
     return out
 
@@ -156,8 +181,57 @@ def _resolve_gene(ds: Dataset, gene: str) -> str:
                 f"expression matrix ({ds.source.expression_unit}) -- see the dataset notes. Its "
                 "statistics are in the design contrasts (Perturbation Contrasts).",
             )
+        current = _external_current_symbol(ds, stripped)
+        if current:
+            raise HTTPException(
+                404,
+                f"Gene '{stripped}' not found in dataset under that name; MyGene.info lists it as an "
+                f"older name or alias of {current}, which this dataset has -- search for {current} instead.",
+            )
         raise HTTPException(404, f"Gene '{gene}' not found in dataset.")
-    return matches["feature_id"].iloc[0]
+    ids = list(matches["feature_id"])
+    in_matrix = [f for f in ids if f in ds.matrix.index]
+    if len(in_matrix) > 1:
+        # One symbol, several rows (TARGET: 110 symbols over two or more
+        # Ensembl ids). The first-listed row was used, and in 42 of them it
+        # is not the most expressed: RGS5 got ENSG00000143248 (mean 0.28
+        # TPM) over ENSG00000232995 (1.29), DGCR5 an all-zero row. Use the
+        # highest-mean row -- the same label-independent rule as microarray
+        # probe collapse (METHODS.md 7.1, 7.4a).
+        return ds.matrix.loc[in_matrix].mean(axis=1).idxmax()
+    return in_matrix[0] if in_matrix else ids[0]
+
+
+def _resolve_genes(ds: Dataset, genes: list[str]) -> list[str]:
+    """Resolve a gene list, each feature once. "MYB" and "MYB (4602)", or
+    a symbol and its Ensembl id, are one gene: PCA took a gene given k
+    times k^2 times (TARGET MYCN twice: PC1 0.543 vs 0.375 deduplicated)
+    and log2-mean weighted it double."""
+    return list(dict.fromkeys(_resolve_gene(ds, g) for g in genes))
+
+
+def _external_current_symbol(ds: Dataset, gene: str) -> str | None:
+    """The current symbol for a legacy name or alias, from MyGene.info, if
+    this dataset has it -- a hint only, never a silent match (alias
+    resolution is undecided, METHODS.md 7.4). DepMap and TARGET record no
+    aliases, so KIAA1524 got a bare "not found" there while CIP2A is
+    present. Only when the queried name is listed among the record's
+    aliases (the lookup's free-text fallback can match loosely), and any
+    lookup failure means no hint."""
+    try:
+        info = lookup_gene(gene)
+    except Exception:
+        return None
+    if not info or not info.get("symbol"):
+        return None
+    symbol = str(info["symbol"])
+    if symbol.upper() == gene.upper():
+        return None
+    if gene.upper() not in {str(a).upper() for a in info.get("aliases") or []}:
+        return None
+    if not ds.features["symbol"].astype(str).str.upper().eq(symbol.upper()).any():
+        return None
+    return symbol
 
 
 def _contrast_only_feature(ds: Dataset, gene: str) -> str | None:
@@ -297,7 +371,15 @@ def gene_info(symbol: str):
     the annotation is a property of the gene, not of a dataset's own
     feature table. See app/services/gene_info.py for the alias-resolution
     rationale and why this isn't wired into gene lookup elsewhere yet."""
-    info = lookup_gene(symbol)
+    symbol = symbol.strip()
+    # A blank symbol became an empty cache filename and a 5,000-character
+    # one exceeded the filesystem's name limit: both answered 500.
+    if not symbol or len(symbol) > 64:
+        raise HTTPException(422, "A gene symbol of 1 to 64 characters is required.")
+    try:
+        info = lookup_gene(symbol)
+    except Exception:
+        raise HTTPException(503, "The gene annotation service could not be reached; try again later.")
     if info is None:
         raise HTTPException(404, f"No annotation found for '{symbol}'.")
     return info
@@ -379,7 +461,13 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
     before the dynamic one or "/datasets/compare-multi" would be captured
     as dataset_id="compare-multi" and 404 as an unknown dataset.
     """
-    requested = set(dataset_ids.split(",")) if dataset_ids else None
+    requested = {d.strip() for d in dataset_ids.split(",") if d.strip()} if dataset_ids else None
+    if requested:
+        unknown = sorted(requested - {d.dataset_id for d in list_descriptors()})
+        if unknown:
+            # A typo was silently dropped, so the user saw fewer datasets
+            # than they asked for with no reason.
+            raise HTTPException(404, f"Unknown dataset(s): {', '.join(unknown)}")
     results = []
     for d in list_descriptors():
         if requested is not None and d.dataset_id not in requested:
@@ -428,7 +516,9 @@ def compare_multi(gene: str, group_column: str, dataset_ids: str | None = None):
             # lineage (0 excluded, 100% coverage) still claimed "no value
             # recorded for 'lineage'", implying an exclusion that never
             # happened. Caught in QA, not by a user, but a real defect.
-            "exclusion_reason": f"no value recorded for '{group_column}'" if n_excluded > 0 else None,
+            "exclusion_reason": missing_group_reason(
+            ds.samples, group_column, set(ds.samples["sample_id"]) - set(df["sample_id"])
+        ),
             "points": df.to_dict("records"),
             "pairwise_tests": tests,
             "stratum_caveat": stratum_caveat,
@@ -459,7 +549,7 @@ def group_values(dataset_id: str, group_column: str):
     gene to already be entered (an earlier draft of the Differential
     Genes UI probed this via /compare with a hardcoded gene name, which
     is fragile -- not every dataset is guaranteed to have that gene)."""
-    descriptor = get_descriptor(dataset_id)
+    descriptor = _descriptor(dataset_id)
     if group_column not in descriptor.group_columns:
         # Sibling endpoints (/compare -> 400, /differential -> 422) both
         # reject an unrecognised group_column outright; this endpoint used
@@ -471,11 +561,7 @@ def group_values(dataset_id: str, group_column: str):
             404, f"'{group_column}' is not a grouping column on '{descriptor.display_name}'."
         )
     ds = _get_dataset(dataset_id)
-    if group_column in ds.samples.columns:
-        values = ds.samples[group_column]
-    else:
-        values = ds.samples["group_columns"].apply(lambda d: d.get(group_column))
-    counts = values.dropna().value_counts()
+    counts = group_labels(ds.samples, group_column).dropna().value_counts()
     return {
         "group_column": group_column,
         "values": [{"value": v, "n": int(n)} for v, n in counts.items()],
@@ -495,6 +581,7 @@ def group_values(dataset_id: str, group_column: str):
 
 @app.get("/datasets/{dataset_id}/compare")
 def compare(dataset_id: str, gene: str, group_column: str):
+    _require_group_column(dataset_id, group_column)
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
     df = expression_by_group(ds.matrix, ds.samples, feature_id, group_column)
@@ -516,7 +603,9 @@ def compare(dataset_id: str, gene: str, group_column: str):
         "n_excluded": n_excluded,
         # None when nothing was excluded -- see compare_multi's identical fix
         # above for why this can't be an unconditional string.
-        "exclusion_reason": f"no value recorded for '{group_column}'" if n_excluded > 0 else None,
+        "exclusion_reason": missing_group_reason(
+            ds.samples, group_column, set(ds.samples["sample_id"]) - set(df["sample_id"])
+        ),
         "points": df.to_dict("records"),
         "pairwise_tests": tests,
         "stratum_caveat": stratum_caveat,
@@ -536,11 +625,29 @@ def differential(dataset_id: str, group_column: str, group_a: str, group_b: str,
     count, not a micro-optimisation)."""
     if not (1 <= top_n <= 500):
         raise HTTPException(422, "top_n must be between 1 and 500.")
+    _require_group_column(dataset_id, group_column)
+    if group_a == group_b:
+        raise HTTPException(422, f"Group A and group B must differ (both were {group_a!r}).")
     ds = _get_dataset(dataset_id)
     try:
         result = top_differential_genes(ds.matrix, ds.samples, group_column, group_a, group_b, top_n=top_n)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    # Sample accounting (METHODS.md 6.1), each reason on its own: samples
+    # in neither compared group vs samples with no value at all.
+    labels = group_labels(ds.samples, group_column)
+    n_total = len(ds.samples)
+    n_missing = int(labels.isna().sum())
+    n_other = n_total - n_missing - result["n_a"] - result["n_b"]
+    breakdown = []
+    if n_other:
+        breakdown.append({"reason": f"in another '{group_column}' group", "n": n_other})
+    if n_missing:
+        breakdown.append({"reason": f"with no value recorded for '{group_column}'", "n": n_missing})
+    result["n_dataset_total"] = n_total
+    result["n_excluded"] = n_total - result["n_a"] - result["n_b"]
+    result["exclusion_breakdown"] = breakdown
+    result["exclusion_reason"] = "; ".join(f"{e['n']} {e['reason']}" for e in breakdown) or None
     # Attach display symbols the same way /co-expression does -- the
     # matrix's own index may be an Ensembl id (TARGET) or a symbol
     # (DepMap/GDS4299) depending on the dataset, but a reader always wants
@@ -737,7 +844,7 @@ def signature_score(dataset_id: str, body: SignatureRequest):
     if not body.genes:
         raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
-    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    feature_ids = _resolve_genes(ds, body.genes)
     if body.method == "auc":
         scores = auc_signature_score(ds.matrix, feature_ids)
     else:
@@ -769,7 +876,7 @@ def rank_signature(dataset_id: str, body: RankSignatureRequest):
     if not body.genes:
         raise HTTPException(422, "At least one gene is required.")
     ds = _get_dataset(dataset_id)
-    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    feature_ids = _resolve_genes(ds, body.genes)
     df = rank_by_signature(
         ds.matrix, ds.samples, feature_ids, method=body.method,
         already_log2=is_log2_unit(ds.source.expression_unit),
@@ -787,12 +894,16 @@ def correlation(dataset_id: str, gene_a: str, gene_b: str, method: Literal["pear
     ds = _get_dataset(dataset_id)
     feature_a = _resolve_gene(ds, gene_a)
     feature_b = _resolve_gene(ds, gene_b)
+    pair, value_unit = on_analysis_scale(ds.matrix.loc[[feature_a, feature_b]], ds.source.expression_unit)
     try:
-        result = gene_correlation(ds.matrix, feature_a, feature_b, method=method)
+        result = gene_correlation(pair, feature_a, feature_b, method=method)
     except ValueError as exc:
-        raise HTTPException(422, str(exc))
+        # Messages name the matrix's feature ids (Ensembl on TARGET); say
+        # them the way the user typed them.
+        raise HTTPException(422, str(exc).replace(feature_a, gene_a).replace(feature_b, gene_b))
     result["gene_a"] = gene_a
     result["gene_b"] = gene_b
+    result["value_unit"] = value_unit
     # Per-point groups so the scatter can be coloured: r pools every
     # sample, and a between-group difference alone can produce a strong r
     # (GSE66586 MYCN vs PPP2R5B, r = -0.85, is mostly amplified vs not).
@@ -816,7 +927,11 @@ def co_expression(
         raise HTTPException(422, "top_n must be between 1 and 200.")
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
-    network = co_expression_network(ds.matrix, feature_id, top_n=top_n, method=method, direction=direction)
+    try:
+        matrix, value_unit = on_analysis_scale(ds.matrix, ds.source.expression_unit)
+        network = co_expression_network(matrix, feature_id, top_n=top_n, method=method, direction=direction)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc).replace(feature_id, gene))
     # Map each result's feature_id back to its display symbol -- the
     # network is computed on the matrix's own index (Ensembl IDs for
     # TARGET, symbols for DepMap/GDS4299), but a reader wants gene symbols
@@ -824,7 +939,15 @@ def co_expression(
     symbol_by_feature = ds.features["symbol"]
     for entry in network:
         entry["symbol"] = symbol_by_feature.get(entry["gene"], entry["gene"])
-    return {"gene": gene, "method": method, "direction": direction, "network": network}
+    # n and scale, so an r over 8 samples is not read like one over 469.
+    return {
+        "gene": gene,
+        "method": method,
+        "direction": direction,
+        "n": int(ds.matrix.shape[1]),
+        "value_unit": value_unit,
+        "network": network,
+    }
 
 
 @app.get("/datasets/{dataset_id}/aux-layers")
@@ -891,7 +1014,7 @@ def aux_features(
     if not shared:
         return {"dataset_id": dataset_id, "layer": layer, "n_matching": 0, "features": []}
 
-    counts = aux.matrix[shared].notna().sum(axis=1)
+    counts = aux.usable_counts(shared)
     if usable_only:
         counts = counts[counts >= MIN_AUX_SAMPLES]
 
@@ -957,6 +1080,19 @@ def mutated_genes(dataset_id: str, top_n: int = 25):
         raise HTTPException(422, str(exc))
 
 
+def _resolve_mutated_gene(ds: Dataset, gene: str) -> str:
+    """Match a mutation-layer gene exactly, else case-insensitively if
+    unambiguous. Upper-casing alone turned C11orf53 (mutated in 2 covered
+    TARGET samples) into "C11ORF53 has no recorded mutation" -- 40 layer
+    genes have non-upper-case symbols."""
+    stripped = gene.strip()
+    aux = ds.aux.get(AuxLayer.MUTATION_STATUS) if ds.aux else None
+    if aux is None or stripped in aux.matrix.index:
+        return stripped
+    hits = [g for g in aux.matrix.index if str(g).upper() == stripped.upper()]
+    return hits[0] if len(hits) == 1 else stripped.upper()
+
+
 @app.get("/datasets/{dataset_id}/compare-by-mutation")
 def compare_by_mutation(dataset_id: str, gene: str, mutated_gene: str):
     """Expression of `gene`, split by whether each sample carries a
@@ -967,7 +1103,7 @@ def compare_by_mutation(dataset_id: str, gene: str, mutated_gene: str):
     ds = _get_dataset(dataset_id)
     feature_id = _resolve_gene(ds, gene)
     try:
-        result = expression_by_mutation_status(ds, feature_id, mutated_gene.strip().upper())
+        result = expression_by_mutation_status(ds, feature_id, _resolve_mutated_gene(ds, mutated_gene))
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     result["gene"] = gene
@@ -1054,8 +1190,10 @@ def dataset_pca(dataset_id: str, body: PCARequest):
             f"dataset -- need at least 2 to run PCA."
             + (f" Not found: {', '.join(missing_input_genes)}." if missing_input_genes else ""),
         )
+    feature_ids = list(dict.fromkeys(feature_ids))
+    subset, value_unit = on_analysis_scale(ds.matrix.loc[feature_ids], ds.source.expression_unit)
     try:
-        result = pca(ds.matrix, feature_ids, ds.samples, n_components=body.n_components)
+        result = pca(subset, feature_ids, ds.samples, n_components=body.n_components)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     # genes_missing from pca() reflects feature_ids that resolved but
@@ -1067,6 +1205,12 @@ def dataset_pca(dataset_id: str, body: PCARequest):
     groups = _sample_groups(dataset_id, ds)
     for point in result["points"]:
         point["group_columns"] = groups.get(point["sample_id"], {})
+    # Feature ids are Ensembl on TARGET; the title, export name and
+    # zero-variance note read them, so give symbols.
+    symbol = ds.features.set_index("feature_id")["symbol"] if "feature_id" in ds.features.columns else ds.features["symbol"]
+    for key in ("genes_used", "genes_missing", "genes_zero_variance"):
+        result[key] = [str(symbol.get(f, f)) for f in result[key]]
+    result["value_unit"] = value_unit
     result["genes_unrecognized"] = missing_input_genes
     # Why each one failed, in the resolver's words (e.g. "older name for
     # CIP2A"), so PCA explains what /compare already explains.
@@ -1099,14 +1243,14 @@ class SurvivalRequest(BaseModel):
 def survival(dataset_id: str, body: SurvivalRequest):
     if not body.genes:
         raise HTTPException(422, "At least one gene is required.")
-    descriptor = get_descriptor(dataset_id)
+    descriptor = _descriptor(dataset_id)
     if not descriptor.supports_survival:
         raise HTTPException(
             400,
             f"'{descriptor.display_name}' has no clinical follow-up data — survival analysis isn't available for it.",
         )
     ds = _get_dataset(dataset_id)
-    feature_ids = [_resolve_gene(ds, g) for g in body.genes]
+    feature_ids = _resolve_genes(ds, body.genes)
     scores = auc_signature_score(ds.matrix, feature_ids)
     surv_df = build_survival_frame(ds.samples, scores)
     if len(surv_df) < 10:
@@ -1149,9 +1293,15 @@ def survival(dataset_id: str, body: SurvivalRequest):
                 "tie_policy": body.tie_policy,
                 "message": (
                     f"{n_tied} samples share the exact score at a cutoff boundary "
-                    f"(common for a single gene, where every sample below the rank "
-                    f"threshold scores exactly 0). Applied tie policy: "
+                    f"(common for a single gene: every sample where it falls outside "
+                    f"the top 25% of genes scores exactly 0). Applied tie policy: "
                     f"'{body.tie_policy}'."
+                    + (
+                        " Trim keeps a fixed pseudo-random subset of the tied samples "
+                        "to reach the requested arm size."
+                        if body.tie_policy == "trim"
+                        else ""
+                    )
                 ),
             }
     # Quartile/custom cutoffs exclude a middle band on top of whatever
@@ -1178,30 +1328,54 @@ def survival(dataset_id: str, body: SurvivalRequest):
     # samples) surfaced as an unhandled 500 instead of cox: null.
     except (ValueError, ConvergenceError, StatError):
         result["cox"] = None
-    exclusion_reason = None
-    if n_excluded > 0:
-        if body.cutoff_method == "median":
-            exclusion_reason = "no follow-up time recorded"
-        else:
-            # quartile fixes both percentiles at 25 regardless of what the
-            # request body's cutoff_high_pct/cutoff_low_pct happened to be
-            # (those fields only take effect for "custom") -- the message
-            # must report what binarize_by_cutoff actually used, not the
-            # unused request defaults, or a quartile run would misreport
-            # itself as a "50%/50%" cutoff.
-            high_pct, low_pct = (25.0, 25.0) if body.cutoff_method == "quartile" else (
-                body.cutoff_high_pct, body.cutoff_low_pct,
-            )
-            exclusion_reason = (
-                "no follow-up time recorded, or score fell in the excluded middle band "
-                f"between the low ({low_pct:.0f}%) and high ({high_pct:.0f}%) cutoffs"
-            )
+    # Each reason counted on its own (METHODS.md 6.1, 8.6). One merged
+    # "235 excluded (no follow-up time recorded, or score fell in the
+    # excluded middle band)" put 3 patients without follow-up and 232 cut
+    # by the quartile split behind the same word.
+    exclusion_breakdown = []
+    n_no_followup = n_total - len(surv_df)
+    if n_no_followup > 0:
+        exclusion_breakdown.append({"reason": "with no follow-up time recorded", "n": n_no_followup})
+    if body.cutoff_method != "median":
+        high_pct, low_pct = (25.0, 25.0) if body.cutoff_method == "quartile" else (
+            body.cutoff_high_pct, body.cutoff_low_pct,
+        )
+        scores = surv_df["signature_score"]
+        in_band = (scores < scores.quantile(1 - high_pct / 100)) & (scores > scores.quantile(low_pct / 100))
+        n_band = int((in_band & group.isna()).sum())
+        n_tie_dropped = int((~in_band & group.isna()).sum())
+        if n_band > 0:
+            exclusion_breakdown.append({
+                "reason": f"with a score between the low ({low_pct:g}%) and high ({high_pct:g}%) cutoffs",
+                "n": n_band,
+            })
+        if n_tie_dropped > 0:
+            exclusion_breakdown.append({
+                "reason": (
+                    f"with a score tied at the low ({low_pct:g}%) or high ({high_pct:g}%) cutoff, "
+                    f"dropped by the '{body.tie_policy}' tie policy"
+                ),
+                "n": n_tie_dropped,
+            })
+    exclusion_reason = "; ".join(f"{e['n']} {e['reason']}" for e in exclusion_breakdown) or None
+    # When trim had to choose which tied patients to keep, say how much
+    # that arbitrary choice moves the answer (METHODS.md 3.1a).
+    if tie_note is not None and body.tie_policy == "trim" and any(
+        "tie policy" in e["reason"] for e in exclusion_breakdown
+    ):
+        tie_note["sensitivity"] = tie_sensitivity(
+            surv_df,
+            method=body.cutoff_method,
+            custom_high_pct=body.cutoff_high_pct,
+            custom_low_pct=body.cutoff_low_pct,
+        )
     return {
         "genes": body.genes,
         "n": n_grouped,
         "n_dataset_total": n_total,
         "n_excluded": n_excluded,
         "exclusion_reason": exclusion_reason,
+        "exclusion_breakdown": exclusion_breakdown,
         "tie_note": tie_note,
         **result,
     }

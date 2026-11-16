@@ -90,7 +90,7 @@ export interface CompareResult {
   group_column: string;
   points: ComparePoint[];
   pairwise_tests: PairwiseTest[];
-  kruskal_wallis: { h_stat: number | null; p_value: number | null };
+  kruskal_wallis: { h_stat: number | null; p_value: number | null; note?: string };
   // How much of the cohort this comparison actually ran on. A grouping
   // column populated for only part of a dataset (TARGET classifies
   // etp_status for 190 of 469) otherwise silently narrows the analysis.
@@ -116,7 +116,7 @@ export interface CompareMultiDatasetResult {
   exclusion_reason?: string | null;
   points?: ComparePoint[];
   pairwise_tests?: PairwiseTest[];
-  kruskal_wallis?: { h_stat: number | null; p_value: number | null };
+  kruskal_wallis?: { h_stat: number | null; p_value: number | null; note?: string };
   stratum_caveat?: string | null;
 }
 
@@ -166,6 +166,9 @@ export interface SurvivalResult {
     n_tied_at_cutoff: number;
     tie_policy: TiePolicy;
     message: string;
+    // Trim only, when it dropped tied samples: log-rank p over random
+    // choices of which tied samples to keep.
+    sensitivity?: { n_draws: number; p_median: number; p_low: number; p_high: number } | null;
   } | null;
   cox: {
     n: number;
@@ -187,6 +190,8 @@ export interface SurvivalResult {
   n_dataset_total: number;
   n_excluded: number;
   exclusion_reason: string | null;
+  // The same exclusions, one entry per reason; sums to n_excluded.
+  exclusion_breakdown?: { reason: string; n: number }[];
 }
 
 export interface CorrelationPoint {
@@ -201,6 +206,9 @@ export interface CorrelationResult {
   gene_a: string;
   gene_b: string;
   method: "pearson" | "spearman" | "kendall";
+  // Scale the points and Pearson r are on: log2_tpm for TPM data
+  // (METHODS.md 7.6a). Optional for older responses.
+  value_unit?: string;
   n: number;
   coefficient: number;
   p_value: number;
@@ -218,6 +226,8 @@ export interface CoExpressionResult {
   method: "pearson" | "spearman";
   direction: "positive" | "negative";
   network: CoExpressionEntry[];
+  n?: number;
+  value_unit?: string;
 }
 
 export interface PCAPoint {
@@ -260,6 +270,10 @@ export interface DifferentialResult {
   // See PairwiseTest.min_p_achievable. Optional: older responses lack it.
   min_p_achievable?: number | null;
   genes: DifferentialGeneRow[];
+  // Sample accounting (METHODS.md 6.1); one entry per reason.
+  n_dataset_total?: number;
+  n_excluded?: number;
+  exclusion_breakdown?: { reason: string; n: number }[];
 }
 
 // --- Design contrasts (Perturbation Contrasts pane)
@@ -432,6 +446,7 @@ export interface CompareByMutationResult {
 
 export interface ExpressionVsAuxResult {
   gene: string;
+  expression_value_unit?: string;
   aux_feature: string;
   aux_feature_label: string;
   aux_feature_moa: string | null;

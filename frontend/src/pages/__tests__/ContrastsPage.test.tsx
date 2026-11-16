@@ -315,3 +315,18 @@ describe("identity notes, shared names and sample accounting", () => {
     expect(screen.getAllByTestId("sample-accounting")[0].textContent).toMatch(/4 of 8/);
   });
 });
+
+describe("dataset notes", () => {
+  it("show the first sentence and expand on request", async () => {
+    const { DatasetNotes } = await import("../ContrastsPage");
+    const { render, screen, fireEvent } = await import("@testing-library/react");
+    const design = "Two independent experiments, n=2 per arm: C4-2B MYCL overexpression vs empty vector, and NCI-H660 knockdown.";
+    render(<DatasetNotes notes={`PMID 42001796. ${design} Long detail follows. And more.`} />);
+    const notes = screen.getByTestId("dataset-notes");
+    expect(notes).toHaveTextContent(`PMID 42001796. ${design}`);
+    expect(notes).not.toHaveTextContent("Long detail follows");
+    fireEvent.click(screen.getByRole("button", { name: "More about this dataset" }));
+    expect(notes).toHaveTextContent("Long detail follows. And more.");
+    expect(screen.getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
+  });
+});

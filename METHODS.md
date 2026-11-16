@@ -32,6 +32,14 @@ The non-parametric counterpart to one-way ANOVA, consistent with 1.1.
 Reported alongside pairwise tests so a reader can see whether *any*
 difference exists before reading individual pairs.
 
+**Update 2026-11-16.** When every value is identical (an unexpressed,
+all-zero gene) H is 0/0: scipy raised and `/compare` returned 500 for
+30,809 of GSE324984's 65,535 genes and 3,169 of TARGET's, and
+compare-multi lost every dataset when one had such a gene. Now no p (as
+R's `kruskal.test`, NA) with a stated reason shown on the page. The same
+audit re-derived every served U, pairwise p, BH q and KW p on all five
+datasets with R (1,475 pairs; max |Δp| 2.2e-16, max |Δq| 3.3e-16).
+
 ### 1.3 Multiple-testing correction
 **Decided.** Benjamini–Hochberg FDR, applied across the pairwise tests
 shown together. Reported as `q_value` next to each raw `p_value`.
@@ -237,9 +245,11 @@ median-mode implementation, unchanged).
   different comparison from median-split (fewer samples, cleaner
   separation), modelled on GEPIA3's identical mode — see
   reference/gepia3-feature-review.md. The excluded middle band is
-  additive to §3.3's existing "no follow-up time" exclusion, and both
-  reasons are combined in one `exclusion_reason` string rather than
-  only reporting one of the two causes. When scores tie exactly on a
+  additive to §3.3's existing "no follow-up time" exclusion. Each reason
+  is counted on its own in `exclusion_breakdown` (no follow-up / score
+  in the middle band / tied at a cutoff and dropped by the tie policy),
+  and `exclusion_reason` joins them with their counts (updated
+  2026-11-16; they were previously one merged string, see below). When scores tie exactly on a
   cutoff the arms are **not** a clean 25/25 split — see §3.1a, which
   governs what happens then and is user-selectable.
 - **custom** — same idea as quartile but with independently chosen
@@ -253,11 +263,30 @@ Verified: median mode reproduces the exact prior reference numbers
 independently by a separate code path — a regression here would have
 been silent otherwise.
 
+**Update 2026-11-16, from an independent audit.**
+- *Separate exclusion counts.* A TARGET quartile split read "235
+  excluded (no follow-up time recorded, or score fell in the excluded
+  middle band)": 3 patients and 232 patients behind one number, and for
+  MEF2C quartile + exclude the 218 bottom-quartile samples dropped by
+  the tie policy were called "middle band". Now 3 + 131 + 218 = 352,
+  each named (`main.py` survival endpoint; the Survival page lists them).
+- *A log-rank p needs two arms of at least 2.* Custom 0.2% / 0.2% gave
+  HIGH n = 1 vs LOW n = 1 and still printed p = 0.317;
+  `kaplan_meier_curves()` now returns `logrank_p_value: null` below that
+  (same floor as §1.4).
+- The page header, empty state and Cox caption said "median" whatever
+  cutoff ran; they now name the split used.
+
 ### 3.2 Event and duration
 **Decided.**
 - `event = 1` if `vital_status == "Dead"`, else 0 (right-censored)
 - `duration = days_to_death` if the patient died, else
   `days_to_last_follow_up`
+
+A `vital_status` of "Unknown" with a last follow-up time (3 TARGET
+patients) is therefore censored at that time, by this rule; 2 "Not
+Reported" patients have no time and are excluded (§3.3). In group
+comparisons these placeholders are missing values, not groups (§4.1).
 
 `survival.py:26-27`
 
@@ -285,6 +314,15 @@ of the backend only. Fixed in `frontend/src/pages/SurvivalPage.tsx`; the
 95% CI column is now confirmed rendering live (e.g. `9.209 – 74.688` for
 the ETP-TF5 gene set on TARGET). Recorded here so this specific
 computed-but-not-displayed gap doesn't quietly recur.
+
+**Update 2026-11-16.** Cox is fit to a convergence precision of 1e-12
+(`fit_options`): lifelines' default left the HR ~1.6e-4 off R's `coxph`,
+visible in the third decimal the UI shows (LMO2 custom 30/10: 7.174 vs
+R 7.17536; now 7.17536). In quartile and custom modes the Cox model is
+fit on the continuous score among the samples in the two arms only, so
+its HR moves with which samples the split keeps (MEF2C: 5.47 quartile
+trim, 135 quartile exclude); the caption says it is fit on the patients
+shown.
 
 ### 3.5 Cox failures
 **Decided.** If the Cox model cannot be fit (too few complete cases, an
@@ -315,6 +353,21 @@ This is substantial and easy to miss: grouping TARGET by `etp_status`
 runs on **190 of 469** samples (279 excluded), because ETP status is
 only classified for part of the cohort. `mrd_status` covers 265 of 469.
 
+**Update 2026-11-16: placeholders are missing values.** TARGET
+`vital_status` records "Unknown" (3) and "Not Reported" (2). As groups
+they entered Kruskal–Wallis and the BH family (MYCN KW p 8.1e-4 vs
+1.3e-4 on Alive/Dead) and produced a "Dead vs Not Reported" p = 0.044,
+while coverage read 100%. `compare.py` → `clean_group_label` /
+`group_labels` treat "Unknown", "Not Reported", "Not available",
+"missing", "N/A", "NA" and blank as missing, for `/compare`,
+`/compare-multi`, `/group-values`, `/differential` and plot colouring.
+The exclusion reason counts blanks and each placeholder separately
+("1 with no value recorded; 2 recorded as 'Unknown'").
+
+Only declared grouping columns can group samples: `/compare` accepted
+`days_to_death` (about 100 one-sample "groups") or `sample_id`; it and
+`/differential` now answer 422.
+
 ### 4.2 Missing metadata in output
 **Decided.** Missing values serialise as JSON `null` (rendered "—"), not
 `NaN`. `backend/app/analysis/ranking.py`
@@ -331,6 +384,11 @@ deliberately **excluded**. `ranking.py` → `_NON_META_COLUMNS`
 
 Survival fields are model inputs, not annotation someone scans while
 picking candidates.
+
+**Fix 2026-11-16:** TARGET also keeps both fields inside the nested
+`group_columns` dict, and the flattening loop did not apply
+`_NON_META_COLUMNS`, so they appeared in ranking rows. Now skipped there
+too.
 
 ---
 
@@ -489,6 +547,72 @@ button disabled) to TARGET-ALL-P2/`vital_status` (2 values, no message,
 button enabled, ranking runs normally) toggles correctly with no false
 positives on a working configuration.
 
+### 5.9 Figures say what they show; defaults show something
+**Decided (2026-11-16), from a user-standpoint pass over every pane.**
+- *Axes for non-negative data start at 0.* Box plots of log2(TPM+1) and
+  scatters of TPM / log2(TPM+1) padded below the minimum and drew an axis
+  to −2 (DepMap MYCN), a value no sample can have (`BoxPlot.tsx`
+  `valueDomain`, `ScatterPlot.tsx`).
+- *Log-scale box-plot ticks are round values*: 0 plus a 1-2-5, 1-3 or
+  decade series (TARGET TPM: 0, 1, 3, 10, 30, 100), not evenly spaced
+  log positions ("0.00, 1.70, 6.27, 18.6, 51.9, 142"). `logTicks()`.
+- *Every axis and value column names its quantity and unit*: scatter
+  axes give the scale the points are on (§7.6a); PCA axes give the
+  variance explained ("PC1 (73.2% of variance)"); the ranking column is
+  "MYCN expression (log2(TPM+1))" or "AUCell score (0–1)", not "Value";
+  the signature histogram names the score, its tallest bar's count and a
+  midpoint, with bin ranges in the tooltips.
+- *p-values print one way everywhere*: scientific below 0.001, else 4
+  decimals (`lib/format.ts`); Kruskal–Wallis, mutation, log-rank and Cox
+  p were always scientific ("7.51e-1").
+- *Defaults that answer something.* Expression Compare defaulted to
+  DepMap's `lineage` (all 186 lines Lymphoid: one group, nothing to test);
+  grouping options are now ordered by how many datasets expose them
+  (default `etp_status`), and a one-group result says there is nothing
+  to compare. Scatter colouring, until the user picks, uses the first
+  grouping with 2–8 groups among the plotted samples, or none. The CRISPR
+  tab opens on MYB vs MYB dependency (all 91 screened lines, r = −0.652)
+  instead of RPL13A (13 lines).
+- *Long dataset notes fold*: GSE324984's ~200-word note shows its design
+  sentences with "More about this dataset" for the rest.
+- *Accessibility*: every toggle reports its state (`aria-pressed`); every
+  select and input has an accessible name (28 had none); the sidebar
+  scrolls (at 1440×900 its last dataset was cut off and unreachable) and
+  its amber note meets WCAG AA contrast (was 3.5:1). Checked with
+  axe-core in the running app; the one remaining finding is inside the
+  dockview tab component (nested-interactive), a library limitation.
+- The app is deliberately light-only (index.css); a dark OS setting does
+  not alter it. At 390 px width no pane overflows horizontally; Genome
+  Tracks explains it needs a wider pane.
+- *Second sweep (every pane × every dataset, every export, every Genome
+  Tracks locus, bad input, 390 px).* Fixed: grouping by a per-sample
+  identifier (cell_line_name, 186 groups of 1) drew a 5,640 px box plot
+  — it now says each sample is its own group; Top differential genes
+  opens on TARGET ETP vs non-ETP and steps past one-value columns; every
+  PNG export names its dataset (correlation, PCA, mutation, CRISPR/drug,
+  survival overwrote one another across datasets); result tables expose
+  a keyboard-focusable scroll region and name blank headers; failed
+  requests are announced (`role="alert"`); Run comparison is disabled
+  with an empty gene. DepMap and TARGET now hint at the current name for
+  a legacy one (§7.4). Pane tabs no longer nest a close button inside
+  the focusable tab (axe nested-interactive); a focused tab closes with
+  Delete. axe reports no violations.
+- *Fourth pass.* Every chart exported on every dataset (32 files): names
+  now carry the settings that change the result — survival cutoff and tie
+  policy, correlation method, network method, a tag for the gene panel —
+  after median and quartile (and Pearson and Spearman) exports were found
+  overwriting each other. At 390 px every view was screenshotted: charts
+  now lay out at the real width instead of shrinking to 67%, panel headers
+  wrap, and the fold-change chart keeps native size and scrolls sideways
+  (it had shrunk to unreadable ~3 px text). IGV zoom, drag-pan and typed
+  search work; the preset button un-highlights once IGV moves away.
+  Every calculation this audit changed was re-checked against R on the
+  served values: 15 correlations (5 datasets × 3 methods) and 3
+  expression-vs-CRISPR cases (|Δr| ≤ 4e-16, p relative ≤ 6e-14, one case
+  where R returns 0 and the app the t-approximation), 4 survival
+  configurations including the new tie order (log-rank, HR, CI identical
+  to R `survival`), and log-scale PCA on both TPM datasets (prcomp, ≤ 1e-14).
+
 ---
 
 ## 6. Reporting and transparency
@@ -501,6 +625,11 @@ reason, shown in the UI.
 Added after expert review: "n = 466" against a listed 469 was read as an
 undisclosed third dataset. Applies to both survival (§3.3) and grouped
 comparison (§4.1).
+
+**Update 2026-11-16.** Reasons are counted separately wherever more than
+one applies, as `exclusion_breakdown` (list of `{reason, n}`): survival
+(§3.1) and genome-wide differential genes (§7.8: samples in another
+group vs samples with no value — TARGET ETP vs non-ETP: 25 + 279).
 
 ### 6.2 Source attribution
 **Decided.** Dataset and paper citations live **only** in the Sources
@@ -741,6 +870,35 @@ disclosed the same way the probe-collapse rule in §7.1 is). Revisit this
 half of the decision separately; don't fold it in silently as a side
 effect of the annotation panel shipping.
 
+**Fix 2026-11-16:** GDS4299's ingest renames KIAA1524 → CIP2A and PME1 →
+PPME1 (§7.1) but wrote empty alias lists, so the "older name for CIP2A"
+hint could never fire there and KIAA1524 got a bare "not found" — the
+coverage claim update (1) above set out to remove. The renamed names are
+now recorded as aliases (`gds4299.py` → `legacy_aliases`); re-ingested
+and verified live.
+
+**Hint for datasets with no alias table (2026-11-16).** DepMap and TARGET
+record no aliases, so the hint above could never fire there. When a name
+is not found and the dataset has no alias for it, `_external_current_symbol`
+asks the annotation service (MyGene.info, cached) for the current symbol
+and names it — only if the queried name is listed among that record's
+aliases and the dataset has the current symbol. Still a hint, never a
+silent match; any lookup failure gives the plain message. Live: KIAA1524
+on TARGET and DepMap → "older name or alias of CIP2A … search for CIP2A".
+
+### 7.4a One symbol, several rows: the most-expressed row
+**Decided (2026-11-16), after an independent audit.** When a symbol
+matches more than one feature in the matrix, `_resolve_gene` returns the
+row with the highest mean expression. It returned the first listed: on
+TARGET 110 symbols span two or more Ensembl rows and in 42 the first is
+not the most expressed (RGS5: ENSG00000143248, mean 0.28 TPM, over
+ENSG00000232995, 1.29; DGCR5: an all-zero row, which then failed
+correlation). Highest mean is the same label-independent rule as probe
+collapse (§7.1), so it is not circular. Gene lists are deduplicated after
+resolving (`_resolve_genes`), so a symbol and its feature id count once:
+PCA took a gene given twice four times (TARGET MYCN: PC1 0.543 vs 0.375)
+and log2-mean weighted it double.
+
 ### 7.5 DepMap release staleness
 **Decided and implemented (2026-08-29).** The DepMap loader
 (`backend/app/ingest/depmap.py`) can only ever find **DepMap 24Q4 Public**
@@ -875,6 +1033,43 @@ needed:**
    group a wider minimum width and letting it wrap onto a second row if
    still squeezed, instead of silently clipping.
 
+### 7.6a Correlation: scale, Spearman p, constant genes, what an r rests on
+**Decided (2026-11-16), after an independent audit.** The audit
+re-derived Pearson/Spearman/Kendall r and p, co-expression partners, PCA
+and every aux join with R on all five datasets; these are the changes.
+
+- *Scale.* Pearson r, co-expression, expression-vs-aux and PCA run on
+  log2(x + 1) for linear units (TPM: TARGET, GSE324984); log2 data is
+  untouched (`app/analysis/scale.py`). On linear TPM a few very high
+  values drove r: TARGET DTX1 vs NOTCH3 r = 0.113, p = 0.014 on TPM,
+  0.037, p = 0.42 on log2(TPM + 1) (now served). Same transform as the
+  log2-mean score (§2.4). Spearman and Kendall do not change. Responses
+  carry `value_unit` and the axes say log2(TPM+1). GDS4299 ETP-TF5 PC1
+  stays 0.7315.
+- *Spearman p as R's `cor.test`.* scipy's t-approximation was used at
+  every n; R uses AS 89 for n < 1290 without ties (exact to n = 9, an
+  Edgeworth series above). At n = 8, 39 of 200 tie-free genes against
+  MYCL on GSE324984 moved across 0.05 (MYCL vs YBX2: 0.0465 served,
+  0.0576 exact, now served). Ported (`app/analysis/spearman.py`); on 840
+  random cases from n = 3 to 469 it matches `cor.test` to 7e-16. Ties
+  keep the t-approximation, as R does. One deliberate departure: far in
+  the tail the Edgeworth series goes negative and is clipped to exactly
+  0, which R prints as "p < 2.2e-16" (108 of the 840 cases; GDS4299
+  MYCN vs RAG1, n = 52, rho = −0.78, served "0.00e+0"). A p of 0 is never
+  right, so there the t-approximation is used (1.3e-11 for that pair).
+- *Constant genes.* A gene with one value in every sample (30,809 of
+  GSE324984's genes, 2,445 of TARGET's) gave NaN r: `/correlation` and
+  `/expression-vs-aux` returned 500 and `/co-expression` an empty
+  network. Now a 422 naming the gene.
+- *What a co-expression r rests on.* The network has no p-value or
+  correction across the genes searched; it now says so, with n and the
+  scale, and warns below 20 samples (several genes at r = 0.952 with
+  MYCL on GSE324984's 8 samples looked as strong as TARGET's 469).
+- *Speed.* The co-expression sweep is one centred matrix product instead
+  of `DataFrame.corrwith` (TARGET Pearson ~3 s → 0.3 s); checked against
+  the old code on all five datasets — same genes, max |Δr| 3e-15,
+  identical top-200 order.
+
 ### 7.7 PCA / dimensionality reduction
 **Decided and implemented (2026-08-30).** `backend/app/analysis/
 dimensionality.py`, `POST /datasets/{id}/pca`, new "PCA" tab on the
@@ -915,6 +1110,12 @@ ETP samples cluster visibly apart from non-ETP on PC1 (ETP range
 -4.08 to -0.94; non-ETP range -2.24 to 2.53) — confirmed both via the
 raw API response and by looking at the actual rendered, color-coded
 scatter plot in the browser, not just the numbers.
+
+**Update 2026-11-16.** PCA runs on log2(x + 1) for TPM data (§7.6a),
+counts a repeated gene once (§7.4a), reports `genes_used` /
+`genes_zero_variance` as symbols rather than Ensembl ids, and labels its
+axes with the variance explained. Variance ratios and coordinates match
+R `prcomp` (≤ 1e-16 / ≤ 7e-15).
 
 ### 7.8 Genome-wide top differential genes
 **Decided and implemented (2026-08-30).** `backend/app/analysis/
@@ -971,6 +1172,13 @@ ETP-TF5 signature used elsewhere in this app) do rank highly (65th and
 458th of 60,660) once checked directly, confirming the method is finding
 real biology — just competing against genuinely low p-values from a
 different, also-legitimate source at the very top of the list.
+
+**Update 2026-11-16.** The response reports `n_dataset_total`,
+`n_excluded` and `exclusion_breakdown` (§6.1), shown under the table, and
+group A = group B is a 422 (it tested 19 samples against themselves).
+Every p, q and median was re-derived with R on six comparisons across
+five datasets (max Δp 2.9e-22, Δq 3.6e-20); top-500 set and order
+identical.
 
 ### 7.9 Dataset warm-up must not gate the deploy healthcheck
 **Decided (2026-09-20), after a failed Railway deploy.**
@@ -1158,6 +1366,18 @@ backup. Same conclusion either way.
 
 Gene-level only for now; amino-acid-level resolution is deferred (the
 loader keeps the columns that would allow it).
+
+**Re-measured 2026-11-16.** The layer as served has 5,762 genes over the
+279 covered samples (the 6,250 × 717 above is the matrix before it is
+joined to samples with expression; the 6,250 → 5,762 gap is not traced
+here). 2,916 of the 5,762 have no mutant among the covered samples (§8.6
+said 2,701). `/aux-layers` called all 5,762 "usable", because a
+true/false matrix is never null; usable now means at least 3 mutated
+samples — 168 genes (`AuxMatrix.usable_counts`), and the feature picker
+counts mutants. `compare-by-mutation` resolves mixed-case genes
+(C11orf53, mutated in 2 covered samples, was refused after
+upper-casing; 40 layer genes are not upper-case). Mann–Whitney U and p
+for DTX1/MYCN/PTEN × NOTCH1/FBXW7/PTEN match R `wilcox.test`.
 
 ### 8.3 DepMap CRISPR gene effect
 **Implemented.** `backend/app/ingest/depmap_crispr.py`. 17,916 genes ×
@@ -1384,6 +1604,34 @@ ties actually occur.
 `trim` is the default because it is the only policy that keeps the arms
 consistent with what the interface says it is doing, and it never
 silently produces an unusable result.
+
+**Update 2026-11-16: which tied samples `trim` keeps, and how much that
+matters.** `trim` kept the tied samples in sorted sample-id order. TARGET
+USIs track outcome (event rate by sextile of sorted id: 0.40, 0.47, 0.22,
+0.14, 0.10, 0.04), so the kept tied patients were systematically the
+high-event ones. TAL1 quartile: kept tied patients had a 0.41 event rate
+against 0.12 for those dropped, and the served log-rank p (5.0e-5) lay
+outside every one of 2,000 random tie-breaks (median 0.044). Now:
+- Ties are ordered by a SHA-256 hash of the sample id
+  (`survival.py` → `_tie_order`): repeatable, unrelated to how ids were
+  assigned. TAL1 now p = 0.0052.
+- When `trim` drops tied samples, the response's `tie_note.sensitivity`
+  gives the log-rank p over 200 random tie-breaks (median and middle
+  95%), shown in the tie note: TAL1 0.0032–0.35 (median 0.040); MEF2C
+  5.1e-11–3.0e-7 (median 6.0e-9). A result whose range crosses 0.05
+  depends on an arbitrary choice, and the page says so.
+
+Numbers above re-measured after the AUCell fix (§2.1, 2026-11-16), which
+changed which scores are exactly 0:
+
+| gene | scores = 0.0 | inclusive | trim | exclude |
+|---|---|---|---|---|
+| MEF2C | 218 / 466 | 117 / 218 (p 1.46e-13) | 117 / 116 (p 1.36e-7) | 117 / 0 |
+| TAL1 | 246 / 466 | 117 / 246 (p 0.025) | 117 / 116 (p 0.0052) | 117 / 0 |
+| LMO2 | no tie | 117 / 117 | 117 / 117 | 117 / 117 |
+
+The 2026-09-23 addendum's HR = 18341 for MEF2C quartile + exclude is now
+135.4 (scores changed); the gating it describes is unchanged.
 
 **Addendum (2026-09-23), after QA.** An emptied arm under `exclude` was
 disclosed in the KM plot's tie note, but the Cox table below it was not
@@ -1910,3 +2158,4 @@ uses the same words.
 | 2026-11-15 | §2.4: "log2 mean" signature scores re-logged data already on a log2 scale (DepMap, GDS4299, GSE66586), giving mean log2(log2(x)+1). Fixed for both endpoints; GSE66586 scores now match the raw GEO probe means exactly. AUC scoring and survival unaffected. Tests validated by reintroducing the defect; backend 270 passed. |
 | 2026-11-15 | §3 Survival, from user-standpoint testing: TARGET MEF2C median split re-run in R `survival` on the same scores — n 466 (233/233), log-rank p 1.797e-13 vs app 1.798e-13, Cox HR 7.003 (3.904–12.562), p 6.628e-11, identical. Day-axis ticks now round (0, 1000 … 4000, was 1096, 2192 …); a caption under the Cox table says the signature_score hazard ratio is per 1.0 of a 0–1 AUC score — its whole range — since "HR 27.7" for ETP-TF5 otherwise reads as a per-unit effect. Censoring marks are not drawn (the API does not return censoring times); noted, not done. |
 | 2026-11-16 | §2.1–2.3: the AUC signature score now reproduces AUCell exactly — step-function area and AUCell's maxAUC normalisation instead of a trapezoid over `aucThreshold × n`; ties scored as the exact expectation of AUCell's random tie-breaking. Verified against R AUCell 1.20.2 on five datasets (untied samples ≤ 6e-17) and the TARGET ETP-TF5 survival result against R `survival`. Scores fall by up to 0.10; 16 DepMap / 8 TARGET / 2 GDS4299 samples change median-split side for ETP-TF5; TARGET ETP-TF5 Cox HR 27.7 → 23.5, log-rank p 2.20e-14 → 2.53e-14. |
+| 2026-11-16 | Full-feature audit (three independent agents recomputing every endpoint in R, plus a pane-by-pane UI pass). Numbers matched R throughout: compare/differential (1,475 pairs), correlation, PCA, aux joins, survival arms/KM/log-rank (80 configurations), contrasts. Fixed: KW 500 on constant genes (§1.2); placeholder group labels as groups and undeclared grouping columns (§4.1); survival exclusions merged, trim tie-break by sample id with a new sensitivity range, 1-vs-1 log-rank, Cox precision, captions (§3.1, §3.1a, §3.4); duplicate symbols and repeated genes (§7.4a); correlation scale, Spearman p, constant genes, co-expression caveat (§7.6a); PCA symbols/axes (§7.7); differential accounting (§7.8); GDS4299 aliases (§7.4); mutation usable count (§8.2); 404s for unknown datasets; figures, defaults and accessibility (§5.9). §3.1a numbers re-measured after the AUCell change. |

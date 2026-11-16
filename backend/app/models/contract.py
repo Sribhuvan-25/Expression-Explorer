@@ -151,7 +151,18 @@ class AuxMatrix:
         present = [s for s in sample_ids if s in self.matrix.columns]
         if not present:
             return 0
-        return int((self.matrix[present].notna().sum(axis=1) >= min_samples).sum())
+        return int((self.usable_counts(present) >= min_samples).sum())
+
+    def usable_counts(self, sample_ids: list[str]):
+        """Per feature, the number of samples that make it analysable: the
+        non-null values, or for a true/false layer (mutations) the samples
+        that are True. A mutation matrix is never null, so counting
+        non-nulls called all 5,762 TARGET genes usable while 2,916 have no
+        mutant among the covered samples and every lookup on them fails."""
+        sub = self.matrix[sample_ids]
+        if all(dtype == bool for dtype in sub.dtypes):
+            return sub.sum(axis=1)
+        return sub.notna().sum(axis=1)
 
 
 class ContrastSpec(BaseModel):

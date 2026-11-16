@@ -36,6 +36,7 @@ def pca(
     actually separate samples, which defeats the point of using a curated
     gene set in the first place.
     """
+    gene_ids = list(dict.fromkeys(gene_ids))  # a repeated id entered PCA k^2 times
     present = [g for g in gene_ids if g in matrix.index]
     missing = [g for g in gene_ids if g not in matrix.index]
     if len(present) < 2:

@@ -142,3 +142,56 @@ describe("DifferentialGenesTab CSV export identity", () => {
     expect((rows as Record<string, unknown>[])[0].dataset_id).toBe("target_all_p2");
   });
 });
+
+describe("DifferentialGenesTab sample accounting", () => {
+  it("states how many samples were compared and why the rest were not", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TWO_VALUED_DATASET] });
+    vi.spyOn(api, "groupValues").mockResolvedValue({
+      group_column: "vital_status",
+      values: [
+        { value: "Alive", n: 358 },
+        { value: "Dead", n: 106 },
+      ],
+      unavailable: false,
+    });
+    vi.spyOn(api, "differential").mockResolvedValue({
+      group_column: "vital_status",
+      group_a: "Dead",
+      group_b: "Alive",
+      n_a: 106,
+      n_b: 358,
+      n_genes_tested: 60660,
+      top_n: 50,
+      genes: [],
+      n_dataset_total: 469,
+      n_excluded: 5,
+      exclusion_breakdown: [{ reason: "with no value recorded for 'vital_status'", n: 5 }],
+    });
+    renderTab();
+    const { fireEvent } = await import("@testing-library/react");
+    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /rank genes/i }));
+    const line = await screen.findByTestId("differential-exclusions");
+    expect(line).toHaveTextContent("464 of 469 samples compared — 5 with no value recorded for 'vital_status'.");
+  });
+});
+
+describe("DifferentialGenesTab default comparison", () => {
+  it("opens on a dataset's ETP grouping and steps past a one-value column", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue({
+      datasets: [
+        { ...SINGLE_VALUED_DATASET, group_columns: ["lineage", "subtype"] },
+        { ...TWO_VALUED_DATASET, group_columns: ["vital_status", "etp_status"] },
+      ],
+    });
+    vi.spyOn(api, "groupValues").mockImplementation(async (_ds, col) => ({
+      group_column: col,
+      values: col === "etp_status" ? [{ value: "ETP", n: 19 }, { value: "non-ETP", n: 146 }] : [{ value: "Lymphoid", n: 186 }],
+      unavailable: false,
+    }));
+    renderTab();
+    await waitFor(() => expect(screen.getByLabelText("Dataset")).toHaveValue("target_all_p2"));
+    await waitFor(() => expect(screen.getAllByLabelText("Group by").at(-1)).toHaveValue("etp_status"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled());
+  });
+});

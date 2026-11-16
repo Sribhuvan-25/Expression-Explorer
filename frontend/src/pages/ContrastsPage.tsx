@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnit } from "../lib/units";
 import { parseGeneInput, type ParsedGene } from "../lib/geneInput";
+import { geneListTag } from "../lib/exportName";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -163,7 +164,10 @@ function FoldChangeChart({
       viewBox={`0 0 ${W} ${H}`}
       width={W}
       height={H}
-      className="block max-w-full"
+      // Native size, scrolled sideways by the wrapper on a narrow screen:
+      // max-w-full shrank the 640-wide chart to 214 px at 390 px width,
+      // leaving ~3 px text and a tall blank band above it.
+      className="block"
       role="img"
       aria-label="log2 fold-change per contrast"
     >
@@ -231,7 +235,8 @@ function FoldChangeChart({
         ),
       )}
       <text x={(plotX0 + plotX1) / 2} y={H - 8} textAnchor="middle" fontSize={10} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
-        LOG2 FOLD-CHANGE (TREATMENT − REFERENCE) · SOLID = q &lt; 0.05 · BARS BEYOND ±{L} TRUNCATED
+        LOG2 FOLD-CHANGE (TREATMENT − REFERENCE) · SOLID = q &lt; 0.05
+        {maxAbs > L ? ` · BARS BEYOND ±${L} TRUNCATED (›), VALUE PRINTED` : ""}
       </text>
     </svg>
   );
@@ -490,7 +495,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
     }
     const base = Object.keys(rows[0] ?? { dataset_id: 0 }).filter((k) => !/_(sample|value|norm_cpm)_\d+$/.test(k));
     exportRowsAsCsv(
-      `${dataset.dataset_id}-contrast-panel`,
+      `${dataset.dataset_id}-contrast-panel-${geneListTag(query?.parsed.map((g) => g.gene) ?? [])}`,
       [...base.map((k) => ({ key: k, label: k })), ...repCols],
       rows,
     );
@@ -565,7 +570,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
               action={
                 <ExportButton
                   svgRef={chartRef}
-                  filename={`${dataset.dataset_id}-contrast-panel-log2fc`}
+                  filename={`${dataset.dataset_id}-contrast-panel-log2fc-${geneListTag(query?.parsed.map((g) => g.gene) ?? [])}`}
                   title={`log2 fold-change per contrast — ${dataset.display_name}`}
                   subtitle={shownContrasts[0]?.method ?? ""}
                   statLines={[
@@ -733,7 +738,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
         <div className="flex flex-col gap-4 @sm:flex-row @sm:flex-wrap @sm:items-end">
           <div className="min-w-[24ch] flex-[2]">
             <label className={lbl}>Contrast</label>
-            <select value={contrastId} onChange={(e) => setContrastId(e.target.value)} className={sel}>
+            <select aria-label="Contrast" value={contrastId} onChange={(e) => setContrastId(e.target.value)} className={sel}>
               {contrasts.map((x) => (
                 <option key={x.contrast_id} value={x.contrast_id}>
                   {x.label}
@@ -743,7 +748,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
           </div>
           <div className="min-w-[12ch] flex-1">
             <label className={lbl}>Direction</label>
-            <select value={direction} onChange={(e) => setDirection(e.target.value as ContrastDirection)} className={sel}>
+            <select aria-label="Direction" value={direction} onChange={(e) => setDirection(e.target.value as ContrastDirection)} className={sel}>
               <option value="both">Both</option>
               <option value="up">Up (log2FC &gt; 0)</option>
               <option value="down">Down (log2FC &lt; 0)</option>
@@ -751,7 +756,7 @@ function TopGenesTab({ dataset, contrasts }: { dataset: DatasetSummary; contrast
           </div>
           <div className="min-w-[10ch] flex-1">
             <label className={lbl}>Show top</label>
-            <select value={n} onChange={(e) => setN(Number(e.target.value))} className={sel}>
+            <select aria-label="Show top" value={n} onChange={(e) => setN(Number(e.target.value))} className={sel}>
               {[25, 50, 100, 250, 500].map((v) => (
                 <option key={v} value={v}>
                   {v}
@@ -959,7 +964,7 @@ export function ContrastsPage() {
               {` · ${formatUnit(dataset.expression_unit)}`}
               {` · ${dataset.n_contrasts} contrasts`}
             </p>
-            {dataset.notes && <p className="mt-2 text-[11.5px] leading-relaxed text-ink-soft">{dataset.notes}</p>}
+            {dataset.notes && <DatasetNotes notes={dataset.notes} />}
           </Panel>
         )}
         {contrastError && <ErrorState message={(contrastError as Error).message} />}
@@ -972,6 +977,7 @@ export function ContrastsPage() {
                 { key: "top" as const, label: "Top genes" },
               ]).map((t) => (
                 <button
+                  aria-pressed={tab === t.key}
                   key={t.key}
                   type="button"
                   onClick={() => setTab(t.key)}
@@ -994,5 +1000,42 @@ export function ContrastsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A dataset's notes, first sentence visible and the rest behind "More".
+ * GSE324984's notes run to ~200 words; shown in full they pushed the
+ * controls below the fold on every visit. Exported for tests.
+ */
+export function DatasetNotes({ notes }: { notes: string }) {
+  const [open, setOpen] = useState(false);
+  // Whole sentences until ~120 characters: "PMID 42001796." alone says
+  // nothing; the design sentence after it is what a reader needs.
+  const sentences = notes.match(/[^.]+(\.(\s|$)|$)/g) ?? [notes];
+  let first = "";
+  for (const sentence of sentences) {
+    first += sentence;
+    if (first.trim().length >= 120) break;
+  }
+  first = first.trim();
+  const rest = notes.slice(notes.indexOf(first) + first.length).trim();
+  return (
+    <p data-testid="dataset-notes" className="mt-2 text-[11.5px] leading-relaxed text-ink-soft">
+      {first}
+      {rest && (
+        <>
+          {open && <> {rest}</>}{" "}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="font-mono text-[11px] text-accent underline-offset-2 hover:underline"
+          >
+            {open ? "Less" : "More about this dataset"}
+          </button>
+        </>
+      )}
+    </p>
   );
 }

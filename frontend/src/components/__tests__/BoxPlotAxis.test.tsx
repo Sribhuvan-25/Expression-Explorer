@@ -84,3 +84,28 @@ describe("box plot tick labels", () => {
     expect(labels).toEqual(["7", "8", "9", "10", "11"]);
   });
 });
+
+describe("box plot axis for non-negative log units", () => {
+  it("does not run below 0 when no value can", () => {
+    const [lo] = valueDomain([0, 0, 0.2, 6.4], true);
+    expect(lo).toBe(0);
+    const pts = [0, 0, 0.1, 0.3, 2.2, 6.4].map((v, i) => ({ sample_id: `S${i}`, group: "Lymphoid", value: v }));
+    const { container } = render(<BoxPlot points={pts} valueLabel="expression" unit="log2_tpm" />);
+    expect(Math.min(...axisTicks(container))).toBe(0);
+  });
+});
+
+describe("box plot log-scale ticks", () => {
+  it("lands on round values", async () => {
+    const { logTicks } = await import("../BoxPlot");
+    expect(logTicks(148)).toEqual([0, 1, 3, 10, 30, 100]);
+    expect(logTicks(6.4)).toEqual([0, 0.5, 1, 2, 5]);
+    expect(logTicks(5000)).toEqual([0, 10, 100, 1000]);
+    for (const max of [0.8, 3, 42, 900, 12000]) {
+      const t = logTicks(max);
+      expect(t.length).toBeGreaterThanOrEqual(2);
+      expect(t.length).toBeLessThanOrEqual(7);
+      expect(Math.max(...t)).toBeLessThanOrEqual(max);
+    }
+  });
+});

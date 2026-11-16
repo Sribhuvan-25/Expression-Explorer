@@ -120,3 +120,50 @@ describe("Expression Compare export prints the FDR q it claims", () => {
     );
   });
 });
+
+describe("Expression Compare with a gene whose values are all identical", () => {
+  it("says why there is no Kruskal-Wallis p instead of failing", () => {
+    const flat = result("gse324984", "GSE324984");
+    flat.points = flat.points!.map((p) => ({ ...p, value: 0 }));
+    flat.kruskal_wallis = {
+      h_stat: null,
+      p_value: null,
+      note: "Every value is identical, so there is nothing to rank and no test is possible.",
+    };
+    render(<DatasetPanel result={flat} gene="TNMD" />);
+    expect(screen.getByTestId("kw-note")).toHaveTextContent("TNMD: Every value is identical");
+  });
+});
+
+describe("Expression Compare defaults and single-group results", () => {
+  it("defaults to the grouping most datasets share", async () => {
+    const { allGroupColumns } = await import("../ComparePage");
+    expect(
+      allGroupColumns([
+        { group_columns: ["lineage", "subtype"] },
+        { group_columns: ["vital_status", "etp_status"] },
+        { group_columns: ["etp_status"] },
+      ])[0],
+    ).toBe("etp_status");
+  });
+
+  it("says there is nothing to compare when every sample is in one group", () => {
+    const one = result("depmap", "DepMap");
+    one.points = one.points!.map((p) => ({ ...p, group: "Lymphoid" }));
+    one.kruskal_wallis = { h_stat: null, p_value: null };
+    render(<DatasetPanel result={one} gene="MYCN" />);
+    expect(screen.getByTestId("single-group-note")).toHaveTextContent(
+      "All 6 samples fall in one group (Lymphoid), so there is nothing to compare",
+    );
+  });
+});
+
+describe("Expression Compare grouped by a per-sample identifier", () => {
+  it("explains instead of drawing one box per sample", () => {
+    const own = result("depmap", "DepMap");
+    own.points = own.points!.map((p, i) => ({ ...p, group: `LINE${i}` }));
+    const { container } = render(<DatasetPanel result={own} gene="MYCN" />);
+    expect(screen.getByTestId("own-group-note")).toHaveTextContent("Every one of the 6 samples is its own group");
+    expect(container.querySelector("svg[role=img]")).toBeNull();
+  });
+});

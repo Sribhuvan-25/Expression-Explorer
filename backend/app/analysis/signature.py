@@ -88,7 +88,7 @@ def log2_mean_signature_score(
     microarray log2 intensity) and is averaged as is. Transforming it
     again gave the mean of log2(log2(x)+1) on three of five datasets
     (METHODS.md 2.4)."""
-    present = [g for g in gene_ids if g in matrix.index]
+    present = list(dict.fromkeys(g for g in gene_ids if g in matrix.index))  # each gene once, as AUC
     if not present:
         return pd.Series(np.nan, index=matrix.columns)
     log_vals = matrix.loc[present] if already_log2 else np.log2(matrix.loc[present] + 1)

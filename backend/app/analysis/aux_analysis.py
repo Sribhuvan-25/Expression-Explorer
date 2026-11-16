@@ -14,6 +14,8 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
+from app.analysis.scale import on_analysis_scale
+from app.analysis.spearman import spearman_test
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, Dataset
 
 
@@ -136,14 +138,14 @@ def expression_vs_aux_correlation(
     if aux_feature_id not in aux.matrix.index:
         raise KeyError(f"{aux_feature_id} not found in the {layer.value} layer.")
 
-    methods = {"pearson": stats.pearsonr, "spearman": stats.spearmanr}
+    methods = {"pearson": stats.pearsonr, "spearman": spearman_test}
     if method not in methods:
         raise ValueError(f"Unknown correlation method: {method!r}")
 
     shared = [c for c in ds.matrix.columns if c in aux.matrix.columns]
     paired = pd.DataFrame(
         {
-            "expression": ds.matrix.loc[expression_feature_id, shared],
+            "expression": on_analysis_scale(ds.matrix.loc[expression_feature_id, shared], ds.source.expression_unit)[0],
             "aux": aux.matrix.loc[aux_feature_id, shared],
         }
     ).dropna()
@@ -170,6 +172,13 @@ def expression_vs_aux_correlation(
             f"for this gene -- need at least {MIN_AUX_SAMPLES} paired samples to correlate."
         )
 
+    for column, label in (("expression", "This gene's expression"), ("aux", f"'{aux_feature_id}'")):
+        if paired[column].nunique() <= 1:
+            # Constant values give a NaN r, which is not valid JSON (500).
+            raise ValueError(
+                f"{label} has the same value ({paired[column].iloc[0]:g}) in all {len(paired)} paired "
+                f"samples, so it has no variance and cannot be correlated."
+            )
     stat, p_value = methods[method](paired["expression"], paired["aux"])
     n_total = int(ds.matrix.shape[1])
 
@@ -192,6 +201,7 @@ def expression_vs_aux_correlation(
 
     return {
         "layer": layer.value,
+        "expression_value_unit": on_analysis_scale(0.0, ds.source.expression_unit)[1],
         "value_label": aux.value_label,
         "value_description": aux.value_description,
         "method": method,

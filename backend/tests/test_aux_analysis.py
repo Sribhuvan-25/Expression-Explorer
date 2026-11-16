@@ -144,8 +144,9 @@ def test_most_mutated_genes_ranks_by_sample_count():
 def test_expression_vs_aux_correlation_matches_scipy():
     rng = np.random.default_rng(0)
     sample_ids = [f"ACH-{i:06d}" for i in range(20)]
-    expr_vals = rng.normal(size=20)
-    aux_vals = expr_vals * -2 + rng.normal(scale=0.1, size=20)
+    expr_vals = rng.uniform(1, 60, size=20)  # TPM
+    # TPM is correlated as log2(TPM + 1) (METHODS.md 7.6a).
+    aux_vals = np.log2(expr_vals + 1) * -2 + rng.normal(scale=0.1, size=20)
 
     expression = pd.DataFrame([expr_vals], index=["MYCN"], columns=sample_ids)
     effects = pd.DataFrame([aux_vals], index=["MYCN"], columns=sample_ids)
@@ -153,10 +154,11 @@ def test_expression_vs_aux_correlation_matches_scipy():
 
     result = expression_vs_aux_correlation(ds, AuxLayer.CRISPR_GENE_EFFECT, "MYCN", "MYCN")
 
-    expected_r, expected_p = stats.pearsonr(expr_vals, aux_vals)
+    expected_r, expected_p = stats.pearsonr(np.log2(expr_vals + 1), aux_vals)
     assert result["coefficient"] == pytest.approx(expected_r)
     assert result["p_value"] == pytest.approx(expected_p)
     assert result["n"] == 20
+    assert result["expression_value_unit"] == "log2_tpm"
     # Strongly anti-correlated by construction.
     assert result["coefficient"] < -0.9
 
