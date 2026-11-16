@@ -113,26 +113,32 @@ export function parseGeneInput(text: string): ParsedGene[] {
 
 // ------------------------------------------------- across both experiments
 
-export type AcrossClass = "reciprocal" | "opposite_ns" | "same" | "none";
-
-export const ACROSS_LABELS: Record<AcrossClass, string> = {
-  reciprocal: "Reciprocal (both q<0.05)",
-  opposite_ns: "Opposite direction, not significant in both",
-  same: "Same direction in both",
-  none: "—",
-};
-
-/** Exported for tests: the four-way rule for the two-contrast case. */
-export function classifyAcross(cells: (ContrastPanelCell | undefined)[]): AcrossClass {
-  if (cells.length !== 2) return "none";
+/**
+ * Exported for tests: the "across both experiments" verdict for the
+ * two-contrast case, in words that say WHICH experiment reaches q < 0.05.
+ *
+ * The earlier four-way label ("Opposite direction, not significant in
+ * both") read as "significant in neither" for CIP2A, SET and PPP2R1B,
+ * which are q < 0.002 in C4-2B -- and "Same direction in both" gave
+ * PPP2R2C (q < 0.05 in both) the same words as ARPP19 (in neither).
+ * Caught in user-standpoint testing.
+ */
+export function describeAcross(cells: (ContrastPanelCell | undefined)[], tags: string[]): string {
+  if (cells.length !== 2 || tags.length !== 2) return "—";
   const [a, b] = cells;
-  if (!a?.tested || !b?.tested || !isNum(a.log2_fc) || !isNum(b.log2_fc)) return "none";
-  const prod = a.log2_fc * b.log2_fc;
-  if (prod < 0) {
-    return isNum(a.q_value) && isNum(b.q_value) && a.q_value < 0.05 && b.q_value < 0.05 ? "reciprocal" : "opposite_ns";
-  }
-  if (prod > 0) return "same";
-  return "none";
+  const usable = (c: ContrastPanelCell | undefined) => !!c?.tested && isNum(c.log2_fc);
+  if (!usable(a) && !usable(b)) return "—";
+  if (!usable(a)) return `Tested only in ${tags[1]}`;
+  if (!usable(b)) return `Tested only in ${tags[0]}`;
+  const prod = a!.log2_fc! * b!.log2_fc!;
+  if (prod === 0) return "—";
+  const sig = [a, b].map((c) => isNum(c!.q_value) && c!.q_value! < 0.05);
+  const opposite = prod < 0;
+  if (sig[0] && sig[1]) return opposite ? "Reciprocal (both q<0.05)" : "Same direction (both q<0.05)";
+  const dir = opposite ? "Opposite direction" : "Same direction";
+  if (sig[0]) return `${dir}; q<0.05 only in ${tags[0]}`;
+  if (sig[1]) return `${dir}; q<0.05 only in ${tags[1]}`;
+  return `${dir}; q≥0.05 in both`;
 }
 
 function perturbation(c: ContrastSummary): { gene: string; kind: "gain" | "loss" } | null {
@@ -472,7 +478,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
         continue;
       }
       const r = it.row!;
-      const across = twoWay ? ACROSS_LABELS[classifyAcross(shownContrasts.map((c) => r.contrasts?.find((x) => x?.contrast_id === c.contrast_id)))] : "";
+      const across = twoWay ? describeAcross(shownContrasts.map((c) => r.contrasts?.find((x) => x?.contrast_id === c.contrast_id)), shownContrasts.map(contrastTag)) : "";
       for (const c of shownContrasts) {
         const cell = r.contrasts?.find((x) => x?.contrast_id === c.contrast_id);
         const row: Record<string, unknown> = {
@@ -684,7 +690,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
                           ))}
                           {twoWay && (
                             <td className="min-w-[18ch] border-b border-l border-rule px-2.5 py-1.5 align-top text-[12px] text-ink-soft">
-                              {ACROSS_LABELS[classifyAcross(shownContrasts.map((c) => it.row!.contrasts?.find((x) => x?.contrast_id === c.contrast_id)))]}
+                              {describeAcross(shownContrasts.map((c) => it.row!.contrasts?.find((x) => x?.contrast_id === c.contrast_id)), shownContrasts.map(contrastTag))}
                             </td>
                           )}
                         </tr>

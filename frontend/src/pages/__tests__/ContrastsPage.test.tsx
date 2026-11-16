@@ -15,7 +15,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ContrastsPage, classifyAcross, ACROSS_LABELS } from "../ContrastsPage";
+import { ContrastsPage, describeAcross } from "../ContrastsPage";
 import { api } from "../../lib/api";
 import type { ContrastPanelCell, ContrastPanelResult, ContrastPanelRow, ContrastSummary, DatasetSummary } from "../../lib/api";
 
@@ -226,24 +226,30 @@ describe("Perturbation Contrasts gene panel", () => {
 });
 
 describe("Across both experiments classification", () => {
-  it("covers reciprocal, opposite-not-significant, same, and untested", () => {
-    expect(classifyAcross([cell("oe", { log2_fc: 2, q_value: 0.01 }), cell("kd", { log2_fc: -1, q_value: 0.02 })])).toBe(
-      "reciprocal",
-    );
-    // CIP2A: OE -0.94 q=0.0002, KD +0.008 q=0.97 -> opposite but not both significant.
-    expect(
-      classifyAcross([cell("oe", { log2_fc: -0.94, q_value: 0.0002 }), cell("kd", { log2_fc: 0.008, q_value: 0.97 })]),
-    ).toBe("opposite_ns");
+  const T = ["C4-2B", "NCI-H660"];
+  const pair = (fa: number, qa: number | null, fb: number, qb: number | null) =>
+    describeAcross([cell("oe", { log2_fc: fa, q_value: qa }), cell("kd", { log2_fc: fb, q_value: qb })], T);
+
+  it("names which experiment reaches q<0.05 instead of an ambiguous 'not significant in both'", () => {
+    // Values from the served PP2A panel.
+    expect(pair(1.26, 3.1e-4, -0.89, 0.0011)).toBe("Reciprocal (both q<0.05)"); // PPP2R5B
+    expect(pair(-0.94, 2.1e-4, 0.01, 0.97)).toBe("Opposite direction; q<0.05 only in C4-2B"); // CIP2A
+    expect(pair(-0.08, 0.44, 0.18, 0.19)).toBe("Opposite direction; q≥0.05 in both"); // PPME1
+    expect(pair(1.12, 0.016, 0.4, 0.015)).toBe("Same direction (both q<0.05)"); // PPP2R2C
+    expect(pair(-0.14, 0.19, -0.46, 0.0057)).toBe("Same direction; q<0.05 only in NCI-H660"); // PPP2R5D
+    expect(pair(-0.18, 0.061, -0.12, 0.47)).toBe("Same direction; q≥0.05 in both"); // ARPP19
     // q exactly 0.05 is not < 0.05.
-    expect(classifyAcross([cell("oe", { log2_fc: 2, q_value: 0.05 }), cell("kd", { log2_fc: -1, q_value: 0.01 })])).toBe(
-      "opposite_ns",
-    );
-    expect(classifyAcross([cell("oe", { log2_fc: -0.18 }), cell("kd", { log2_fc: -0.12 })])).toBe("same");
+    expect(pair(2, 0.05, -1, 0.01)).toBe("Opposite direction; q<0.05 only in NCI-H660");
+  });
+
+  it("says which experiment a half-tested gene was tested in", () => {
+    // MYCN: too few reads in C4-2B.
     expect(
-      classifyAcross([cell("oe", { tested: false, log2_fc: null, q_value: null }), cell("kd", { log2_fc: -1 })]),
-    ).toBe("none");
-    expect(ACROSS_LABELS.reciprocal).toBe("Reciprocal (both q<0.05)");
-    expect(ACROSS_LABELS.none).toBe("—");
+      describeAcross([cell("oe", { tested: false, log2_fc: null, q_value: null }), cell("kd", { log2_fc: -0.08, q_value: 0.9 })], T),
+    ).toBe("Tested only in NCI-H660");
+    expect(
+      describeAcross([cell("oe", { tested: false, log2_fc: null }), cell("kd", { tested: false, log2_fc: null })], T),
+    ).toBe("—");
   });
 });
 

@@ -1735,6 +1735,16 @@ about protein level or PP2A activity. Direction-only differences of
 small size (|log2FC| < 0.3) at n = 2 deserve caution even when q is
 small, since the variance prior is doing much of the work.
 
+The panel's "Across both experiments" column states the direction and
+which experiment reaches q < 0.05, by name: "Reciprocal (both q<0.05)",
+"Opposite direction; q<0.05 only in C4-2B", "Same direction (both
+q<0.05)", "… q≥0.05 in both", or "Tested only in NCI-H660" when the
+other experiment's filter dropped the gene. Same-direction movement in
+an overexpression and a knockdown is not the MYCL-dependent pattern,
+whatever its q. Code: `describeAcross` in
+`frontend/src/pages/ContrastsPage.tsx`; the panel CSV's `across_both_experiments` column
+uses the same words.
+
 ---
 
 ## Change log
@@ -1779,3 +1789,4 @@ small, since the variance prior is doing much of the work.
 | 2026-11-15 | Remaining usability/identity gaps closed, each verified in the browser and pinned by a test validated by reintroducing the defect. Signature Score listed bare GSM ids; it now reads the same scores from `/rank-signature` (identical to `/signature-score` on all 5 datasets, max difference 0.0, both methods) and shows each sample's cell line and groups. A renamed gene (C1orf112, now FIRRM) returned a bare "not found" on GSE324984: the gene-annotation panel, which already knew the current symbol from MyGene.info, now says the searched name is a previous one and offers "Search FIRRM instead" — an explicit choice, never a silent re-query (§7.4). Compare's skipped-dataset line printed a double full stop. Differential and Sample Ranking CSVs did not name their dataset (same group pair from two datasets overwrote one file): dataset id now in filename and every row; differential CSV carries the exact-test floor. Differential, Sample Ranking, panel and top-genes CSVs and every PNG export checked against the API (corrected: the co-expression CSV was not yet checked at this point — see next line). Backend 260 passed (1 skipped), frontend 56 passed, tsc and build clean, 107-check API sweep clean. |
 | 2026-11-15 | Co-expression network CSV — the one CSV export not yet checked — exported in the browser: matched the API on all 20 rows but carried no dataset in its filename or rows (one gene's network from two datasets overwrote one file); fixed like the others, with a test validated by reverting the fix. The app has exactly five CSV exports (Compare differential, Perturbation Contrasts panel and top genes, Sample Ranking, co-expression), all now verified value-for-value against the API; Correlation scatter, PCA and Survival export PNG only, all verified. §7.1 and §8.2 now lead with the values the running app serves (Mann–Whitney on GDS4299; post-§8.6a DTX1/MYCN), the earlier figures kept as dated history. Frontend 57 passed, backend 260 passed. |
 | 2026-11-15 | §9.1a: backend tests are now network-free by construction (`tests/conftest.py` refuses non-loopback connections). Found while waiting on PR #1's CI: one listing test was silently downloading every real cohort, ~19 of CI's ~20 minutes. Suite on an empty cache: 264 passed, 1 skipped in ~7 s. |
+| 2026-11-15 | §11.5: the panel's "Across both experiments" column said "Opposite direction, not significant in both" for CIP2A, SET and PPP2R1B, which are q < 0.002 in C4-2B — readable as "significant in neither" — and gave "Same direction in both" to PPP2R2C (q < 0.05 in both) and ARPP19 (in neither) alike. Now names which experiment reaches q < 0.05, and says "Tested only in NCI-H660" for MYCN/PPP2R2B instead of a dash. Found in user-standpoint testing; same session re-checked the 23-gene panel against an independent R edgeR/limma run on the raw GEO counts (44 gene × contrast pairs, max |ΔlogFC| 4.5e-15, max relative Δp and Δq 1.5e-12) and all 184 replicate TPMs against the raw TPM file (0 mismatches). Test validated by restoring the old wording. |
