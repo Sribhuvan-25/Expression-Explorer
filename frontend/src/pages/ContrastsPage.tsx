@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatUnit } from "../lib/units";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -19,16 +20,7 @@ import { exportRowsAsCsv } from "../lib/exportTable";
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-export function formatUnit(unit: string | undefined | null): string {
-  const map: Record<string, string> = {
-    tpm: "TPM",
-    log2_tpm: "log2(TPM+1)",
-    log2_intensity: "log2 intensity",
-    cpm: "CPM",
-  };
-  if (!unit) return "expression";
-  return map[unit] ?? unit.replace(/_/g, " ");
-}
+export { formatUnit };
 
 export function fmtP(v: unknown): string {
   if (!isNum(v)) return "—";

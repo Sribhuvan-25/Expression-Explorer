@@ -934,6 +934,7 @@ def compare_by_mutation(dataset_id: str, gene: str, mutated_gene: str):
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     result["gene"] = gene
+    result["expression_unit"] = ds.source.expression_unit
     return result
 
 

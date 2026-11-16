@@ -279,9 +279,27 @@ to linear meant users saw the unreadable view first.
 Uses `log1p` / `expm1`, not bare log: true zeros are common and
 `log(0)` is undefined, while `log1p(0) = 0`.
 
+**Update 2026-11-15 — units already on a log scale.** `BoxPlot` now takes
+the dataset's `expression_unit`. For `log2_*` and `delta_ct` units the
+toggle is hidden (a further `log1p` would plot log of a log2 value) and
+the axis is **fitted to the data with 8% padding instead of starting at
+0** (`valueDomain`). Zero is meaningful on a TPM axis ("not expressed")
+and stays there; on a log2 axis it is just a low reading. Found in
+user-standpoint testing: GSE66586 PPP2R5B (7.5–10.0 log2 intensity) on a
+0-based axis filled the top quarter of the plot and the MYCN-status
+difference was barely visible. The axis title now names the unit
+("EXPRESSION (LOG2 INTENSITY)"), so an exported PNG says what its numbers
+are.
+
 ### 5.2 Axis headroom
 **Decided.** 4% headroom added in **raw** space, before the log
 transform. `BoxPlot.tsx:134-135`
+
+Linear axes (2026-11-15) put ticks on round values — steps of 1, 2, 2.5
+or 5 × 10^k (`niceTicks`) — with the domain widened to the outer ticks,
+all printed at one precision; the previous evenly divided axis printed
+"10.4, 8.35, 6.25, 4.18". The headroom rule above still governs the log
+mode.
 
 Scaling the transformed max instead inflates exponentially once
 untransformed for tick labels: a real max of 6.402 printed as 7.02, an
@@ -342,6 +360,16 @@ the dataset name as the only title, so exporting two genes silently
 image — a saved figure could not be identified after the fact, which
 makes it useless as a record. Every other export site already named its
 subject; this one and the PCA title (a bare "PCA") were the exceptions.
+
+**2026-11-15 additions.** Box-plot PNGs print each pair's FDR q beside
+its raw p (the subtitle says "with FDR correction"; the image printed
+only raw p, e.g. 0.0357 for a pair whose q is 0.107). The box plot uses
+the shared scatter/PCA palette: its own order put two near-identical
+blues on groups 1 and 3, the PCA defect above, so GSE66586's
+"non-malignant" and "MYCN-amplified" boxes looked alike. With ≤ 40
+samples, sample dots are drawn larger and opaque (each one is the data
+in a cell-line panel). The export stamp uses the local date (it was UTC,
+so evening exports in the Americas carried tomorrow's date).
 
 ### 5.8 A disabled control must say why
 **Decided (2026-09-21), found during regression testing.** The
@@ -1790,3 +1818,4 @@ uses the same words.
 | 2026-11-15 | Co-expression network CSV — the one CSV export not yet checked — exported in the browser: matched the API on all 20 rows but carried no dataset in its filename or rows (one gene's network from two datasets overwrote one file); fixed like the others, with a test validated by reverting the fix. The app has exactly five CSV exports (Compare differential, Perturbation Contrasts panel and top genes, Sample Ranking, co-expression), all now verified value-for-value against the API; Correlation scatter, PCA and Survival export PNG only, all verified. §7.1 and §8.2 now lead with the values the running app serves (Mann–Whitney on GDS4299; post-§8.6a DTX1/MYCN), the earlier figures kept as dated history. Frontend 57 passed, backend 260 passed. |
 | 2026-11-15 | §9.1a: backend tests are now network-free by construction (`tests/conftest.py` refuses non-loopback connections). Found while waiting on PR #1's CI: one listing test was silently downloading every real cohort, ~19 of CI's ~20 minutes. Suite on an empty cache: 264 passed, 1 skipped in ~7 s. |
 | 2026-11-15 | §11.5: the panel's "Across both experiments" column said "Opposite direction, not significant in both" for CIP2A, SET and PPP2R1B, which are q < 0.002 in C4-2B — readable as "significant in neither" — and gave "Same direction in both" to PPP2R2C (q < 0.05 in both) and ARPP19 (in neither) alike. Now names which experiment reaches q < 0.05, and says "Tested only in NCI-H660" for MYCN/PPP2R2B instead of a dash. Found in user-standpoint testing; same session re-checked the 23-gene panel against an independent R edgeR/limma run on the raw GEO counts (44 gene × contrast pairs, max |ΔlogFC| 4.5e-15, max relative Δp and Δq 1.5e-12) and all 184 replicate TPMs against the raw TPM file (0 mismatches). Test validated by restoring the old wording. |
+| 2026-11-15 | §5.1/5.2/5.7, from user-standpoint testing of GSE66586 in Expression Compare: box plots of log-scale units (log2 intensity, log2 TPM) no longer start the axis at 0 or offer log-of-log; ticks are round and of one precision; the axis names the unit; groups 1 and 3 no longer share near-identical blues; small-n sample dots are visible; box-plot PNGs print FDR q beside p; export date is local. `/compare-by-mutation` now returns `expression_unit` so the Multi-omics box plot gets the same axis. Statistics unchanged: PPP2R5B by MYCN status re-derived by hand (exact Mann–Whitney 2/56, 2/21, 2/10; BH 0.107/0.143/0.2) and matches the served table. Each fix has a test validated by reintroducing the defect; frontend 67 passed, backend 264 passed. |

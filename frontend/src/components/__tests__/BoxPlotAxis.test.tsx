@@ -1,0 +1,86 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { BoxPlot, niceTicks, valueDomain } from "../BoxPlot";
+
+// GSE66586 PPP2R5B by MYCN status, as served (log2 intensity).
+const PPP2R5B = [
+  ["non-malignant", 9.829],
+  ["non-malignant", 10.037],
+  ["MYCN-amplified", 8.307],
+  ["MYCN-amplified", 7.534],
+  ["MYCN-amplified", 8.032],
+  ["MYCN-amplified", 8.309],
+  ["MYCN-amplified", 8.195],
+  ["MYCN non-amplified", 8.95],
+  ["MYCN non-amplified", 9.499],
+  ["MYCN non-amplified", 8.72],
+].map(([group, value], i) => ({ sample_id: `GSM${i}`, group: group as string, value: value as number }));
+
+function axisTicks(container: HTMLElement): number[] {
+  // Tick labels are the mono-font texts left of the plot.
+  return [...container.querySelectorAll("svg text[text-anchor='end'][dominant-baseline='middle']")]
+    .map((t) => Number(t.textContent))
+    .filter((v) => Number.isFinite(v));
+}
+
+describe("box plot value axis", () => {
+  it("does not anchor log-scale units at 0, so group differences stay visible", () => {
+    const { container } = render(<BoxPlot points={PPP2R5B} valueLabel="expression" unit="log2_intensity" />);
+    const ticks = axisTicks(container);
+    expect(Math.min(...ticks)).toBeGreaterThan(6);
+    expect(Math.min(...ticks)).toBeLessThanOrEqual(7.534);
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(10.037);
+    // The data fills most of the axis instead of its top quarter.
+    expect((10.037 - 7.534) / (Math.max(...ticks) - Math.min(...ticks))).toBeGreaterThan(0.6);
+  });
+
+  it("names the unit on the axis and offers no log-of-log toggle", () => {
+    render(<BoxPlot points={PPP2R5B} valueLabel="expression" unit="log2_intensity" />);
+    expect(screen.getByText("EXPRESSION (LOG2 INTENSITY)")).toBeInTheDocument();
+    expect(screen.queryByText("Log scale")).toBeNull();
+  });
+
+  it("keeps 0 on the axis for linear units such as TPM", () => {
+    const tpm = PPP2R5B.map((p) => ({ ...p, value: 2 ** p.value }));
+    const { container } = render(<BoxPlot points={tpm} valueLabel="expression" unit="tpm" />);
+    expect(Math.min(...axisTicks(container))).toBe(0);
+    expect(screen.getByText("EXPRESSION (TPM)")).toBeInTheDocument();
+    expect(screen.getByText("Log scale")).toBeInTheDocument();
+  });
+
+  it("puts ticks on round values", () => {
+    expect(niceTicks(0, 10.4)).toEqual([0, 2.5, 5, 7.5, 10, 12.5]);
+    expect(niceTicks(7.33, 10.24)).toEqual([7, 8, 9, 10, 11]);
+    expect(niceTicks(-0.3, 0.7)).toEqual([-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8]);
+    expect(niceTicks(5, 5).length).toBeGreaterThan(1);
+  });
+
+  it("pads a log-unit domain around the data, and a linear one from 0", () => {
+    const [lo, hi] = valueDomain([7.534, 10.037], true);
+    expect(lo).toBeLessThan(7.534);
+    expect(lo).toBeGreaterThan(7);
+    expect(hi).toBeGreaterThan(10.037);
+    expect(valueDomain([3, 40], false)[0]).toBe(0);
+  });
+});
+
+describe("box plot group colours", () => {
+  it("gives three groups three distinguishable colours (no two blues)", () => {
+    const { container } = render(<BoxPlot points={PPP2R5B} valueLabel="expression" unit="log2_intensity" />);
+    const fills = [...container.querySelectorAll("svg rect[fill-opacity]")].map((r) => r.getAttribute("fill"));
+    expect(fills).toHaveLength(3);
+    expect(new Set(fills).size).toBe(3);
+    // --accent and --cool render as near-identical blues.
+    expect(fills.includes("var(--accent)") && fills.includes("var(--cool)")).toBe(false);
+  });
+});
+
+describe("box plot tick labels", () => {
+  it("prints ticks of one step at one precision", () => {
+    const { container } = render(<BoxPlot points={PPP2R5B} valueLabel="expression" unit="log2_intensity" />);
+    const labels = [...container.querySelectorAll("svg text[text-anchor='end'][dominant-baseline='middle']")].map(
+      (t) => t.textContent,
+    );
+    expect(labels).toEqual(["7", "8", "9", "10", "11"]);
+  });
+});

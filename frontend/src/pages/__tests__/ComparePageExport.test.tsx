@@ -101,3 +101,22 @@ describe("Expression Compare export carries the small-sample floor", () => {
     expect(lines.find((l) => l.startsWith("C vs D"))).not.toContain("smallest possible");
   });
 });
+
+describe("Expression Compare export prints the FDR q it claims", () => {
+  it("puts each pair's FDR q beside its raw p, as the on-page table does", async () => {
+    // The subtitle reads "Mann–Whitney with FDR correction" but the image
+    // printed only raw p, so a reader of the PNG saw p = 0.0357 for a pair
+    // whose corrected q is 0.107.
+    const r = result("gse66586", "GSE66586");
+    r.pairwise_tests = [
+      { group_a: "MYCN non-amplified", group_b: "MYCN-amplified", n_a: 3, n_b: 5, u_stat: 15, p_value: 2 / 56, q_value: 0.1071 },
+    ] as CompareMultiDatasetResult["pairwise_tests"];
+    render(<DatasetPanel result={r} gene="PPP2R5B" />);
+    await userEvent.click(screen.getByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const lines = (spy.mock.calls.at(-1)![2] as { statLines: string[] }).statLines;
+    expect(lines.find((l) => l.startsWith("MYCN non-amplified"))).toBe(
+      "MYCN non-amplified vs MYCN-amplified: p = 0.0357, FDR q = 0.1071",
+    );
+  });
+});
