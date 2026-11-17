@@ -737,8 +737,11 @@ caption, so they appear once on screen and once in the image.
   `nowrap` in every table; the pairwise table uses `DataTable fit` (no
   minimum width, the comparison label wraps). Measured at 390×844: no
   horizontal overflow, every column visible. The Top differential genes
-  table still scrolls sideways at 390 px, because wrapping gene symbols
-  reads worse. `frontend/src/components/ui.tsx`. The Survival results grid
+  table first kept scrolling sideways at 390 px, because `fit` alone broke
+  gene symbols mid-name ("SHAN" / "K3"); a per-column `nowrap` now keeps
+  symbols whole while only the Δ median header wraps, so it fits too
+  (measured 338 = 338 px, all five columns, no cell on two lines).
+  `frontend/src/components/ui.tsx`. The Survival results grid
   had the same defect (the Cox table pushed the plot 134 px out of the
   pane) and now uses a `minmax(0, 1fr)` column.
 
@@ -762,6 +765,18 @@ key still printed "blue" for it and "teal" for the actually blue
 and `ColorNames.test.ts` resolves every palette entry to its `index.css`
 value and checks the hue against the printed name, so a future palette
 change cannot silently mislabel an exported key.
+
+### 5.15 igv.js controls are labelled from the moment they exist
+**Decided (2026-11-16), found running the UX sweep in WebKit.** igv.js
+leaves its chromosome menu and zoom slider unlabelled, and the page names
+them (§5.9 accessibility). Labelling started only when
+`igv.createBrowser()` resolved, which waits for every track to load,
+while igv.js builds the controls earlier; with several panes open WebKit
+loaded slowly enough that axe found them unlabelled (intermittent,
+27/28). It also stopped after its first success, so a control igv.js
+re-created stayed unlabelled. `watchIgvWidgets()` now starts with the
+browser and keeps a MutationObserver on igv's shadow root.
+`frontend/src/pages/GenomeTracksPage.tsx`.
 
 ---
 
@@ -2340,3 +2355,4 @@ screen equal the served log2FC, at one scale (71.692 px per unit).
 | 2026-11-16 | §2.1–2.3: the AUC signature score now reproduces AUCell exactly — step-function area and AUCell's maxAUC normalisation instead of a trapezoid over `aucThreshold × n`; ties scored as the exact expectation of AUCell's random tie-breaking. Verified against R AUCell 1.20.2 on five datasets (untied samples ≤ 6e-17) and the TARGET ETP-TF5 survival result against R `survival`. Scores fall by up to 0.10; 16 DepMap / 8 TARGET / 2 GDS4299 samples change median-split side for ETP-TF5; TARGET ETP-TF5 Cox HR 27.7 → 23.5, log-rank p 2.20e-14 → 2.53e-14. |
 | 2026-11-16 | Full-feature audit (three independent agents recomputing every endpoint in R, plus a pane-by-pane UI pass). Numbers matched R throughout: compare/differential (1,475 pairs), correlation, PCA, aux joins, survival arms/KM/log-rank (80 configurations), contrasts. Fixed: KW 500 on constant genes (§1.2); placeholder group labels as groups and undeclared grouping columns (§4.1); survival exclusions merged, trim tie-break by sample id with a new sensitivity range, 1-vs-1 log-rank, Cox precision, captions (§3.1, §3.1a, §3.4); duplicate symbols and repeated genes (§7.4a); correlation scale, Spearman p, constant genes, co-expression caveat (§7.6a); PCA symbols/axes (§7.7); differential accounting (§7.8); GDS4299 aliases (§7.4); mutation usable count (§8.2); 404s for unknown datasets; figures, defaults and accessibility (§5.9). §3.1a numbers re-measured after the AUCell change. |
 | 2026-11-16 | Every open finding from the researcher-committee review of the Workbench design, built on separate branches and merged one at a time (PRs #10–#17). §5.11 figure captions on every figure, the same string printed into the PNG; §5.12 one colour per group label across Compare facets, sentence-case axis titles everywhere ("log scale: log(1 + x)" on the log1p axis), statistics tables that fit 390 px with numbers that never wrap; §3.2/§3.4/§5.13 the survival API names the endpoint (overall survival) and returns censoring marks and at-risk steps (additions only, existing fields bit-identical), and the KM figure draws ticks and a numbers-at-risk table (44/44 counts match R `survival`); §11.6 the fold-change chart's ±4 cap removed (MYCL +8.24 was drawn as 4), full-width chart with an in-figure key; §8.5 CRISPR/drug results name both measurements ("MYB vs MYB" before); §5.10 context bar marked optional, question-led nav, one-row phone header and labelled nav drawer; §5.14 exported colour keys named teal "blue" after the palette change. Verified on merged main against a freshly started backend: UI-vs-API sweep 72/72 (KW p 2.89e-8 / 9.25e-5, survival log-rank 2.53e-14 and HR 23.504, correlation r −0.847, CRISPR r −0.652 n 91 — unchanged and as previously verified against R), exports, axe (no violations), Alt+1–8 / Delete / "/" and 390 px 28/28; backend 314 passed, frontend 145 passed. Each new test was validated by reintroducing its defect. |
+| 2026-11-16 | Follow-ups to the row above. §5.12: Top differential genes now fits 390 px (per-column `nowrap` keeps gene symbols whole). Compare's empty state points to the optional Context bar instead of a "Gene(s) field" that is folded away on phones. §5.15: igv.js controls labelled from creation, found in WebKit. The intermittent `DifferentialContext` test failure was root-caused (Profiler and query-cache timestamps): the page's chain takes ~100 ms; the first cold-jsdom `getByRole` with a name costs ~240 ms and blocks the event loop, which under parallel test load exceeded waitFor's 1 s default (reproduced 2/8 at 1 s, 8/8 pass at 5 s) — a test-tool cost, no app defect. Cross-browser on merged code: UI-vs-API sweep 72/72 in Chromium, WebKit and Firefox; UX sweep 28/28 in all three (WebKit on three runs; one earlier WebKit run errored before reporting and its log was overwritten). Real mobile Safari (iOS 18.3 Simulator, iPhone 16 Pro): Compare (colours by label, captions, every pairwise column visible, KW p 9.25e-5), the Analyses drawer and Survival (at-risk table, caption, log-rank 2.53e-14, HR 23.504) checked by tapping through. A header that once appeared scrolled off-screen in Safari did not reproduce in an A/B test of `h-screen` vs `h-dvh`, so no change was made. Plain-language statistical readings (the Guided design's, rejected by every reviewer) were never brought into the app. |
