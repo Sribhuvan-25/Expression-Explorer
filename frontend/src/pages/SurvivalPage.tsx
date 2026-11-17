@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { api, type TiePolicy } from "../lib/api";
-import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
+import { api, type SurvivalResult, type TiePolicy } from "../lib/api";
+import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, Stat, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel, FigureCaption } from "../components/ui";
 import { useContextHasGenes, useLinkedDataset, useLinkedGenes } from "../lib/workbench";
 import { SurvivalPlot, survivalColorKey } from "../components/SurvivalCurve";
 import { ExportButton } from "../components/ExportButton";
@@ -303,10 +303,12 @@ export function SurvivalPage() {
               // and tie_note already use to explain the emptied arm.
               const armCount = Object.keys(data.curves).length;
               const coxIsDegenerate = armCount < 2;
+              const endpointName = data.endpoint?.name ?? "Survival";
+              const caption = survivalCaption(data, cutoffDescription, { coxShown: !coxIsDegenerate });
               return (
               <div className="grid items-start gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(440px,500px)]">
                 <Panel
-                  title={`Survival — ${data.genes.join(", ")}`}
+                  title={`${endpointName} — ${data.genes.join(", ")}`}
                   action={
                     <div className="flex items-center gap-2.5">
                       <span className="font-mono text-[10.5px] text-ink-mute">
@@ -320,7 +322,7 @@ export function SurvivalPage() {
                             ? `top${query.cutoffHighPct}-bottom${query.cutoffLowPct}`
                             : query?.cutoffMethod ?? "median"
                         }${query?.cutoffMethod && query.cutoffMethod !== "median" ? `-${query.tiePolicy}` : ""}`}
-                        title={`Survival — ${data.genes.join(", ")}${
+                        title={`${endpointName} — ${data.genes.join(", ")}${
                           datasets.find((d) => d.dataset_id === datasetId)?.display_name
                             ? ` — ${datasets.find((d) => d.dataset_id === datasetId)!.display_name}`
                             : ""
@@ -333,6 +335,7 @@ export function SurvivalPage() {
                             ? [`Cox model p = ${formatP(data.cox.log_likelihood_p_value)}`]
                             : []),
                         ]}
+                        caption={caption}
                       />
                     </div>
                   }
@@ -361,7 +364,13 @@ export function SurvivalPage() {
                       )}
                     </p>
                   )}
-                  <SurvivalPlot curves={data.curves} svgRef={chartRef} />
+                  <SurvivalPlot
+                    curves={data.curves}
+                    svgRef={chartRef}
+                    endpointName={data.endpoint?.name}
+                    timeUnit={data.endpoint?.time_unit}
+                  />
+                  <FigureCaption text={caption} />
                   {data.n_excluded > 0 && (
                     <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
                       Showing {data.n} of {data.n_dataset_total} samples in this dataset — {data.n_excluded} excluded
@@ -454,6 +463,68 @@ export function SurvivalPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * The Kaplan–Meier figure's caption (METHODS.md 5.11): endpoint, how the
+ * groups were split, n per arm and exclusions, the tests, and what the
+ * marks and the at-risk table mean. Shown under the plot and printed into
+ * the exported PNG. Every number in it is one the analysis returned.
+ * Exported for tests.
+ */
+export function survivalCaption(
+  data: SurvivalResult,
+  cutoffDescription: string,
+  opts: { coxShown: boolean },
+): string {
+  const parts: string[] = [];
+  const endpoint = data.endpoint;
+  parts.push(
+    endpoint
+      ? `Kaplan–Meier estimates of ${endpoint.name.toLowerCase()}. Event: ${endpoint.event}; ${endpoint.censoring}.`
+      : "Kaplan–Meier survival estimates.",
+  );
+  let split = `Patients are split into HIGH and LOW groups by ${cutoffDescription}`;
+  if (cutoffDescription.startsWith("median")) split += " (a score equal to the median goes to LOW)";
+  if (data.tie_note) {
+    split += `; ${data.tie_note.n_tied_at_cutoff} samples tied at a cutoff score were resolved by the '${data.tie_note.tie_policy}' tie policy`;
+  }
+  parts.push(`${split}.`);
+  const arms = Object.entries(data.curves)
+    .map(([label, c]) => `${label} n = ${c.n}${c.n_events != null ? ` (${c.n_events} deaths)` : ""}`)
+    .join(", ");
+  const accounting =
+    data.n_excluded > 0
+      ? `${data.n} of ${data.n_dataset_total} patients analysed; ${data.n_excluded} excluded (${
+          data.exclusion_breakdown?.length
+            ? data.exclusion_breakdown.map((e) => `${e.n} ${e.reason}`).join("; ")
+            : data.exclusion_reason
+        })`
+      : `all ${data.n_dataset_total} patients analysed`;
+  parts.push(`${arms}; ${accounting}.`);
+  parts.push(
+    data.logrank_p_value != null
+      ? `Groups compared with a two-sided log-rank test, p = ${formatP(data.logrank_p_value)}.`
+      : "No log-rank test: it needs two groups of at least 2 patients.",
+  );
+  const score = data.cox?.coefficients.signature_score;
+  if (data.cox && opts.coxShown && score) {
+    parts.push(
+      `Cox proportional-hazards model on the continuous signature score (AUC, 0–1) in the same ${data.cox.n} patients: ` +
+        `HR ${score["exp(coef)"].toFixed(3)} (95% CI ${score["exp(coef) lower 95%"].toFixed(3)}–${score["exp(coef) upper 95%"].toFixed(3)}), ` +
+        `likelihood-ratio p = ${formatP(data.cox.log_likelihood_p_value)}; the HR compares a score of 1 with a score of 0 — ` +
+        "the whole range of the score, not the HIGH and LOW groups.",
+    );
+  }
+  if (Object.values(data.curves).some((c) => c.censor_marks)) {
+    parts.push("Tick marks on the curves are censored patients.");
+  }
+  if (Object.values(data.curves).every((c) => c.at_risk)) {
+    parts.push(
+      "The table under the axis gives the number at risk at each time shown: patients whose follow-up is at least that long (a death or censoring at exactly that time counts as at risk).",
+    );
+  }
+  return parts.join(" ");
 }
 
 function fmtP(p: number | null | undefined): string {
