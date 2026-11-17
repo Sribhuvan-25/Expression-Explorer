@@ -216,7 +216,7 @@ function FoldChangeChart({
   const subH = 12;
   const geneH = contrasts.length * subH + 8;
   const headH = 20;
-  const top = 24;
+  const top = 40;
 
   const plotted: number[] = [];
   for (const it of items) for (const c of it.row?.contrasts ?? []) if (c?.tested && isNum(c.log2_fc)) plotted.push(c.log2_fc);
@@ -230,7 +230,7 @@ function FoldChangeChart({
     y += it.heading ? headH : geneH;
     return { ...it, y0 };
   });
-  const H = y + 30;
+  const H = y + 20;
 
   return (
     <svg
@@ -245,6 +245,20 @@ function FoldChangeChart({
       role="img"
       aria-label="log2 fold-change per contrast"
     >
+      {/* Axis title above the tick row, sentence case in the body font
+          (was uppercase tracked mono at the foot of an ~800 px chart). */}
+      <text
+        data-testid="fc-axis-title"
+        x={x(0)}
+        y={top - 22}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={500}
+        fontFamily="var(--f-body)"
+        className="fill-[var(--ink-soft)]"
+      >
+        log2 fold change (treatment − reference) · solid bar = q &lt; 0.05
+      </text>
       {ticks.map((t) => (
         <g key={t}>
           <line x1={x(t)} x2={x(t)} y1={top - 4} y2={y} stroke={t === 0 ? "var(--ink-mute)" : "var(--rule)"} strokeWidth={1} />
@@ -255,8 +269,9 @@ function FoldChangeChart({
       ))}
       {placed.map((it, i) =>
         it.heading ? (
-          <text key={`h${i}`} x={4} y={it.y0 + 14} fontSize={10} fontFamily="var(--f-mono)" fontWeight={600} className="fill-[var(--ink-soft)]">
-            {it.heading.toUpperCase()}
+          // The researcher's own heading, as typed, in the body font.
+          <text key={`h${i}`} x={4} y={it.y0 + 14} fontSize={11} fontFamily="var(--f-body)" fontWeight={600} className="fill-[var(--ink-soft)]">
+            {it.heading}
           </text>
         ) : (
           <g key={`g${i}`}>
@@ -310,9 +325,13 @@ function FoldChangeChart({
           </g>
         ),
       )}
-      <text x={(plotX0 + plotX1) / 2} y={H - 8} textAnchor="middle" fontSize={10} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
-        LOG2 FOLD-CHANGE (TREATMENT − REFERENCE) · SOLID = q &lt; 0.05
-      </text>
+      {/* Tick values repeated under the last gene: the chart runs ~800 px
+          tall, and the top row is long out of view by then. */}
+      {ticks.map((t) => (
+        <text key={`b${t}`} x={x(t)} y={y + 12} textAnchor="middle" fontSize={9.5} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
+          {t}
+        </text>
+      ))}
     </svg>
   );
 }

@@ -399,6 +399,18 @@ describe("fold-change chart", () => {
     expect(chartSvg().textContent).not.toContain("›");
   });
 
+  it("titles the axis in sentence case in the body font, and keeps the researcher's headings as typed", async () => {
+    mockApi((genes) => genes.map((g) => row(g, [cell("oe"), cell("kd")])));
+    renderPage();
+    await runWith("MYC family: MYC, MYCL");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const title = within(chartSvg() as unknown as HTMLElement).getByTestId("fc-axis-title");
+    expect(title.textContent).toMatch(/^log2 fold change \(treatment − reference\)/);
+    expect(title.getAttribute("font-family")).toBe("var(--f-body)");
+    expect(chartSvg().textContent).toContain("MYC family");
+    expect(chartSvg().textContent).not.toMatch(/LOG2|MYC FAMILY/);
+  });
+
   it("spans the axis to the data, with round ticks covering every value", async () => {
     const { foldChangeAxis } = await import("../ContrastsPage");
     const a = foldChangeAxis([8.24, -3.04, 1.26, -0.89], 906);
