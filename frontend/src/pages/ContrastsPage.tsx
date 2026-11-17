@@ -132,7 +132,7 @@ interface ChartRow {
  * a pane split three ways) it keeps this width and its wrapper scrolls
  * sideways: shrinking it to fit left ~3 px text (METHODS.md 5.9).
  */
-export const FC_CHART_MIN_W = 560;
+export const FC_CHART_MIN_W = 520;
 const FC_CHART_DEFAULT_W = 640;
 
 /**
@@ -157,6 +157,42 @@ function useGrantedWidth(el: HTMLElement | null): number {
   return width;
 }
 
+const FC_TICK_STEPS = [0.25, 0.5, 1, 2, 5, 10, 20, 50];
+const FC_MIN_TICK_GAP_PX = 44;
+
+/**
+ * The fold-change axis: linear, spanning every plotted value (and at
+ * least −1..+1, so a panel of small changes is not blown up), with the
+ * finest round tick step that keeps ticks FC_MIN_TICK_GAP_PX apart.
+ * Exported for tests.
+ *
+ * It used to be symmetric and capped at ±4, drawing MYCL's +8.24 in C4-2B
+ * (the perturbed gene itself) as a bar of length 4 with an arrow -- a bar
+ * half its value in an exported figure. An axis break was considered and
+ * rejected: a broken bar is still drawn shorter than its value, only
+ * with a mark. With the chart filling the pane, the linear span still
+ * gives |log2FC| = 0.2 a bar of ~14 px at 1440 px, and every value is
+ * printed beside its bar.
+ */
+export function foldChangeAxis(values: number[], plotWidth: number): { lo: number; hi: number; step: number; ticks: number[] } {
+  const finite = values.filter(isNum);
+  const dataLo = Math.min(-1, ...finite);
+  const dataHi = Math.max(1, ...finite);
+  let step = FC_TICK_STEPS[FC_TICK_STEPS.length - 1];
+  for (const s of FC_TICK_STEPS) {
+    const span = Math.ceil(dataHi / s) * s - Math.floor(dataLo / s) * s;
+    if ((s * plotWidth) / span >= FC_MIN_TICK_GAP_PX) {
+      step = s;
+      break;
+    }
+  }
+  const lo = Math.floor(dataLo / step) * step;
+  const hi = Math.ceil(dataHi / step) * step;
+  const n = Math.round((hi - lo) / step);
+  const ticks = Array.from({ length: n + 1 }, (_, i) => Math.round((lo + i * step) * 1000) / 1000);
+  return { lo, hi, step, ticks };
+}
+
 function FoldChangeChart({
   items,
   contrasts,
@@ -171,19 +207,22 @@ function FoldChangeChart({
 }) {
   // Fills the pane: at a fixed 640 it used ~40% of a 1440 px window.
   const W = Math.max(FC_CHART_MIN_W, Math.floor(width) || FC_CHART_DEFAULT_W);
-  const plotX0 = 150;
+  // Gene names and experiment tags end at tagX; the plot starts far enough
+  // right that a value label left of the most negative bar never runs
+  // into the tags, and ends far enough left for one right of the largest.
+  const tagX = 120;
+  const plotX0 = 160;
   const plotX1 = W - 50;
   const subH = 12;
   const geneH = contrasts.length * subH + 8;
   const headH = 20;
   const top = 24;
 
-  let maxAbs = 0;
-  for (const it of items)
-    for (const c of it.row?.contrasts ?? []) if (c?.tested && isNum(c.log2_fc)) maxAbs = Math.max(maxAbs, Math.abs(c.log2_fc));
-  const L = maxAbs <= 1 ? 1 : Math.min(4, Math.ceil(maxAbs));
-  const ticks = L === 1 ? [-1, -0.5, 0, 0.5, 1] : Array.from({ length: 2 * L + 1 }, (_, i) => i - L);
-  const x = (v: number) => plotX0 + ((Math.max(-L, Math.min(L, v)) + L) / (2 * L)) * (plotX1 - plotX0);
+  const plotted: number[] = [];
+  for (const it of items) for (const c of it.row?.contrasts ?? []) if (c?.tested && isNum(c.log2_fc)) plotted.push(c.log2_fc);
+  const { lo, hi, ticks } = foldChangeAxis(plotted, plotX1 - plotX0);
+  // No clamp: the axis spans the data, so every bar is drawn to its value.
+  const x = (v: number) => plotX0 + ((v - lo) / (hi - lo)) * (plotX1 - plotX0);
 
   let y = top;
   const placed = items.map((it) => {
@@ -229,10 +268,9 @@ function FoldChangeChart({
               const cy = it.y0 + 4 + ci * subH + subH / 2;
               const fc = cell?.tested && isNum(cell.log2_fc) ? cell.log2_fc : null;
               const sig = isNum(cell?.q_value) && cell!.q_value! < 0.05;
-              const capped = fc != null && Math.abs(fc) > L;
               return (
                 <g key={c.contrast_id}>
-                  <text x={plotX0 - 6} y={cy} textAnchor="end" dominantBaseline="middle" fontSize={8.5} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
+                  <text x={tagX} y={cy} textAnchor="end" dominantBaseline="middle" fontSize={8.5} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
                     {contrastTag(c, ci)}
                   </text>
                   {fc == null ? (
@@ -242,6 +280,10 @@ function FoldChangeChart({
                   ) : (
                     <>
                       <rect
+                        data-testid="fc-bar"
+                        data-gene={it.row!.symbol}
+                        data-contrast={c.contrast_id}
+                        data-log2fc={fc}
                         x={Math.min(x(0), x(fc))}
                         y={cy - 4}
                         width={Math.max(1, Math.abs(x(fc) - x(0)))}
@@ -250,16 +292,15 @@ function FoldChangeChart({
                         fillOpacity={sig ? 1 : 0.35}
                       />
                       <text
-                        x={capped ? (fc > 0 ? x(fc) - 3 : x(fc) + 3) : fc > 0 ? x(fc) + 3 : x(fc) - 3}
+                        x={fc > 0 ? x(fc) + 3 : x(fc) - 3}
                         y={cy}
-                        textAnchor={capped ? (fc > 0 ? "end" : "start") : fc > 0 ? "start" : "end"}
+                        textAnchor={fc > 0 ? "start" : "end"}
                         dominantBaseline="middle"
                         fontSize={8.5}
                         fontFamily="var(--f-mono)"
-                        style={{ fill: capped ? "var(--surface)" : "var(--ink-soft)" }}
+                        className="fill-[var(--ink-soft)]"
                       >
                         {fmtFc(fc)}
-                        {capped ? " ›" : ""}
                       </text>
                     </>
                   )}
@@ -271,7 +312,6 @@ function FoldChangeChart({
       )}
       <text x={(plotX0 + plotX1) / 2} y={H - 8} textAnchor="middle" fontSize={10} fontFamily="var(--f-mono)" className="fill-[var(--ink-mute)]">
         LOG2 FOLD-CHANGE (TREATMENT − REFERENCE) · SOLID = q &lt; 0.05
-        {maxAbs > L ? ` · BARS BEYOND ±${L} TRUNCATED (›), VALUE PRINTED` : ""}
       </text>
     </svg>
   );

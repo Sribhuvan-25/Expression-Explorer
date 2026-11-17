@@ -359,4 +359,59 @@ describe("fold-change chart", () => {
     expect(chartSvg().getAttribute("width")).toBe(String(FC_CHART_MIN_W));
     expect(chartSvg().parentElement!.className).toMatch(/overflow-x-auto/);
   });
+
+  /**
+   * Shipped defect: the axis was capped at ±4, so MYCL's +8.24 in C4-2B
+   * (served value) was drawn as a bar of length 4 with an arrow -- in an
+   * exported PNG, a bar half its value. Every bar must be drawn to its
+   * value: bar lengths proportional to |log2FC|, inside the figure.
+   */
+  it("draws every bar to its true length -- no bar is clipped at the axis edge", async () => {
+    mockApi(() => [
+      row("MYCL", [cell("oe", { log2_fc: 8.238672784981318, q_value: 3.1e-10 }), cell("kd", { log2_fc: -3.0389494089903764, q_value: 2.4e-9 })]),
+      row("PPP2R5B", [cell("oe", { log2_fc: 1.2612231780984975, q_value: 3.1e-4 }), cell("kd", { log2_fc: -0.8858491596285312, q_value: 0.0011 })]),
+      row("PPP2R5E", [cell("oe", { log2_fc: -0.00670888680245163, q_value: 0.95 }), cell("kd", { log2_fc: -0.11047032000759316, q_value: 0.48 })]),
+    ]);
+    renderPage();
+    await runWith("MYCL PPP2R5B PPP2R5E");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const bars = Array.from(chartSvg().querySelectorAll("[data-testid=fc-bar]"));
+    expect(bars).toHaveLength(6);
+    const W = Number(chartSvg().getAttribute("width"));
+    const bar = (gene: string, contrast: string) =>
+      bars.find((b) => b.getAttribute("data-gene") === gene && b.getAttribute("data-contrast") === contrast)!;
+    const len = (b: Element) => Number(b.getAttribute("width"));
+    // Pixels per log2 unit, from a bar well inside any plausible cap.
+    const ref = bar("PPP2R5B", "oe");
+    const pxPerUnit = len(ref) / 1.2612231780984975;
+    for (const b of bars) {
+      const fc = Number(b.getAttribute("data-log2fc"));
+      const x = Number(b.getAttribute("x"));
+      // Bars under 1 px are drawn at 1 px so they stay visible.
+      expect(len(b)).toBeCloseTo(Math.max(1, Math.abs(fc) * pxPerUnit), 3);
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x + len(b)).toBeLessThanOrEqual(W);
+    }
+    // The largest bar is 8.24 / 1.26 = 6.5x the reference, not capped near 4/1.26.
+    expect(len(bar("MYCL", "oe")) / len(ref)).toBeCloseTo(8.238672784981318 / 1.2612231780984975, 3);
+    // Its value is printed, with no truncation arrow.
+    expect(chartSvg().textContent).toContain("+8.24");
+    expect(chartSvg().textContent).not.toContain("›");
+  });
+
+  it("spans the axis to the data, with round ticks covering every value", async () => {
+    const { foldChangeAxis } = await import("../ContrastsPage");
+    const a = foldChangeAxis([8.24, -3.04, 1.26, -0.89], 906);
+    expect(a.lo).toBeLessThanOrEqual(-3.04);
+    expect(a.hi).toBeGreaterThanOrEqual(8.24);
+    expect(a.ticks[0]).toBe(a.lo);
+    expect(a.ticks.at(-1)).toBe(a.hi);
+    expect(a.ticks).toContain(0);
+    // Small panels keep at least -1..+1.
+    const s = foldChangeAxis([0.2, -0.1], 600);
+    expect([s.lo, s.hi]).toEqual([-1, 1]);
+    // Narrow plots get coarser steps, never ticks closer than ~44 px.
+    const n = foldChangeAxis([8.24, -3.04], 324);
+    expect((n.step * 324) / (n.hi - n.lo)).toBeGreaterThanOrEqual(44);
+  });
 });
