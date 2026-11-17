@@ -5,7 +5,7 @@
  * It must reopen, as every other analysis does.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DifferentialGenesTab } from "../ComparePage";
@@ -20,16 +20,24 @@ function Grab() {
 
 afterEach(() => localStorage.clear());
 
-// Why 5 s, measured (2026-11-16): the app's own chain -- datasets query,
-// dataset and column effects, group-values query, group effect -- takes
-// ~100 ms here (6 commits, one call to each mocked endpoint). The first
-// getByRole(..., { name }) in waitFor costs ~240 ms on a cold jsdom
-// (accessible-name and style computation; the next call takes ~5 ms) and
-// blocks the event loop meanwhile. With several test processes sharing
-// the CPU that one call grew past waitFor's 1 s default, so the test
-// failed intermittently with nothing wrong in the page (reproduced: 2 of
-// 8 concurrent runs at 1 s).
-const SLOW = { timeout: 5000 };
+// Deterministic waiting. This test used to poll with waitFor against a
+// wall-clock budget and failed intermittently under parallel test load:
+// the page's own chain (datasets query, dataset and column effects,
+// group-values query, group effect) takes ~100 ms, but waitFor's first
+// getByRole(..., { name }) costs ~240 ms on a cold jsdom and blocks the
+// event loop, so on a starved CPU the 1 s budget ran out (reproduced 2 of
+// 8 concurrent runs). Now each wait advances the event loop one task at a
+// time inside act() until the condition holds, bounded by a number of
+// turns, not milliseconds -- the outcome no longer depends on CPU speed --
+// and the conditions use cheap queries.
+async function settleUntil(check: () => boolean, maxTurns = 500): Promise<void> {
+  for (let i = 0; i < maxTurns && !check(); i++) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+}
+const rankButton = () => screen.queryByText(/^rank genes$/i)?.closest("button") ?? null;
 
 describe("differential genes with the context bar", () => {
   it("reopens the collapsed query when the context dataset changes", async () => {
@@ -56,11 +64,14 @@ describe("differential genes with the context bar", () => {
         </WorkbenchProvider>
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled(), SLOW);
-    fireEvent.click(screen.getByRole("button", { name: /rank genes/i }));
-    expect(await screen.findByTestId("query-summary", {}, SLOW)).toHaveTextContent("TARGET");
+    await settleUntil(() => rankButton()?.disabled === false);
+    expect(rankButton()).toBeEnabled();
+    fireEvent.click(rankButton()!);
+    await settleUntil(() => screen.queryByTestId("query-summary") !== null);
+    expect(screen.getByTestId("query-summary")).toHaveTextContent("TARGET");
 
     await act(async () => setContext!({ datasetId: "gds4299" }));
-    await waitFor(() => expect(screen.queryByTestId("query-summary")).toBeNull(), SLOW);
+    await settleUntil(() => screen.queryByTestId("query-summary") === null);
+    expect(screen.queryByTestId("query-summary")).toBeNull();
   });
 });
