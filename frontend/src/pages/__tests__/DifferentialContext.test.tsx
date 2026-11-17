@@ -20,9 +20,15 @@ function Grab() {
 
 afterEach(() => localStorage.clear());
 
-// The page loads datasets and group values before the button enables;
-// under a heavily loaded machine that took longer than waitFor's 1 s
-// default and the test failed intermittently, with nothing wrong.
+// Why 5 s, measured (2026-11-16): the app's own chain -- datasets query,
+// dataset and column effects, group-values query, group effect -- takes
+// ~100 ms here (6 commits, one call to each mocked endpoint). The first
+// getByRole(..., { name }) in waitFor costs ~240 ms on a cold jsdom
+// (accessible-name and style computation; the next call takes ~5 ms) and
+// blocks the event loop meanwhile. With several test processes sharing
+// the CPU that one call grew past waitFor's 1 s default, so the test
+// failed intermittently with nothing wrong in the page (reproduced: 2 of
+// 8 concurrent runs at 1 s).
 const SLOW = { timeout: 5000 };
 
 describe("differential genes with the context bar", () => {
