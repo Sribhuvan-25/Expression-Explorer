@@ -270,6 +270,8 @@ export interface PCAResult {
   genes_unrecognized: string[];
   variance_explained: number[];
   points: PCAPoint[];
+  // Scale the genes were analysed on: log2_tpm for TPM data (METHODS.md 7.6a).
+  value_unit?: string;
 }
 
 export interface DifferentialGeneRow {
