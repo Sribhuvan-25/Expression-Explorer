@@ -520,8 +520,9 @@ function SingleGeneCompareTab() {
             hint={
               geneLink.contextValue == null && (
                 <>
-                  Working on one gene across analyses? Set it once in the <strong className="font-semibold text-ink-soft">Gene(s)</strong>{" "}
-                  field at the top (press <span className="wb-kbd">/</span>) and Survival, Correlation and Multi-omics pick it up too.
+                  Working on one gene across analyses? Optionally set it once in the{" "}
+                  <strong className="font-semibold text-ink-soft">Context</strong> bar at the top (on a keyboard, press{" "}
+                  <span className="wb-kbd">/</span>) and Survival, Correlation and Multi-omics pick it up too.
                 </>
               )
             }
@@ -875,9 +876,12 @@ export function DifferentialGenesTab() {
           </p>
           <DataTable
             label={`Top differential genes, ${data.group_a} vs ${data.group_b}`}
+            // fit: at 390 px the 28rem minimum pushed Δ median off-screen.
+            // Gene symbols stay whole (nowrap); only headers wrap.
+            fit
             columns={[
               { key: "rank", label: "#", align: "right" },
-              { key: "gene", label: "Gene" },
+              { key: "gene", label: "Gene", nowrap: true },
               { key: "p", label: "p-value", align: "right" },
               { key: "q", label: "FDR q", align: "right" },
               { key: "diff", label: `Δ median (${data.group_a} − ${data.group_b})`, align: "right" },

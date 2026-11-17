@@ -419,7 +419,9 @@ export function DataTable({
   // table at 390 px hid p and FDR q off-screen behind a 28rem minimum.
   fit?: boolean;
   // srLabel names a column whose visible header is blank (a bar column).
-  columns: { key: string; label: string; align?: "left" | "right"; srLabel?: string }[];
+  // nowrap keeps a text column whole under `fit`: gene symbols must not
+  // break mid-name ("SHAN" / "K3"); the header may still wrap.
+  columns: { key: string; label: string; align?: "left" | "right"; srLabel?: string; nowrap?: boolean }[];
   rows: Record<string, ReactNode>[];
 }) {
   return (
@@ -464,7 +466,7 @@ export function DataTable({
                   className={`py-1 tabular-nums ${fit ? "px-2" : "px-2.5"} ${
                     c.align === "right"
                       ? "whitespace-nowrap text-right font-mono text-[12px]"
-                      : `text-left ${fit ? "[overflow-wrap:anywhere]" : ""}`
+                      : `text-left ${c.nowrap ? "whitespace-nowrap" : fit ? "[overflow-wrap:anywhere]" : ""}`
                   }`}
                 >
                   {row[c.key]}
