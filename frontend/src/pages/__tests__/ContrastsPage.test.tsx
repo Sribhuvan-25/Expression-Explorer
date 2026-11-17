@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ContrastsPage, describeAcross } from "../ContrastsPage";
 import { api } from "../../lib/api";
+import * as exportFigure from "../../lib/exportFigure";
 import type { ContrastPanelCell, ContrastPanelResult, ContrastPanelRow, ContrastSummary, DatasetSummary } from "../../lib/api";
 
 const DATASET: DatasetSummary = {
@@ -328,5 +329,182 @@ describe("dataset notes", () => {
     fireEvent.click(screen.getByRole("button", { name: "More about this dataset" }));
     expect(notes).toHaveTextContent("Long detail follows. And more.");
     expect(screen.getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+/**
+ * The fold-change chart, from the researcher-committee review: drawn at a
+ * fixed 640 px it used ~40% of a 1440 px pane. It now fills the width its
+ * pane grants (the test setup stubs clientWidth to 800) and keeps a
+ * readable minimum, scrolling sideways below it.
+ */
+describe("fold-change chart", () => {
+  const chartSvg = () => document.querySelector("svg[aria-label='log2 fold-change per contrast']") as SVGSVGElement;
+
+  it("fills the width the pane grants", async () => {
+    mockApi(() => [row("SET", [cell("oe"), cell("kd")])]);
+    renderPage();
+    await runWith("SET");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    await waitFor(() => expect(chartSvg().getAttribute("width")).toBe("800"));
+    expect(chartSvg().getAttribute("viewBox")).toMatch(/^0 0 800 /);
+  });
+
+  it("does not shrink below its minimum in a narrow pane, and scrolls sideways instead", async () => {
+    const { FC_CHART_MIN_W } = await import("../ContrastsPage");
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    mockApi(() => [row("SET", [cell("oe"), cell("kd")])]);
+    renderPage();
+    await runWith("SET");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    expect(chartSvg().getAttribute("width")).toBe(String(FC_CHART_MIN_W));
+    expect(chartSvg().parentElement!.className).toMatch(/overflow-x-auto/);
+  });
+
+  /**
+   * Shipped defect: the axis was capped at ±4, so MYCL's +8.24 in C4-2B
+   * (served value) was drawn as a bar of length 4 with an arrow -- in an
+   * exported PNG, a bar half its value. Every bar must be drawn to its
+   * value: bar lengths proportional to |log2FC|, inside the figure.
+   */
+  it("draws every bar to its true length -- no bar is clipped at the axis edge", async () => {
+    mockApi(() => [
+      row("MYCL", [cell("oe", { log2_fc: 8.238672784981318, q_value: 3.1e-10 }), cell("kd", { log2_fc: -3.0389494089903764, q_value: 2.4e-9 })]),
+      row("PPP2R5B", [cell("oe", { log2_fc: 1.2612231780984975, q_value: 3.1e-4 }), cell("kd", { log2_fc: -0.8858491596285312, q_value: 0.0011 })]),
+      row("PPP2R5E", [cell("oe", { log2_fc: -0.00670888680245163, q_value: 0.95 }), cell("kd", { log2_fc: -0.11047032000759316, q_value: 0.48 })]),
+    ]);
+    renderPage();
+    await runWith("MYCL PPP2R5B PPP2R5E");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const bars = Array.from(chartSvg().querySelectorAll("[data-testid=fc-bar]"));
+    expect(bars).toHaveLength(6);
+    const W = Number(chartSvg().getAttribute("width"));
+    const bar = (gene: string, contrast: string) =>
+      bars.find((b) => b.getAttribute("data-gene") === gene && b.getAttribute("data-contrast") === contrast)!;
+    const len = (b: Element) => Number(b.getAttribute("width"));
+    // Pixels per log2 unit, from a bar well inside any plausible cap.
+    const ref = bar("PPP2R5B", "oe");
+    const pxPerUnit = len(ref) / 1.2612231780984975;
+    for (const b of bars) {
+      const fc = Number(b.getAttribute("data-log2fc"));
+      const x = Number(b.getAttribute("x"));
+      // Bars under 1 px are drawn at 1 px so they stay visible.
+      expect(len(b)).toBeCloseTo(Math.max(1, Math.abs(fc) * pxPerUnit), 3);
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x + len(b)).toBeLessThanOrEqual(W);
+    }
+    // The largest bar is 8.24 / 1.26 = 6.5x the reference, not capped near 4/1.26.
+    expect(len(bar("MYCL", "oe")) / len(ref)).toBeCloseTo(8.238672784981318 / 1.2612231780984975, 3);
+    // Its value is printed, with no truncation arrow.
+    expect(chartSvg().textContent).toContain("+8.24");
+    expect(chartSvg().textContent).not.toContain("›");
+  });
+
+  it("titles the axis in sentence case in the body font, and keeps the researcher's headings as typed", async () => {
+    mockApi((genes) => genes.map((g) => row(g, [cell("oe"), cell("kd")])));
+    renderPage();
+    await runWith("MYC family: MYC, MYCL");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const title = within(chartSvg() as unknown as HTMLElement).getByTestId("fc-axis-title");
+    expect(title.textContent).toMatch(/^log2 fold change \(treatment − reference\)/);
+    expect(title.getAttribute("font-family")).toBe("var(--f-body)");
+    expect(chartSvg().textContent).toContain("MYC family");
+    expect(chartSvg().textContent).not.toMatch(/LOG2|MYC FAMILY/);
+  });
+
+  /**
+   * Shipped without a key: colour, fade and the printed numbers were
+   * explained only in an uppercase axis footer, and the TPM-vs-counts
+   * direction flag (METHODS.md 11.3) not at all. The key is inside the
+   * SVG so the exported PNG carries it.
+   */
+  it("has a key inside the figure for colour, significance, values and experiments", async () => {
+    mockApi(() => [row("SET", [cell("oe", { log2_fc: 0.5, q_value: 0.01 }), cell("kd", { log2_fc: -0.2, q_value: 0.4 })])]);
+    renderPage();
+    await runWith("SET");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const legend = chartSvg().querySelector("[data-testid=fc-legend]")!;
+    expect(legend).not.toBeNull();
+    const marks = Array.from(legend.querySelectorAll("[data-legend-mark]")).map((m) => m.getAttribute("data-legend-mark"));
+    expect(marks).toEqual(["hot", "cool", "sig", "nonsig", "value", "tags"]);
+    const text = legend.textContent!;
+    expect(text).toMatch(/higher in treatment/);
+    expect(text).toMatch(/q < 0\.05/);
+    expect(text).toMatch(/q ≥ 0\.05/);
+    expect(text).toMatch(/no interval drawn/);
+    expect(text).toContain("C4-2B / NCI-H660");
+    // The key's swatches are drawn as the bars are: solid for q < 0.05, faded otherwise.
+    const opacity = (sel: string) => legend.querySelector(`[data-legend-mark=${sel}] rect`)!.getAttribute("fill-opacity");
+    const barOpacity = (contrast: string) => chartSvg().querySelector(`[data-testid=fc-bar][data-contrast=${contrast}]`)!.getAttribute("fill-opacity");
+    expect(opacity("sig")).toBe(barOpacity("oe"));
+    expect(opacity("nonsig")).toBe(barOpacity("kd"));
+    // Nothing untested, no direction flag: those entries are left out.
+    expect(text).not.toMatch(/no test result|moves the other way/);
+  });
+
+  it("keys the direction flag and untested cells only when the figure shows them", async () => {
+    mockApi(() => [
+      row("HSPA12A", [cell("oe", { log2_fc: 1.04, display_direction_agrees: false }), cell("kd")]),
+      row("MYCN", [cell("oe", { tested: false, log2_fc: null, q_value: null, display_direction_agrees: null }), cell("kd")]),
+    ]);
+    renderPage();
+    await runWith("HSPA12A MYCN");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const legend = chartSvg().querySelector("[data-testid=fc-legend]")!;
+    expect(legend.textContent).toMatch(/mean TPM moves the other way from the count-based log2FC/);
+    expect(legend.textContent).toMatch(/no test result in that experiment/);
+    // The flagged bar's printed value carries the mark the key explains; the unflagged one does not.
+    const value = (gene: string, contrast: string) =>
+      chartSvg().querySelector(`[data-testid=fc-value][data-gene=${gene}][data-contrast=${contrast}]`)!.textContent;
+    expect(value("HSPA12A", "oe")).toBe("+1.04 †");
+    expect(value("HSPA12A", "kd")).toBe("+1.00");
+  });
+
+  /**
+   * Shipped without a caption: the PNG named neither n per arm nor the
+   * method's q scope in words, nor what solid/faded meant. The caption on
+   * screen and the one printed into the PNG must be the same string
+   * (METHODS.md 5.11), so this asserts on what reaches the exporter.
+   */
+  it("captions the figure with n, method, q and the marks, and exports exactly that caption", async () => {
+    const exportSpy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    mockApi(() => [
+      row("MYCL", [cell("oe", { log2_fc: 8.24 }), cell("kd", { log2_fc: -3.04 })]),
+      row("MYCN", [cell("oe", { tested: false, log2_fc: null, q_value: null, display_direction_agrees: null }), cell("kd")]),
+    ]);
+    renderPage();
+    await runWith("MYCL MYCN");
+    const caption = (await screen.findByText(/^log2 fold change \(treatment − reference\) for each gene/)).textContent!;
+    expect(caption).toContain("C4-2B = C4-2B contrast (n = 2 vs 2)");
+    expect(caption).toContain("NCI-H660 = NCI-H660 contrast (n = 2 vs 2)");
+    expect(caption).toContain("fitted on its own samples only: limma-trend moderated t");
+    expect(caption).toContain("q is Benjamini–Hochberg across all genes tested in that experiment (80 in C4-2B, 80 in NCI-H660)");
+    expect(caption).toMatch(/solid bars have q < 0\.05, faded bars q ≥ 0\.05/);
+    expect(caption).toMatch(/no interval is drawn/);
+    expect(caption).toMatch(/“not tested”/);
+    expect(caption).toContain("MYCL is the perturbed gene itself");
+    // No direction flag in this figure, so no dagger sentence.
+    expect(caption).not.toContain("†");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /png/i })[0]);
+    await waitFor(() => expect(exportSpy).toHaveBeenCalled());
+    const options = exportSpy.mock.calls.at(-1)![2] as { caption?: string };
+    expect(options.caption).toBe(caption);
+  });
+
+  it("spans the axis to the data, with round ticks covering every value", async () => {
+    const { foldChangeAxis } = await import("../ContrastsPage");
+    const a = foldChangeAxis([8.24, -3.04, 1.26, -0.89], 906);
+    expect(a.lo).toBeLessThanOrEqual(-3.04);
+    expect(a.hi).toBeGreaterThanOrEqual(8.24);
+    expect(a.ticks[0]).toBe(a.lo);
+    expect(a.ticks.at(-1)).toBe(a.hi);
+    expect(a.ticks).toContain(0);
+    // Small panels keep at least -1..+1.
+    const s = foldChangeAxis([0.2, -0.1], 600);
+    expect([s.lo, s.hi]).toEqual([-1, 1]);
+    // Narrow plots get coarser steps, never ticks closer than ~44 px.
+    const n = foldChangeAxis([8.24, -3.04], 324);
+    expect((n.step * 324) / (n.hi - n.lo)).toBeGreaterThanOrEqual(44);
   });
 });
