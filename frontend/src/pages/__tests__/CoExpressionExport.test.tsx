@@ -48,9 +48,13 @@ describe("co-expression caption", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /build network/i }));
     const caption = await screen.findByTestId("network-caption");
-    expect(caption).toHaveTextContent("Spearman r across 8 samples, on log2(TPM+1)");
+    expect(caption).toHaveTextContent("correlates with MYCL across all 8 samples, on log2(TPM+1)");
+    expect(caption).toHaveTextContent("scored by Spearman r with MYCL");
+    // What an edge is, and how the list was cut.
+    expect(caption).toHaveTextContent("Each row is one edge of MYCL's co-expression network");
+    expect(caption).toHaveTextContent("the 1 with the highest (most positive) r are listed in that order; there is no r threshold");
     expect(caption).toHaveTextContent("no p-value");
-    expect(caption).toHaveTextContent("with 8 samples a high r is easily reached by chance");
+    expect(caption).toHaveTextContent("With 8 samples a high r is easily reached by chance");
   });
 });
 

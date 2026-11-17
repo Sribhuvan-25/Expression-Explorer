@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuxLayerSummary } from "../lib/api";
-import { EmptyState, ErrorState, FieldLabel, Gene, PageHeader, Panel, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
+import { EmptyState, ErrorState, FieldLabel, FigureCaption, Gene, PageHeader, Panel, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
 import { useLinkedDataset, useLinkedGene } from "../lib/workbench";
 import { formatUnit } from "../lib/units";
 import { BoxPlot } from "../components/BoxPlot";
 import { ScatterPlot } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
+import { auxCaption, mutationCaption } from "../lib/figureCaptions";
 
 type Tab = "mutation" | "crispr" | "drug";
 
@@ -88,6 +89,20 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
     const g = gene.trim().toUpperCase();
     if (g && mutatedGene) setQuery({ datasetId, gene: g, mutatedGene });
   };
+
+  const caption = data
+    ? mutationCaption({
+        gene: data.gene,
+        mutatedGene: data.mutated_gene,
+        expressionUnit: data.expression_unit,
+        nMutated: data.n_mutated,
+        nWildtype: data.n_wildtype,
+        pValue: data.test.p_value,
+        nDatasetTotal: data.n_dataset_total,
+        nExcluded: data.n_excluded,
+        exclusionReason: data.exclusion_reason,
+      })
+    : "";
 
   return (
     <>
@@ -177,12 +192,16 @@ function MutationTab({ datasetId, layer }: { datasetId: string; layer: AuxLayerS
                     formatP(data.test.p_value)
                   }`,
                 ]}
+                caption={caption}
               />
             </div>
           }
         >
           {data.points.length > 0 ? (
-            <BoxPlot points={data.points} valueLabel={`${data.gene} expression`} unit={data.expression_unit} svgRef={chartRef} />
+            <>
+              <BoxPlot points={data.points} valueLabel={`${data.gene} expression`} unit={data.expression_unit} svgRef={chartRef} />
+              <FigureCaption text={caption} />
+            </>
           ) : (
             <p className="py-8 text-center text-[12.5px] text-ink-mute">No samples to plot.</p>
           )}
@@ -376,6 +395,23 @@ function AuxCorrelationTab({
     if (g && f) setQuery({ datasetId, gene: g, auxFeature: f, method });
   };
 
+  const caption = data
+    ? auxCaption({
+        layer: auxLayerKey,
+        gene: data.gene,
+        featureLabel: data.aux_feature_label,
+        featureId: data.aux_feature,
+        moa: data.aux_feature_moa,
+        method: data.method,
+        n: data.n,
+        expressionUnit: data.expression_value_unit,
+        valueDescription: data.value_description,
+        nDatasetTotal: data.n_dataset_total,
+        nExcluded: data.n_excluded,
+        exclusionReason: data.exclusion_reason,
+      })
+    : "";
+
   return (
     <>
       <QueryPanel
@@ -480,6 +516,7 @@ function AuxCorrelationTab({
                   `${data.method} r = ${data.coefficient.toFixed(3)}`,
                   `p = ${data.p_value < 0.001 ? data.p_value.toExponential(2) : data.p_value.toFixed(4)}`,
                 ]}
+                caption={caption}
               />
             </div>
           }
@@ -495,6 +532,7 @@ function AuxCorrelationTab({
             yLabel={data.value_label}
             svgRef={chartRef}
           />
+          <FigureCaption text={caption} />
           </div>
           <div className="min-w-0 @4xl:border-l @4xl:border-rule @4xl:pl-5">
           <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-rule pt-3 @4xl:mt-0 @4xl:flex-col @4xl:border-t-0 @4xl:pt-0">
@@ -509,11 +547,12 @@ function AuxCorrelationTab({
               tone={data.p_value < 0.05 ? "hot" : "neutral"}
             />
           </div>
-          <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
-            {data.value_description}
-            {data.n_excluded > 0 &&
-              ` Showing ${data.n} of ${data.n_dataset_total} samples — ${data.n_excluded} excluded (${data.exclusion_reason}).`}
-          </p>
+          {/* What the measurement means is in the caption under the chart. */}
+          {data.n_excluded > 0 && (
+            <p className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
+              Showing {data.n} of {data.n_dataset_total} samples — {data.n_excluded} excluded ({data.exclusion_reason}).
+            </p>
+          )}
           </div>
           </div>
         </Panel>
