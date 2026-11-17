@@ -133,3 +133,15 @@ def test_rank_by_gene_missing_gene_raises():
     samples = pd.DataFrame({"sample_id": ["S1"], "group_columns": [{}]})
     with pytest.raises(KeyError):
         rank_by_gene(matrix, samples, "NOTAREALGENE")
+
+
+def test_exactly_tied_samples_are_ordered_by_sample_id_whatever_the_storage_order():
+    """GSE66586's AUCell ranking has two samples at exactly
+    0.19939963978387032; the default (unstable) sort listed them in storage
+    order, so the "top sample" was GSM1625938 locally and GSM1625941 in
+    production. Ties now order by sample id, the same on every machine."""
+    values = {"GSM1625941": 0.2, "GSM1625938": 0.2, "GSM1625942": 0.1, "GSM1625901": 0.3}
+    for order in (list(values), list(reversed(values))):
+        samples = pd.DataFrame({"sample_id": order, "group_columns": [{} for _ in order]})
+        result = _assemble_ranking(samples, pd.Series({k: values[k] for k in order}))
+        assert list(result["sample_id"]) == ["GSM1625901", "GSM1625938", "GSM1625941", "GSM1625942"]

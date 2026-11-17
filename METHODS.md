@@ -413,6 +413,21 @@ picking candidates.
 `_NON_META_COLUMNS`, so they appeared in ranking rows. Now skipped there
 too.
 
+
+### 4.4 Ties in rankings are ordered by name
+**Decided (2026-11-17), found running the UI sweep against production.**
+Sample Ranking and Signature Score sorted with pandas' default sort,
+which is not stable, so exactly tied values came out in storage order —
+and storage order differed between machines. On GSE66586 two samples
+score exactly 0.19939963978387032 (AUCell, ETP-TF5); the top row was
+GSM1625938 locally and GSM1625941 in production, the same numbers in a
+different order. Ties now order by sample id (`ranking.py`). The same
+defect affected which items made a top-N cut in the CRISPR/drug feature
+picker and the most-mutated-genes list; both use `top_by_count`
+(`app/analysis/ordering.py`), ties by name. Order only — no value
+changes. Tests feed tied values in two storage orders and require one
+result; each fails with the old sort restored.
+
 ---
 
 ## 5. Visualisation
@@ -2403,3 +2418,4 @@ screen equal the served log2FC, at one scale (71.692 px per unit).
 | 2026-11-17 | Mobile verification, measured. Full device emulation with touch input (Playwright: Pixel 5 in Chromium, Android Chrome's engine; iPhone 13 in WebKit, Safari's engine; isMobile, hasTouch, device pixel ratio and user agent), every step driven by taps: Compare on TARGET-ALL-P2 + GDS4299 (every pairwise p and q and both Kruskal–Wallis p match the API, every column visible, each group one colour across facets), all 8 analyses opened from the Analyses drawer, Survival (log-rank 2.53e-14, HR 23.504, "Overall survival" in the figure, numbers-at-risk table), no horizontal overflow, no page errors — 15/15 on each. Not done: Chrome in the Android emulator (accepting Chrome's terms was refused by the permission system) and any physical phone (no tool here drives a physical device; the one paired iPhone was offline). |
 | 2026-11-17 | §7.10: production served TARGET-ALL-P2 without `etp_status` (Springer returns an HTML page instead of the Liu 2017 workbook to the server); the 190 ETP labels are now committed and used when the download fails, verified identical to a fresh download (sha256 recorded). Backend 317 passed; new test validated by removing the fallback. Two further production findings recorded, not changed here: the Railway volume is mounted at `/data/cahe` while the app writes to `/data/cache` (so every deploy re-downloads every dataset), and the production metadata database has no tables (the API falls back to code-registered datasets, logging an error per request). |
 | 2026-11-17 | §10.6: production fixes, approved by the user. Railway volume remounted from `/data/cahe` to `/data/cache` so downloaded datasets persist across deploys; the image now ships the migrations and runs `alembic upgrade head` at start, so the metadata database has its tables and the per-request "no such table" error stops. Results unaffected (the registry served code-registered datasets before and after). Container start, restart and migration-failure paths checked on the built image. |
+| 2026-11-17 | §4.4: ranking ties ordered by sample id, top-N count lists by name (the default sort is unstable, so GSE66586's two exactly tied AUCell scores listed in a different order locally and in production). Found by the production UI sweep, which otherwise matched the locally verified run on 71/72 values (the 72nd was this order) and passed 72/72 UI-vs-API and 28/28 UX against the live site. Backend 320 passed. |

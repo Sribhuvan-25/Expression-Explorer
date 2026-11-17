@@ -101,4 +101,9 @@ def _assemble_ranking(samples: pd.DataFrame, values: pd.Series) -> pd.DataFrame:
                 continue
             attach(col, meta[col])
 
-    return df.sort_values("value", ascending=False).reset_index(drop=True)
+    # Ties (equal values) ordered by sample id: the default sort is not
+    # stable, so exactly tied samples (GSE66586 AUCell, 0.19939963978387032
+    # twice) came out in storage order, which differed between local and
+    # production -- the "top sample" changed with the machine.
+    # reset_index first: in some paths the index is itself named "sample_id".
+    return df.reset_index(drop=True).sort_values(["value", "sample_id"], ascending=[False, True], kind="mergesort").reset_index(drop=True)

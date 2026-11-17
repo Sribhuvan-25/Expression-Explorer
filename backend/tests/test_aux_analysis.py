@@ -412,3 +412,15 @@ def test_min_aux_samples_is_shared_by_correlation_and_usable_count():
     assert layer.n_usable_features(shared) == 1
     result = expression_vs_aux_correlation(ds, AuxLayer.DRUG_SENSITIVITY, "MYCN", "EXACTLY_MIN")
     assert result["n"] == MIN_AUX_SAMPLES
+
+
+def test_most_mutated_genes_breaks_count_ties_by_gene_at_the_cut():
+    """Equal mutation counts at the top_n cut: which gene made the list
+    depended on storage order. Ties now order by gene name."""
+    expression = pd.DataFrame({f"S{i}": [1.0] for i in range(10)}, index=["MYCN"])
+    for genes in (["ZETA", "ALPHA", "MID", "TOP"], ["TOP", "MID", "ALPHA", "ZETA"]):
+        hits = {"TOP": 5, "ALPHA": 2, "MID": 2, "ZETA": 2}
+        mutations = pd.DataFrame({f"S{i}": [i < hits[g] for g in genes] for i in range(10)}, index=genes)
+        ds = _dataset(expression, {AuxLayer.MUTATION_STATUS: _mutation_layer(mutations)})
+        result = most_mutated_genes(ds, top_n=3)
+        assert [g["gene"] for g in result["genes"]] == ["TOP", "ALPHA", "MID"]
