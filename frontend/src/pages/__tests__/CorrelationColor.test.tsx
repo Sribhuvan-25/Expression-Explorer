@@ -51,20 +51,22 @@ describe("correlation scatter shows what r pools", () => {
     const { container } = setup();
     expect(await screen.findByDisplayValue("mycn_status")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
-    expect(await screen.findByTestId("pools-groups-note")).toHaveTextContent(
+    // The caveat is in the figure caption, so it also reaches the PNG.
+    await screen.findByText("-0.850");
+    expect(container.querySelector("[data-figure-caption]")).toHaveTextContent(
       "r is computed across all 4 samples together, spanning 3 mycn_status groups",
     );
     const fills = new Set([...container.querySelectorAll("svg circle")].map((c) => c.getAttribute("fill")));
     expect(fills.size).toBe(3);
-    expect(screen.getByText("MYCN (LOG2 INTENSITY)")).toBeInTheDocument();
+    expect(screen.getByText("MYCN (log2 intensity)")).toBeInTheDocument();
   });
 
   it("drops the note when colouring is turned off", async () => {
-    setup();
+    const { container } = setup();
     await userEvent.selectOptions(await screen.findByDisplayValue("mycn_status"), "");
     await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
     await screen.findByText("-0.850");
-    expect(screen.queryByTestId("pools-groups-note")).toBeNull();
+    expect(container.querySelector("[data-figure-caption]")).not.toHaveTextContent("spanning");
   });
 });
 
@@ -77,7 +79,7 @@ describe("correlation axes name the scale the points are on", () => {
     } as unknown as Awaited<ReturnType<typeof api.correlation>>);
     await screen.findByDisplayValue("mycn_status");
     await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
-    expect(await screen.findByText("MYCN (LOG2(TPM+1))")).toBeInTheDocument();
+    expect(await screen.findByText("MYCN (log2(TPM+1))")).toBeInTheDocument();
   });
 });
 
@@ -90,5 +92,22 @@ describe("correlation PNG names the dataset", () => {
     await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
     await userEvent.click(await screen.findByRole("button", { name: /png/i }));
     expect(spy.mock.calls.at(-1)![1]).toBe("gse66586-MYCN-vs-PPP2R5B-pearson-correlation");
+  });
+});
+
+describe("correlation PNG carries the caption", () => {
+  it("hands the exporter the on-screen caption, pooled-groups caveat included", async () => {
+    // The caveat used to be a stat line; it now lives in the caption, so
+    // the caption must reach the PNG or exported figures lose it.
+    const exportFigure = await import("../../lib/exportFigure");
+    const spy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    const { container } = setup();
+    await screen.findByDisplayValue("mycn_status");
+    await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /png/i }));
+    const options = spy.mock.calls.at(-1)![2];
+    expect(options.caption).toBe(container.querySelector("[data-figure-caption]")!.textContent);
+    expect(options.caption).toContain("MYCN expression (x) against PPP2R5B expression (y), on log2 intensity");
+    expect(options.caption).toContain("spanning 3 mycn_status groups");
   });
 });

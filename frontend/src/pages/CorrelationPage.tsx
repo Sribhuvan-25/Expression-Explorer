@@ -2,22 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { requestOpenPane } from "../lib/paneEvents";
 import { api } from "../lib/api";
-import { DataTable, EmptyState, ErrorState, FieldLabel, Gene, GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
+import { DataTable, EmptyState, ErrorState, FieldLabel, FigureCaption, Gene, GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
 import { useContextHasGenes, useLinkedDataset, useLinkedGene, useLinkedGenes } from "../lib/workbench";
 import { ScatterPlot, scatterColorKey } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
 import { exportRowsAsCsv } from "../lib/exportTable";
 import { formatUnit } from "../lib/units";
+import { correlationCaption, networkCaption, pcaCaption } from "../lib/figureCaptions";
 
 type Tab = "correlation" | "network" | "pca";
 
 const PCA_PRESETS: Record<string, string[]> = {
   "ETP-TF5": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
 };
-
-// Exported figures travel without the on-page warning (METHODS.md 5.7, 11.1).
-const POOLED_EXPORT_NOTE =
-  "Note: pools separate designed experiments (e.g. cell lines); mostly reflects differences between them, not the perturbation.";
 
 /** Exported for tests. Shown (and printed in the PNG) whenever the
  * points span more than one group of the colouring column. */
@@ -104,6 +101,22 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
   // data, METHODS.md 7.6a); the dataset's own unit is the fallback.
   const shownUnit = data?.value_unit ?? activeDataset?.expression_unit;
   const unitSuffix = shownUnit ? ` (${formatUnit(shownUnit)})` : "";
+  // Exported figures travel without the on-page warnings (METHODS.md 5.7,
+  // 11.1), so the caption carries both caveats into the PNG.
+  const caption = data
+    ? correlationCaption({
+        geneA: data.gene_a,
+        geneB: data.gene_b,
+        method: data.method,
+        n: data.n,
+        valueUnit: data.value_unit,
+        datasetUnit: activeDataset?.expression_unit,
+        colorBy,
+        nColorGroups,
+        poolsNote: nColorGroups > 1 ? poolsGroupsNote(data.n, nColorGroups, colorBy) : null,
+        pooledExperiments: pooled,
+      })
+    : "";
 
   return (
     <>
@@ -242,9 +255,8 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
                   `${data.method} r = ${data.coefficient.toFixed(3)}`,
                   `p = ${data.p_value < 0.001 ? data.p_value.toExponential(2) : data.p_value.toFixed(4)}`,
                   ...(colorBy && scatterColorKey(plotPoints) ? [`Colour by ${colorBy}: ${scatterColorKey(plotPoints)}`] : []),
-                  ...(nColorGroups > 1 ? [poolsGroupsNote(data.n, nColorGroups, colorBy)] : []),
-                  ...(pooled ? [POOLED_EXPORT_NOTE] : []),
                 ]}
+                caption={caption}
               />
             </div>
           }
@@ -257,6 +269,7 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
             yLabel={`${data.gene_b}${unitSuffix}`}
             svgRef={chartRef}
           />
+          <FigureCaption text={caption} />
           </div>
           <div className="min-w-0 @4xl:border-l @4xl:border-rule @4xl:pl-5">
           <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-rule pt-3 @4xl:mt-0 @4xl:flex-col @4xl:border-t-0 @4xl:pt-0">
@@ -271,11 +284,6 @@ export function CorrelationTab({ datasetId, datasetName = "", pooled = false }: 
               tone={data.p_value < 0.05 ? "hot" : "neutral"}
             />
           </div>
-          {nColorGroups > 1 && (
-            <p data-testid="pools-groups-note" className="mt-3 border-t border-rule pt-2.5 text-[11.5px] text-ink-mute">
-              {poolsGroupsNote(data.n, nColorGroups, colorBy)}
-            </p>
-          )}
           </div>
           </div>
         </Panel>
@@ -442,14 +450,6 @@ export function NetworkTab({ datasetId, datasetName = "" }: { datasetId: string;
             </button>
           }
         >
-          {data.n != null && (
-            <p data-testid="network-caption" className="mb-3 text-[11.5px] text-ink-mute">
-              {data.method === "pearson" ? "Pearson" : "Spearman"} r across {data.n} samples
-              {data.value_unit ? `, on ${formatUnit(data.value_unit)}` : ""}. Ranked by r only, with no p-value or
-              multiple-testing correction across the genes searched
-              {data.n < 20 ? `; with ${data.n} samples a high r is easily reached by chance` : ""}.
-            </p>
-          )}
           <DataTable
             columns={[
               { key: "rank", label: "#", align: "right" },
@@ -462,6 +462,20 @@ export function NetworkTab({ datasetId, datasetName = "" }: { datasetId: string;
               r: n.coefficient.toFixed(3),
             }))}
           />
+          {/* The network is a ranked list, not a drawn graph; its caption
+              says what each row (edge) is and how the list was cut. */}
+          <div data-testid="network-caption">
+            <FigureCaption
+              text={networkCaption({
+                gene: data.gene,
+                method: data.method,
+                direction: data.direction,
+                shown: data.network.length,
+                n: data.n,
+                valueUnit: data.value_unit,
+              })}
+            />
+          </div>
         </Panel>
       )}
     </>
@@ -508,6 +522,18 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
   const run = () => {
     if (genes.length >= 2 && datasetId) setQuery({ datasetId, genes });
   };
+
+  const caption = data
+    ? pcaCaption({
+        nSamples: data.n_samples,
+        genesUsed: data.genes_used,
+        genesZeroVariance: data.genes_zero_variance,
+        valueUnit: data.value_unit,
+        datasetUnit: activeDataset?.expression_unit,
+        colorBy,
+        pooledExperiments: pooled,
+      })
+    : "";
 
   const plotPoints = useMemo(
     () =>
@@ -634,8 +660,8 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
                     ? [`PC2 variance explained = ${(data.variance_explained[1] * 100).toFixed(1)}%`]
                     : []),
                   ...(colorBy && scatterColorKey(plotPoints) ? [`Colour by ${colorBy}: ${scatterColorKey(plotPoints)}`] : []),
-                  ...(pooled ? [POOLED_EXPORT_NOTE] : []),
                 ]}
+                caption={caption}
               />
             </div>
           }
@@ -646,6 +672,7 @@ function PCATab({ datasetId, datasetName = "", pooled = false }: { datasetId: st
             yLabel={pcLabel(2, data.variance_explained)}
             svgRef={chartRef}
           />
+          <FigureCaption text={caption} />
           <div className="mt-4 flex gap-8 border-t border-rule pt-3">
             <Stat label="PC1 variance" value={`${(data.variance_explained[0] * 100).toFixed(1)}%`} tone="accent" />
             {data.variance_explained[1] != null && (
