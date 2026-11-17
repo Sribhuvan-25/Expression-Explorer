@@ -56,7 +56,8 @@ export function correlationCaption(args: {
 }): string {
   const parts = [
     `Each point is one of ${args.n} samples: ${args.geneA} expression (x) against ${args.geneB} expression (y), on ${scalePhrase(args.valueUnit, args.datasetUnit)}.`,
-    `${METHOD_SENTENCE[args.method]}, computed across all ${args.n} samples together; ${P_TWO_SIDED}`,
+    // The pooled-groups note already says r spans all n samples.
+    `${METHOD_SENTENCE[args.method]}${args.poolsNote ? "" : `, computed across all ${args.n} samples together`}; ${P_TWO_SIDED}`,
   ];
   if (args.colorBy && args.nColorGroups > 0) {
     parts.push(`Points are coloured by ${args.colorBy}; the colouring does not enter r.`);
@@ -151,14 +152,15 @@ export function auxCaption(args: {
   nExcluded: number;
   exclusionReason: string | null;
 }): string {
-  const unit = args.expressionUnit ? ` (${formatUnit(args.expressionUnit)})` : "";
+  const unit = args.expressionUnit ? ` on ${formatUnit(args.expressionUnit)}` : "";
   const id = args.featureId !== args.featureLabel ? ` (${args.featureId})` : "";
   const y =
     args.layer === "crispr_gene_effect"
-      ? `CRISPR knockout gene effect of ${args.featureLabel} (DepMap Chronos)`
-      : `viability after exposure to ${args.featureLabel}${id} in the PRISM screen${args.moa ? `, mechanism ${args.moa}` : ""}`;
+      ? `the CRISPR knockout gene effect of ${args.featureLabel}, as a DepMap Chronos score`
+      : `viability after exposure to ${args.featureLabel}${id} in the PRISM screen`;
   const parts = [
     `Each point is one of ${args.n} samples: ${args.gene} expression${unit} (x) against ${y} (y).`,
+    ...(args.moa ? [`Mechanism: ${args.moa}.`] : []),
     args.valueDescription,
     `${METHOD_SENTENCE[args.method]}, computed across the ${args.n} samples with both measurements; ${P_TWO_SIDED}`,
   ];

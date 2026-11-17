@@ -91,8 +91,8 @@ describe("expression vs CRISPR names both sides", () => {
     expect(caption).not.toBeNull();
     expect(options.caption).toBe(caption!.textContent);
     // Says what was computed, on what, and who is missing and why.
-    expect(options.caption).toContain("Each point is one of 4 samples: MYB expression (log2(TPM+1)) (x)");
-    expect(options.caption).toContain("CRISPR knockout gene effect of MYB (DepMap Chronos)");
+    expect(options.caption).toContain("Each point is one of 4 samples: MYB expression on log2(TPM+1) (x)");
+    expect(options.caption).toContain("the CRISPR knockout gene effect of MYB, as a DepMap Chronos score (y)");
     expect(options.caption).toContain("2 of 6 samples excluded: 2 have no crispr gene effect data.");
   });
 });

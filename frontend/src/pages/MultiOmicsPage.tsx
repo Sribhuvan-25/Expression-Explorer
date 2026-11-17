@@ -529,9 +529,7 @@ function AuxCorrelationTab({
             </div>
           }
         >
-          {data.aux_feature_moa && (
-            <p className="mb-2 text-[11.5px] text-ink-mute">Mechanism: {data.aux_feature_moa}</p>
-          )}
+          {/* The compound's mechanism is in the caption, so it reaches the PNG. */}
           <div className="grid gap-x-5 @4xl:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
           <div className="min-w-0">
           <ScatterPlot
