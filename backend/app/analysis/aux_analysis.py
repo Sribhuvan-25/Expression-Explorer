@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 from scipy import stats
 
+from app.analysis.ordering import top_by_count
 from app.analysis.scale import on_analysis_scale
 from app.analysis.spearman import spearman_test
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, Dataset
@@ -106,8 +107,10 @@ def most_mutated_genes(ds: Dataset, top_n: int = 25) -> dict:
     if not shared:
         raise ValueError("No samples have both expression and mutation data.")
 
-    counts = aux.matrix[shared].sum(axis=1).sort_values(ascending=False)
-    counts = counts[counts > 0].head(top_n)
+    counts = aux.matrix[shared].sum(axis=1)
+    counts = counts[counts > 0]
+    # Equal mutation counts ordered by gene (app/analysis/ordering.py).
+    counts = top_by_count(counts, top_n)
     return {
         "n_samples_with_mutation_data": len(shared),
         "n_dataset_total": int(ds.matrix.shape[1]),

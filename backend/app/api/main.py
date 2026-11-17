@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.analysis.ordering import top_by_count
 from app.analysis.aux_analysis import (
     expression_by_mutation_status,
     expression_vs_aux_correlation,
@@ -1047,7 +1048,8 @@ def aux_features(
         ]
 
     n_matching = int(len(counts))
-    top = counts.sort_values(ascending=False).head(limit)
+    # Equal counts ordered by feature id (app/analysis/ordering.py).
+    top = top_by_count(counts, limit)
 
     return {
         "dataset_id": dataset_id,
