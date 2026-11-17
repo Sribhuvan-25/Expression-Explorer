@@ -411,6 +411,54 @@ describe("fold-change chart", () => {
     expect(chartSvg().textContent).not.toMatch(/LOG2|MYC FAMILY/);
   });
 
+  /**
+   * Shipped without a key: colour, fade and the printed numbers were
+   * explained only in an uppercase axis footer, and the TPM-vs-counts
+   * direction flag (METHODS.md 11.3) not at all. The key is inside the
+   * SVG so the exported PNG carries it.
+   */
+  it("has a key inside the figure for colour, significance, values and experiments", async () => {
+    mockApi(() => [row("SET", [cell("oe", { log2_fc: 0.5, q_value: 0.01 }), cell("kd", { log2_fc: -0.2, q_value: 0.4 })])]);
+    renderPage();
+    await runWith("SET");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const legend = chartSvg().querySelector("[data-testid=fc-legend]")!;
+    expect(legend).not.toBeNull();
+    const marks = Array.from(legend.querySelectorAll("[data-legend-mark]")).map((m) => m.getAttribute("data-legend-mark"));
+    expect(marks).toEqual(["hot", "cool", "sig", "nonsig", "value", "tags"]);
+    const text = legend.textContent!;
+    expect(text).toMatch(/higher in treatment/);
+    expect(text).toMatch(/q < 0\.05/);
+    expect(text).toMatch(/q ≥ 0\.05/);
+    expect(text).toMatch(/no interval drawn/);
+    expect(text).toContain("C4-2B / NCI-H660");
+    // The key's swatches are drawn as the bars are: solid for q < 0.05, faded otherwise.
+    const opacity = (sel: string) => legend.querySelector(`[data-legend-mark=${sel}] rect`)!.getAttribute("fill-opacity");
+    const barOpacity = (contrast: string) => chartSvg().querySelector(`[data-testid=fc-bar][data-contrast=${contrast}]`)!.getAttribute("fill-opacity");
+    expect(opacity("sig")).toBe(barOpacity("oe"));
+    expect(opacity("nonsig")).toBe(barOpacity("kd"));
+    // Nothing untested, no direction flag: those entries are left out.
+    expect(text).not.toMatch(/no test result|moves the other way/);
+  });
+
+  it("keys the direction flag and untested cells only when the figure shows them", async () => {
+    mockApi(() => [
+      row("HSPA12A", [cell("oe", { log2_fc: 1.04, display_direction_agrees: false }), cell("kd")]),
+      row("MYCN", [cell("oe", { tested: false, log2_fc: null, q_value: null, display_direction_agrees: null }), cell("kd")]),
+    ]);
+    renderPage();
+    await runWith("HSPA12A MYCN");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    const legend = chartSvg().querySelector("[data-testid=fc-legend]")!;
+    expect(legend.textContent).toMatch(/mean TPM moves the other way from the count-based log2FC/);
+    expect(legend.textContent).toMatch(/no test result in that experiment/);
+    // The flagged bar's printed value carries the mark the key explains; the unflagged one does not.
+    const value = (gene: string, contrast: string) =>
+      chartSvg().querySelector(`[data-testid=fc-value][data-gene=${gene}][data-contrast=${contrast}]`)!.textContent;
+    expect(value("HSPA12A", "oe")).toBe("+1.04 †");
+    expect(value("HSPA12A", "kd")).toBe("+1.00");
+  });
+
   it("spans the axis to the data, with round ticks covering every value", async () => {
     const { foldChangeAxis } = await import("../ContrastsPage");
     const a = foldChangeAxis([8.24, -3.04, 1.26, -0.89], 906);

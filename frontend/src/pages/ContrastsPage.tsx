@@ -193,17 +193,109 @@ export function foldChangeAxis(values: number[], plotWidth: number): { lo: numbe
   return { lo, hi, step, ticks };
 }
 
+type LegendMarkKind = "hot" | "cool" | "sig" | "nonsig" | "value" | "tags" | "untested" | "dagger";
+interface LegendItem {
+  mark: LegendMarkKind;
+  label: string;
+  /** Text drawn as the mark, for text marks ("tags"). */
+  text?: string;
+}
+const LEGEND_FONT = 10.5;
+const LEGEND_ROW_H = 16;
+// Width estimates for wrapping the key: these labels measured 0.44-0.47 em
+// per character in IBM Plex Sans in Chromium; Plex Mono is 0.6 em.
+// Overestimating only wraps a row early.
+const bodyTextW = (s: string) => s.length * LEGEND_FONT * 0.5;
+const monoTextW = (s: string, size = 8.5) => s.length * size * 0.6;
+
+function legendMarkWidth(item: LegendItem): number {
+  switch (item.mark) {
+    case "hot":
+    case "cool":
+      return 14;
+    case "sig":
+    case "nonsig":
+      return 22;
+    case "value":
+      return monoTextW("+1.26");
+    case "tags":
+      return monoTextW(item.text ?? "");
+    case "untested":
+      return monoTextW("not tested");
+    case "dagger":
+      return monoTextW("†");
+  }
+}
+
+/** Flows the key's items left to right, wrapping to the next row at maxW. */
+function layoutLegend(items: LegendItem[], maxW: number) {
+  const gap = 18;
+  let x = 4;
+  let row = 0;
+  const placed = items.map((item) => {
+    const markW = legendMarkWidth(item);
+    const w = markW + 5 + bodyTextW(item.label);
+    if (x > 4 && x + w > maxW) {
+      row += 1;
+      x = 4;
+    }
+    const p = { item, markW, x, y: 10 + row * LEGEND_ROW_H };
+    x += w + gap;
+    return p;
+  });
+  return { placed, height: 10 + (row + 1) * LEGEND_ROW_H - 4 };
+}
+
+/** One key mark, drawn exactly as the chart draws what it explains. */
+function LegendMark({ item }: { item: LegendItem }) {
+  const bar = (x: number, w: number, color: string, opacity: number) => (
+    <rect x={x} y={-4} width={w} height={8} style={{ fill: color }} fillOpacity={opacity} />
+  );
+  const mono = (s: string, cls = "fill-[var(--ink-soft)]") => (
+    <text x={0} y={0} dominantBaseline="middle" fontSize={8.5} fontFamily="var(--f-mono)" className={cls}>
+      {s}
+    </text>
+  );
+  switch (item.mark) {
+    case "hot":
+      return bar(0, 14, "var(--hot)", 1);
+    case "cool":
+      return bar(0, 14, "var(--cool)", 1);
+    case "sig":
+    case "nonsig": {
+      const o = item.mark === "sig" ? 1 : 0.35;
+      return (
+        <>
+          {bar(0, 10, "var(--hot)", o)}
+          {bar(12, 10, "var(--cool)", o)}
+        </>
+      );
+    }
+    case "value":
+      return mono("+1.26");
+    case "tags":
+      return mono(item.text ?? "", "fill-[var(--ink-mute)]");
+    case "untested":
+      return mono("not tested", "fill-[var(--ink-mute)]");
+    case "dagger":
+      return mono("†");
+  }
+}
+
 function FoldChangeChart({
   items,
   contrasts,
   svgRef,
   width,
+  unit,
 }: {
   items: ChartRow[];
   contrasts: ContrastSummary[];
   svgRef: React.RefObject<SVGSVGElement | null>;
   /** Width available in the pane; the chart fills it (never below FC_CHART_MIN_W). */
   width: number;
+  /** Display unit of the dataset's expression values (e.g. "TPM"), for the direction-flag key. */
+  unit: string;
 }) {
   // Fills the pane: at a fixed 640 it used ~40% of a 1440 px window.
   const W = Math.max(FC_CHART_MIN_W, Math.floor(width) || FC_CHART_DEFAULT_W);
@@ -216,10 +308,36 @@ function FoldChangeChart({
   const subH = 12;
   const geneH = contrasts.length * subH + 8;
   const headH = 20;
-  const top = 40;
 
+  const cellOf = (r: ContrastPanelRow, c: ContrastSummary) => r.contrasts?.find((x) => x?.contrast_id === c.contrast_id);
   const plotted: number[] = [];
-  for (const it of items) for (const c of it.row?.contrasts ?? []) if (c?.tested && isNum(c.log2_fc)) plotted.push(c.log2_fc);
+  let anyUntested = false;
+  let anyDisagree = false;
+  for (const it of items) {
+    if (!it.row) continue;
+    for (const c of contrasts) {
+      const cell = cellOf(it.row, c);
+      if (cell?.tested && isNum(cell.log2_fc)) {
+        plotted.push(cell.log2_fc);
+        if (cell.display_direction_agrees === false) anyDisagree = true;
+      } else anyUntested = true;
+    }
+  }
+
+  // The key is drawn inside the SVG so it survives PNG export. Items the
+  // figure does not use (no untested gene, no direction flag) are left out.
+  const legendItems: LegendItem[] = [
+    { mark: "hot", label: "higher in treatment than reference" },
+    { mark: "cool", label: "lower in treatment" },
+    { mark: "sig", label: "q < 0.05" },
+    { mark: "nonsig", label: "q ≥ 0.05" },
+    { mark: "value", label: "log2FC, printed at the bar end; bars are point estimates, no interval drawn" },
+    { mark: "tags", text: contrasts.map(contrastTag).join(" / "), label: "experiment: one bar per gene in each" },
+    ...(anyUntested ? [{ mark: "untested", label: "no test result in that experiment; reason under the table" } as LegendItem] : []),
+    ...(anyDisagree ? [{ mark: "dagger", label: `after a value: mean ${unit} moves the other way from the count-based log2FC` } as LegendItem] : []),
+  ];
+  const legend = layoutLegend(legendItems, W - 8);
+  const top = legend.height + 40;
   const { lo, hi, ticks } = foldChangeAxis(plotted, plotX1 - plotX0);
   // No clamp: the axis spans the data, so every bar is drawn to its value.
   const x = (v: number) => plotX0 + ((v - lo) / (hi - lo)) * (plotX1 - plotX0);
@@ -245,11 +363,22 @@ function FoldChangeChart({
       role="img"
       aria-label="log2 fold-change per contrast"
     >
+      <g data-testid="fc-legend">
+        {legend.placed.map((p, i) => (
+          <g key={i} data-legend-mark={p.item.mark} transform={`translate(${p.x}, ${p.y})`}>
+            <LegendMark item={p.item} />
+            <text x={p.markW + 5} y={0} dominantBaseline="middle" fontSize={LEGEND_FONT} fontFamily="var(--f-body)" className="fill-[var(--ink-soft)]">
+              {p.item.label}
+            </text>
+          </g>
+        ))}
+        <line x1={4} x2={W - 4} y1={legend.height} y2={legend.height} stroke="var(--rule)" strokeWidth={1} />
+      </g>
       {/* Axis title above the tick row, sentence case in the body font
           (was uppercase tracked mono at the foot of an ~800 px chart). */}
       <text
         data-testid="fc-axis-title"
-        x={x(0)}
+        x={(plotX0 + plotX1) / 2}
         y={top - 22}
         textAnchor="middle"
         fontSize={11}
@@ -257,7 +386,7 @@ function FoldChangeChart({
         fontFamily="var(--f-body)"
         className="fill-[var(--ink-soft)]"
       >
-        log2 fold change (treatment − reference) · solid bar = q &lt; 0.05
+        log2 fold change (treatment − reference)
       </text>
       {ticks.map((t) => (
         <g key={t}>
@@ -307,6 +436,9 @@ function FoldChangeChart({
                         fillOpacity={sig ? 1 : 0.35}
                       />
                       <text
+                        data-testid="fc-value"
+                        data-gene={it.row!.symbol}
+                        data-contrast={c.contrast_id}
                         x={fc > 0 ? x(fc) + 3 : x(fc) - 3}
                         y={cy}
                         textAnchor={fc > 0 ? "start" : "end"}
@@ -316,6 +448,7 @@ function FoldChangeChart({
                         className="fill-[var(--ink-soft)]"
                       >
                         {fmtFc(fc)}
+                        {cell!.display_direction_agrees === false ? " †" : ""}
                       </text>
                     </>
                   )}
@@ -697,7 +830,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
               }
             >
               <div ref={setChartWrap} className="overflow-x-auto">
-                <FoldChangeChart items={items} contrasts={shownContrasts} svgRef={chartRef} width={chartWidth} />
+                <FoldChangeChart items={items} contrasts={shownContrasts} svgRef={chartRef} width={chartWidth} unit={unit} />
               </div>
             </Panel>
 
