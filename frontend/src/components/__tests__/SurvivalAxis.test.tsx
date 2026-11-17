@@ -13,7 +13,7 @@ describe("survival day axis", () => {
       ],
     });
     const { container } = render(<SurvivalPlot curves={{ HIGH: curve(233), LOW: curve(233) }} />);
-    const labels = [...container.querySelectorAll("svg text[text-anchor='middle']")]
+    const labels = [...container.querySelectorAll("svg text[data-x-tick]")]
       .map((t) => t.textContent ?? "")
       .filter((t) => /^\d+$/.test(t));
     expect(labels).toEqual(["0", "1000", "2000", "3000", "4000"]);

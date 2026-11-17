@@ -196,3 +196,70 @@ describe("survival PNG name carries the cutoff", () => {
     expect(spy.mock.calls.at(-1)![1]).toBe("target_all_p2-survival-MEF2C-quartile-trim");
   });
 });
+
+describe("Kaplan–Meier figure caption", () => {
+  // The figure fields the API now returns (endpoint, censoring, at risk).
+  const WITH_FIGURE_FIELDS = {
+    ...NORMAL_RESULT,
+    endpoint: {
+      name: "Overall survival",
+      abbreviation: "OS",
+      event: "death from any cause (vital status 'Dead')",
+      censoring: "patients not recorded as dead are censored at their last follow-up",
+      time_unit: "days",
+      definition: "Overall survival: ...",
+    },
+    exclusion_breakdown: [{ reason: "with no follow-up time recorded", n: 3 }],
+    curves: {
+      HIGH: {
+        ...NORMAL_RESULT.curves.HIGH,
+        n_events: 90,
+        n_censored: 143,
+        censor_marks: [{ days: 100, survival_probability: 1, n_censored: 1 }],
+        at_risk: [{ days: 0, n_at_risk: 233 }],
+      },
+      LOW: {
+        ...NORMAL_RESULT.curves.LOW,
+        n_events: 16,
+        n_censored: 217,
+        censor_marks: [{ days: 200, survival_probability: 1, n_censored: 1 }],
+        at_risk: [{ days: 0, n_at_risk: 233 }],
+      },
+    },
+  } as unknown as SurvivalResult;
+
+  it("states endpoint, split, arms, exclusions, tests and marks — on screen and in the PNG", async () => {
+    const exportFigure = await import("../../lib/exportFigure");
+    const spy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    vi.spyOn(api, "listDatasets").mockResolvedValue({ datasets: [TARGET_ALL_P2] });
+    vi.spyOn(api, "survival").mockResolvedValue(WITH_FIGURE_FIELDS);
+    const { container } = renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /run survival analysis/i }));
+
+    await screen.findByText(/^Overall survival — MEF2C$/);
+    const caption = container.querySelector("[data-figure-caption]")!;
+    const text = caption.textContent!;
+    for (const part of [
+      "Kaplan–Meier estimates of overall survival. Event: death from any cause",
+      "censored at their last follow-up",
+      "split into HIGH and LOW groups by median signature score (a score equal to the median goes to LOW)",
+      "HIGH n = 233 (90 deaths), LOW n = 233 (16 deaths)",
+      "466 of 469 patients analysed; 3 excluded (3 with no follow-up time recorded)",
+      "two-sided log-rank test, p = 1.93e-7",
+      "HR 16.068 (95% CI 4.244–60.838), likelihood-ratio p = 2.77e-6",
+      "compares a score of 1 with a score of 0",
+      "Tick marks on the curves are censored patients",
+      "number at risk at each time shown",
+    ]) {
+      expect(text).toContain(part);
+    }
+    // The existing HR-scale note under the Cox table stays.
+    expect(screen.getByTestId("cox-unit-note")).toHaveTextContent("compares a score of 1 with a score of 0");
+
+    fireEvent.click(screen.getByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const opts = spy.mock.calls.at(-1)![2];
+    expect(opts.caption).toBe(text);
+    expect(opts.title).toMatch(/^Overall survival — MEF2C/);
+  });
+});

@@ -34,7 +34,7 @@ from app.analysis.dimensionality import pca
 from app.analysis.ranking import rank_by_gene, rank_by_signature
 from app.analysis.signature import auc_signature_score, is_log2_unit, log2_mean_signature_score
 from app.analysis.scale import on_analysis_scale
-from app.analysis.survival import tie_sensitivity, binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
+from app.analysis.survival import AT_RISK_CONVENTION, ENDPOINT, tie_sensitivity, binarize_by_cutoff, build_survival_frame, cox_model, kaplan_meier_curves
 from lifelines.exceptions import ConvergenceError, StatError
 from app.config import settings
 from app.models.contract import MIN_AUX_SAMPLES, AuxLayer, AuxMatrix, Dataset
@@ -1377,5 +1377,10 @@ def survival(dataset_id: str, body: SurvivalRequest):
         "exclusion_reason": exclusion_reason,
         "exclusion_breakdown": exclusion_breakdown,
         "tie_note": tie_note,
+        # What the curves measure (METHODS.md 3.2) and how each curve's
+        # `at_risk` counts are defined, so the figure states both from the
+        # analysis rather than from page copy.
+        "endpoint": ENDPOINT,
+        "at_risk_convention": AT_RISK_CONVENTION,
         **result,
     }
