@@ -131,3 +131,17 @@ describe("box plot with many groups on a narrow screen", () => {
     expect(wideNames.every((t) => t.getAttribute("text-anchor") === "end")).toBe(true);
   });
 });
+
+describe("box plot log-scale axis title", () => {
+  it("says the axis is log(1 + x), which is why it has a 0 tick", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    // Right-skewed TPM (max / median > 10): the log axis engages on its own.
+    const pts = [0, 1, 2, 3, 4, 200].map((v, i) => ({ sample_id: `S${i}`, group: i < 3 ? "A" : "B", value: v }));
+    const { container } = render(<BoxPlot points={pts} valueLabel="expression" unit="tpm" />);
+    expect(screen.getByText("Expression (TPM), log scale: log(1 + x)")).toBeInTheDocument();
+    expect(axisTicks(container)).toContain(0);
+    fireEvent.click(screen.getByRole("button", { name: "Linear" }));
+    expect(screen.getByText("Expression (TPM)")).toBeInTheDocument();
+    expect(screen.queryByText(/log\(1 \+ x\)/)).toBeNull();
+  });
+});

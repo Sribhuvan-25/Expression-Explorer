@@ -114,11 +114,6 @@ export function BoxPlot({
 }) {
   const logUnit = isLogUnit(unit);
   const axisLabel = unit ? `${valueLabel} (${formatUnit(unit)})` : valueLabel;
-  // Sentence case in the body font, like every other label in the app;
-  // the uppercase tracked mono title ("EXPRESSION (TPM)") read as a code
-  // identifier. Only the first letter is raised: units and gene symbols
-  // keep their own case.
-  const axisTitle = axisLabel.charAt(0).toUpperCase() + axisLabel.slice(1);
   const [hover, setHover] = useState<{ x: number; y: number; sample: string; value: number } | null>(null);
 
   // Expression data is routinely right-skewed -- a single high-expressing
@@ -140,6 +135,14 @@ export function BoxPlot({
   }, [points]);
   const logScale = logUnit ? false : scaleChoice === null ? skewed : scaleChoice === "log";
   const setLogScale = (v: boolean) => setScaleChoice(v ? "log" : "linear");
+  // Sentence case in the body font, like every other label in the app;
+  // the uppercase tracked mono title ("EXPRESSION (TPM)") read as a code
+  // identifier. Only the first letter is raised: units and gene symbols
+  // keep their own case. On the log axis the title says which transform:
+  // the ticks print raw values, so a bare "0" at the bottom otherwise
+  // reads as an axis that cannot exist on a log scale (it is log1p(0)).
+  const axisTitle =
+    axisLabel.charAt(0).toUpperCase() + axisLabel.slice(1) + (logScale ? ", log scale: log(1 + x)" : "");
   const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
 
   // The chart sizes itself to whatever space it's actually given rather
