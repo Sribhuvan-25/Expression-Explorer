@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ContrastsPage, describeAcross } from "../ContrastsPage";
 import { api } from "../../lib/api";
+import * as exportFigure from "../../lib/exportFigure";
 import type { ContrastPanelCell, ContrastPanelResult, ContrastPanelRow, ContrastSummary, DatasetSummary } from "../../lib/api";
 
 const DATASET: DatasetSummary = {
@@ -457,6 +458,38 @@ describe("fold-change chart", () => {
       chartSvg().querySelector(`[data-testid=fc-value][data-gene=${gene}][data-contrast=${contrast}]`)!.textContent;
     expect(value("HSPA12A", "oe")).toBe("+1.04 †");
     expect(value("HSPA12A", "kd")).toBe("+1.00");
+  });
+
+  /**
+   * Shipped without a caption: the PNG named neither n per arm nor the
+   * method's q scope in words, nor what solid/faded meant. The caption on
+   * screen and the one printed into the PNG must be the same string
+   * (METHODS.md 5.11), so this asserts on what reaches the exporter.
+   */
+  it("captions the figure with n, method, q and the marks, and exports exactly that caption", async () => {
+    const exportSpy = vi.spyOn(exportFigure, "exportSvgAsPng").mockResolvedValue(undefined);
+    mockApi(() => [
+      row("MYCL", [cell("oe", { log2_fc: 8.24 }), cell("kd", { log2_fc: -3.04 })]),
+      row("MYCN", [cell("oe", { tested: false, log2_fc: null, q_value: null, display_direction_agrees: null }), cell("kd")]),
+    ]);
+    renderPage();
+    await runWith("MYCL MYCN");
+    const caption = (await screen.findByText(/^log2 fold change \(treatment − reference\) for each gene/)).textContent!;
+    expect(caption).toContain("C4-2B = C4-2B contrast (n = 2 vs 2)");
+    expect(caption).toContain("NCI-H660 = NCI-H660 contrast (n = 2 vs 2)");
+    expect(caption).toContain("fitted on its own samples only: limma-trend moderated t");
+    expect(caption).toContain("q is Benjamini–Hochberg across all genes tested in that experiment (80 in C4-2B, 80 in NCI-H660)");
+    expect(caption).toMatch(/solid bars have q < 0\.05, faded bars q ≥ 0\.05/);
+    expect(caption).toMatch(/no interval is drawn/);
+    expect(caption).toMatch(/“not tested”/);
+    expect(caption).toContain("MYCL is the perturbed gene itself");
+    // No direction flag in this figure, so no dagger sentence.
+    expect(caption).not.toContain("†");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /png/i })[0]);
+    await waitFor(() => expect(exportSpy).toHaveBeenCalled());
+    const options = exportSpy.mock.calls.at(-1)![2] as { caption?: string };
+    expect(options.caption).toBe(caption);
   });
 
   it("spans the axis to the data, with round ticks covering every value", async () => {

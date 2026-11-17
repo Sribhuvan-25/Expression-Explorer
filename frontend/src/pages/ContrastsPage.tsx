@@ -12,7 +12,7 @@ import {
   type ContrastSummary,
   type DatasetSummary,
 } from "../lib/api";
-import { EmptyState, ErrorState, LinkHint, PageHeader, Panel, PresetButton, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
+import { EmptyState, ErrorState, FigureCaption, LinkHint, PageHeader, Panel, PresetButton, PrimaryButton, QueryPanel, Stat, SummaryParts } from "../components/ui";
 import { useLinkedDataset } from "../lib/workbench";
 import { ExportButton } from "../components/ExportButton";
 import { exportRowsAsCsv } from "../lib/exportTable";
@@ -282,6 +282,48 @@ function LegendMark({ item }: { item: LegendItem }) {
   }
 }
 
+/**
+ * The fold-change figure's caption (METHODS.md 5.11): what is plotted, n
+ * per arm, the method and q, and what the marks mean. Built only from the
+ * API's contrast summaries and the plotted cells -- it states nothing the
+ * analysis did not compute. The same string goes under the chart and into
+ * the PNG. Exported for tests.
+ */
+export function foldChangeCaption(contrasts: ContrastSummary[], items: ChartRow[], unit: string): string {
+  const tags = contrasts.map(contrastTag);
+  const count = (v: unknown) => (isNum(v) ? v.toLocaleString("en-US") : "?");
+  const parts: string[] = [];
+  parts.push(
+    `log2 fold change (treatment − reference) for each gene in the panel, one bar per experiment: ${contrasts
+      .map((c, i) => `${tags[i]} = ${c.label} (n = ${count(c.n_reference)} vs ${count(c.n_treatment)})`)
+      .join("; ")}.`,
+  );
+  const methods = [...new Set(contrasts.map((c) => c.method).filter(Boolean))];
+  if (methods.length === 1) parts.push(`Each experiment was fitted on its own samples only: ${methods[0]}.`);
+  else if (methods.length > 1) parts.push(`Each experiment was fitted on its own samples only (${contrasts.map((c, i) => `${tags[i]}: ${c.method}`).join("; ")}).`);
+  parts.push(
+    `q is Benjamini–Hochberg across all genes tested in that experiment (${contrasts
+      .map((c, i) => `${count(c.n_genes_tested)} in ${tags[i]}`)
+      .join(", ")}).`,
+  );
+  parts.push(
+    "Red bars are higher in treatment, blue bars lower; solid bars have q < 0.05, faded bars q ≥ 0.05. " +
+      "Bars are point estimates drawn to scale on a linear axis, with the value printed at the end; no interval is drawn.",
+  );
+  const cells = items.flatMap((it) => (it.row ? contrasts.map((c) => it.row!.contrasts?.find((x) => x?.contrast_id === c.contrast_id)) : []));
+  if (cells.some((c) => !(c?.tested && isNum(c.log2_fc))))
+    parts.push("“not tested”: no test result in that experiment; the reason is given in the per-gene table and CSV.");
+  if (cells.some((c) => c?.tested && isNum(c.log2_fc) && c.display_direction_agrees === false))
+    parts.push(
+      `† after a value: the mean ${unit} moves the opposite way from the count-based fold-change (a different quantification; the statistics follow the counts).`,
+    );
+  const perturbed = contrasts.map(perturbation);
+  const gene = perturbed[0]?.gene;
+  if (gene && perturbed.every((p) => p?.gene === gene) && items.some((it) => it.row?.symbol?.toUpperCase() === gene.toUpperCase()))
+    parts.push(`${gene} is the perturbed gene itself; its bars show the size of the perturbation.`);
+  return parts.join(" ");
+}
+
 function FoldChangeChart({
   items,
   contrasts,
@@ -333,7 +375,7 @@ function FoldChangeChart({
     { mark: "nonsig", label: "q ≥ 0.05" },
     { mark: "value", label: "log2FC, printed at the bar end; bars are point estimates, no interval drawn" },
     { mark: "tags", text: contrasts.map(contrastTag).join(" / "), label: "experiment: one bar per gene in each" },
-    ...(anyUntested ? [{ mark: "untested", label: "no test result in that experiment; reason under the table" } as LegendItem] : []),
+    ...(anyUntested ? [{ mark: "untested", label: "no test result in that experiment; reason in the per-gene table" } as LegendItem] : []),
     ...(anyDisagree ? [{ mark: "dagger", label: `after a value: mean ${unit} moves the other way from the count-based log2FC` } as LegendItem] : []),
   ];
   const legend = layoutLegend(legendItems, W - 8);
@@ -634,6 +676,7 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
   const unit = formatUnit(data?.expression_unit ?? dataset.expression_unit);
   const items = useMemo(() => (data && query ? orderRows(data, query.parsed) : []), [data, query]);
   const twoWay = shownContrasts.length === 2;
+  const chartCaption = foldChangeCaption(shownContrasts, items, unit);
 
   // Footnote numbering for not-tested reasons. Computed up front, not
   // while child cells render, so the footnote list below sees all of them.
@@ -826,12 +869,14 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
                     ),
                     `Dataset ${dataset.dataset_id}; log2FC = treatment − reference; solid bar = q < 0.05`,
                   ]}
+                  caption={chartCaption}
                 />
               }
             >
               <div ref={setChartWrap} className="overflow-x-auto">
                 <FoldChangeChart items={items} contrasts={shownContrasts} svgRef={chartRef} width={chartWidth} unit={unit} />
               </div>
+              <FigureCaption text={chartCaption} />
             </Panel>
 
             <Panel title="Per-gene statistics" action={<CsvButton onClick={exportCsv} />}>
