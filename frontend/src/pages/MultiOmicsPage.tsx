@@ -9,6 +9,7 @@ import { BoxPlot } from "../components/BoxPlot";
 import { ScatterPlot } from "../components/ScatterPlot";
 import { ExportButton } from "../components/ExportButton";
 import { auxCaption, mutationCaption } from "../lib/figureCaptions";
+import { auxAxisLabel, auxExportFilename, auxResultTitle } from "../lib/auxLabels";
 
 type Tab = "mutation" | "crispr" | "drug";
 
@@ -395,6 +396,7 @@ function AuxCorrelationTab({
     if (g && f) setQuery({ datasetId, gene: g, auxFeature: f, method });
   };
 
+  const title = data ? auxResultTitle(auxLayerKey, data.gene, data.aux_feature_label) : "";
   const caption = data
     ? auxCaption({
         layer: auxLayerKey,
@@ -500,7 +502,7 @@ function AuxCorrelationTab({
 
       {data && (
         <Panel
-          title={`${data.gene} vs ${data.aux_feature_label}`}
+          title={title}
           action={
             <div className="flex items-center gap-2.5">
               <span className="font-mono text-[10.5px] text-ink-mute">
@@ -509,8 +511,14 @@ function AuxCorrelationTab({
               </span>
               <ExportButton
                 svgRef={chartRef}
-                filename={`${datasetId}-${data.gene}-vs-${data.aux_feature_label}`}
-                title={`${data.gene} vs ${data.aux_feature_label}`}
+                filename={auxExportFilename({
+                  datasetId,
+                  layer: auxLayerKey,
+                  gene: data.gene,
+                  featureLabel: data.aux_feature_label,
+                  method: data.method,
+                })}
+                title={title}
                 subtitle={`n = ${data.n} · ${data.method}`}
                 statLines={[
                   `${data.method} r = ${data.coefficient.toFixed(3)}`,
@@ -529,7 +537,7 @@ function AuxCorrelationTab({
           <ScatterPlot
             points={data.points}
             xLabel={`${data.gene} expression${data.expression_value_unit ? ` (${formatUnit(data.expression_value_unit)})` : ""}`}
-            yLabel={data.value_label}
+            yLabel={auxAxisLabel(auxLayerKey, data.aux_feature_label)}
             svgRef={chartRef}
           />
           <FigureCaption text={caption} />
