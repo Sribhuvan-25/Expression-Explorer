@@ -56,7 +56,7 @@ describe("correlation scatter shows what r pools", () => {
     );
     const fills = new Set([...container.querySelectorAll("svg circle")].map((c) => c.getAttribute("fill")));
     expect(fills.size).toBe(3);
-    expect(screen.getByText("MYCN (LOG2 INTENSITY)")).toBeInTheDocument();
+    expect(screen.getByText("MYCN (log2 intensity)")).toBeInTheDocument();
   });
 
   it("drops the note when colouring is turned off", async () => {
@@ -77,7 +77,7 @@ describe("correlation axes name the scale the points are on", () => {
     } as unknown as Awaited<ReturnType<typeof api.correlation>>);
     await screen.findByDisplayValue("mycn_status");
     await userEvent.click(screen.getByRole("button", { name: /run correlation/i }));
-    expect(await screen.findByText("MYCN (LOG2(TPM+1))")).toBeInTheDocument();
+    expect(await screen.findByText("MYCN (log2(TPM+1))")).toBeInTheDocument();
   });
 });
 
