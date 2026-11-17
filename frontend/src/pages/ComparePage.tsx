@@ -200,6 +200,9 @@ export function DatasetPanel({
         {pairwise.length > 0 ? (
           <DataTable
             label={`Pairwise tests, ${result.display_name}`}
+            // Every column on screen at 390 px: the comparison label wraps,
+            // the statistics do not (METHODS 5.9's "no pane overflows").
+            fit
             columns={[
               { key: "pair", label: "Comparison" },
               { key: "n", label: "n (a / b)", align: "right" },
@@ -214,7 +217,9 @@ export function DatasetPanel({
                 <span data-testid="crosses-stratum" className="text-ink-mute">
                   {t.group_a} vs {t.group_b}
                   <span
-                    className="ml-1.5 whitespace-nowrap rounded-[2px] border border-warn/40 px-1 font-mono text-[10px] text-warn"
+                    // Wraps inside its border rather than widening the
+                    // fitted table past a phone screen.
+                    className="ml-1.5 inline-block max-w-full rounded-[2px] border border-warn/40 px-1 font-mono text-[10px] text-warn"
                     title={`${t.group_a} is ${t.crosses_stratum.column} ${t.crosses_stratum.group_a}; ${t.group_b} is ${t.crosses_stratum.column} ${t.crosses_stratum.group_b}`}
                   >
                     different {t.crosses_stratum.column} ({t.crosses_stratum.group_a} vs {t.crosses_stratum.group_b})

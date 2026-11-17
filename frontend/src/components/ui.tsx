@@ -407,10 +407,17 @@ export function DataTable({
   columns,
   rows,
   label = "Results table",
+  fit = false,
 }: {
   // Accessible name of the scrolling region; give it something unique when
   // several tables can show at once (one per dataset panel).
   label?: string;
+  // Fit the container instead of scrolling sideways: no minimum width,
+  // tighter cell padding, and text columns wrap (anywhere, if a label has
+  // no spaces) so the numeric columns always keep their room. For short
+  // tables whose columns must be read together -- Compare's pairwise
+  // table at 390 px hid p and FDR q off-screen behind a 28rem minimum.
+  fit?: boolean;
   // srLabel names a column whose visible header is blank (a bar column).
   columns: { key: string; label: string; align?: "left" | "right"; srLabel?: string }[];
   rows: Record<string, ReactNode>[];
@@ -432,15 +439,15 @@ export function DataTable({
       aria-label={label}
       className="max-h-[70vh] overflow-x-auto overflow-y-auto rounded-[3px] border border-rule"
     >
-      <table className="w-full min-w-[28rem] border-collapse text-[12.5px]">
+      <table className={`w-full border-collapse text-[12.5px] ${fit ? "" : "min-w-[28rem]"}`}>
         <thead>
           <tr>
             {columns.map((c) => (
               <th
                 key={c.key}
-                className={`sticky top-0 z-10 border-b border-rule-firm bg-surface-sunk px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft ${
-                  c.align === "right" ? "text-right" : "text-left"
-                }`}
+                className={`sticky top-0 z-10 border-b border-rule-firm bg-surface-sunk py-1.5 text-[11px] font-semibold text-ink-soft ${
+                  fit ? "px-2" : "px-2.5"
+                } ${c.align === "right" ? "text-right" : "text-left"}`}
               >
                 {c.label || <span className="sr-only">{c.srLabel ?? c.key}</span>}
               </th>
@@ -453,7 +460,12 @@ export function DataTable({
               {columns.map((c) => (
                 <td
                   key={c.key}
-                  className={`px-2.5 py-1 tabular-nums ${c.align === "right" ? "text-right font-mono text-[12px]" : "text-left"}`}
+                  // Numbers never wrap: "2.29e-7" broke as "2.29e-" / "7".
+                  className={`py-1 tabular-nums ${fit ? "px-2" : "px-2.5"} ${
+                    c.align === "right"
+                      ? "whitespace-nowrap text-right font-mono text-[12px]"
+                      : `text-left ${fit ? "[overflow-wrap:anywhere]" : ""}`
+                  }`}
                 >
                   {row[c.key]}
                 </td>
