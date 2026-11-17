@@ -306,7 +306,11 @@ export function SurvivalPage() {
               const endpointName = data.endpoint?.name ?? "Survival";
               const caption = survivalCaption(data, cutoffDescription, { coxShown: !coxIsDegenerate });
               return (
-              <div className="grid items-start gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(440px,500px)]">
+              // minmax(0,1fr) even in one column: the implicit `auto` column
+              // took the Cox table's min-width (28rem), so at phone width
+              // both panels -- and the KM plot laid out inside -- ran 134px
+              // past the pane's right edge. The table scrolls in its own region.
+              <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(440px,500px)]">
                 <Panel
                   title={`${endpointName} — ${data.genes.join(", ")}`}
                   action={
