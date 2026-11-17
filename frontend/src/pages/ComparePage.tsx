@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatP } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { api, type CompareMultiDatasetResult } from "../lib/api";
-import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
+import { api, type CompareMultiDatasetResult, type DifferentialResult } from "../lib/api";
+import { PageHeader, Panel, PrimaryButton, Stat, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel, FigureCaption } from "../components/ui";
 import { useLinkedGene, useWorkbench } from "../lib/workbench";
 import { BoxPlot } from "../components/BoxPlot";
 import { ExportButton } from "../components/ExportButton";
@@ -10,6 +10,94 @@ import { GroupFilter, useGroupFilter } from "../components/GroupFilter";
 import { GeneAnnotation } from "../components/GeneAnnotation";
 import { exportRowsAsCsv } from "../lib/exportTable";
 import { MinPNotice, underpoweredSizes } from "../components/MinPNotice";
+import { groupColorMap } from "../lib/groupColors";
+import { formatUnit } from "../lib/units";
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/**
+ * The box plot's caption (METHODS.md 5.11), also printed into its PNG.
+ * Every clause is read off the result, not assumed: which pairs were
+ * exact or approximate (`min_p_achievable` is a number only on the exact
+ * path), whether there was more than one pair to correct across (with
+ * one, compare.py computes no q), and whether the chart is filtered
+ * (the tests always use every group, METHODS 5.5). Whiskers are drawn to
+ * the minimum and maximum (BoxPlot.tsx), not 1.5 x IQR. Exported for tests.
+ */
+export function compareCaption({
+  gene,
+  result,
+  groupColumn,
+  shownCount,
+}: {
+  gene: string;
+  result: CompareMultiDatasetResult;
+  groupColumn?: string;
+  shownCount: number;
+}): string {
+  const points = result.points ?? [];
+  const pairs = result.pairwise_tests ?? [];
+  const sizes = new Map<string, number>();
+  for (const p of points) sizes.set(p.group, (sizes.get(p.group) ?? 0) + 1);
+  const testable = [...sizes.values()].filter((n) => n >= 2).length;
+  const singles = [...sizes.values()].filter((n) => n < 2).length;
+
+  const parts: string[] = [];
+  const unit = result.expression_unit ? ` (${formatUnit(result.expression_unit)})` : "";
+  let what = `${gene} expression${unit} in ${result.display_name}, grouped by ${groupColumn ?? "group"}: n = ${plural(points.length, "sample")} in ${plural(sizes.size, "group")}`;
+  if ((result.n_excluded ?? 0) > 0 && result.n_dataset_total != null)
+    what += ` (${result.n_excluded} of ${result.n_dataset_total} in the dataset excluded: ${result.exclusion_reason ?? "no group value"})`;
+  parts.push(`${what}.`);
+  if (shownCount !== points.length)
+    parts.push(`The chart shows ${shownCount} of these ${points.length} samples (groups hidden by the filter); the tests use all ${points.length}.`);
+  parts.push(
+    "Box: 25th to 75th percentile, line at the median; whiskers: minimum to maximum (no points set apart as outliers); dots: every sample, jittered sideways.",
+  );
+  if (singles > 0) parts.push(`${singles === 1 ? "A group" : "Groups"} with one sample ${singles === 1 ? "is" : "are"} drawn as a single point and not tested.`);
+
+  const kw = result.kruskal_wallis;
+  if (testable < 2) parts.push("No Kruskal–Wallis test: fewer than two groups have n ≥ 2.");
+  else if (kw?.p_value == null) parts.push(`Kruskal–Wallis across the ${testable} groups with n ≥ 2: no p${kw?.note ? ` (${kw.note.replace(/[.\s]+$/, "")})` : ""}.`);
+  else parts.push(`Kruskal–Wallis test (chi-square approximation) across the ${testable} groups with n ≥ 2.`);
+
+  if (pairs.length > 0) {
+    const exact = pairs.filter((t) => typeof t.min_p_achievable === "number").length;
+    const approx = pairs.filter((t) => t.min_p_achievable === null).length;
+    const method =
+      exact === pairs.length
+        ? "exact"
+        : approx === pairs.length
+          ? "normal approximation with tie and continuity correction"
+          : "exact for small groups, otherwise normal approximation with tie and continuity correction";
+    const fdr =
+      pairs.length > 1
+        ? `FDR q by Benjamini–Hochberg across the ${pairs.length} pairs listed`
+        : "one pair, so no FDR correction";
+    parts.push(`Pairs: two-sided Mann–Whitney U test (${method}); ${fdr}.`);
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Caption for the Top differential genes table: what the ranking is, and
+ * that q is genome-wide, not over the rows shown (differential.py).
+ * Exported for tests.
+ */
+export function differentialCaption(data: DifferentialResult, datasetName: string, unit?: string): string {
+  const method =
+    typeof data.min_p_achievable === "number"
+      ? " (exact)"
+      : data.min_p_achievable === null
+        ? " (normal approximation with tie and continuity correction)"
+        : "";
+  const n = data.n_genes_tested.toLocaleString();
+  return [
+    `Top ${data.genes.length} of ${n} genes in ${datasetName}, ranked by two-sided Mann–Whitney U p-value${method},`,
+    `${data.group_column} ${data.group_a} (n = ${data.n_a}) vs ${data.group_b} (n = ${data.n_b}); tied p-values are ordered by the larger |Δ median|.`,
+    `FDR q: Benjamini–Hochberg across all ${n} genes tested, not only those shown.`,
+    `Δ median = median(${data.group_a}) − median(${data.group_b})${unit ? `, in ${formatUnit(unit)}` : ""}.`,
+  ].join(" ");
+}
 
 // Every group-by column any registered dataset has ever declared, so the
 // "Group by" dropdown offers a column even before a dataset exposing it is
@@ -38,9 +126,17 @@ export function DatasetPanel({
   result,
   gene,
   hasContrasts = false,
+  groupColors,
+  groupColumn,
 }: {
   result: CompareMultiDatasetResult;
   gene: string;
+  // The grouping column the result was run on, named in the caption.
+  groupColumn?: string;
+  // One label -> colour map for every facet of the result, so "non-ETP"
+  // is the same colour in TARGET and GDS4299. A panel rendered alone
+  // builds its own from its full (unfiltered) points.
+  groupColors?: Map<string, string>;
   // The dataset declares design contrasts -- the notice below then points
   // at the Perturbation Contrasts pane, which has a test that can actually
   // reach significance at these sample sizes.
@@ -58,6 +154,7 @@ export function DatasetPanel({
     () => (result.points ?? []).filter((p) => selectedGroups.has(p.group)),
     [result.points, selectedGroups],
   );
+  const ownColors = useMemo(() => groupColorMap([result.points ?? []]), [result.points]);
 
   if (result.skipped) {
     return (
@@ -78,6 +175,7 @@ export function DatasetPanel({
   // A per-sample identifier (cell_line_name: 186 groups of 1) drew a
   // 5,640 px plot with no test possible; say so instead of plotting.
   const everySampleOwnGroup = points.length > 2 && distinctGroups.length === points.length;
+  const caption = compareCaption({ gene, result, groupColumn, shownCount: filteredPoints.length });
 
   return (
     <Panel
@@ -95,7 +193,9 @@ export function DatasetPanel({
             svgRef={chartRef}
             filename={`${gene}-${result.dataset_id}-by-group`}
             title={`${gene} — ${result.display_name}`}
-            subtitle={`n = ${filteredPoints.length} · Mann–Whitney with FDR correction`}
+            // With one pair compare.py computes no q, so "with FDR
+            // correction" would contradict the caption printed below it.
+            subtitle={`n = ${filteredPoints.length} · Mann–Whitney${pairwise.length > 1 ? " with FDR correction" : ""}`}
             statLines={[
               `Kruskal-Wallis p = ${
                 formatP(result.kruskal_wallis?.p_value)
@@ -115,6 +215,7 @@ export function DatasetPanel({
                   }${t.crosses_stratum ? ` [different ${t.crosses_stratum.column}]` : ""}`,
               ),
             ]}
+            caption={caption}
           />
         </div>
       }
@@ -134,7 +235,16 @@ export function DatasetPanel({
             grouping that puts several samples together. Sample Ranking lists every sample by expression.
           </p>
         ) : (
-          <BoxPlot points={filteredPoints} valueLabel="expression" unit={result.expression_unit} svgRef={chartRef} />
+          <>
+            <BoxPlot
+              points={filteredPoints}
+              valueLabel="expression"
+              unit={result.expression_unit}
+              svgRef={chartRef}
+              groupColors={groupColors ?? ownColors}
+            />
+            <FigureCaption text={caption} />
+          </>
         )
       ) : (
         <p className="py-8 text-center text-[12.5px] text-ink-mute">
@@ -187,6 +297,9 @@ export function DatasetPanel({
         {pairwise.length > 0 ? (
           <DataTable
             label={`Pairwise tests, ${result.display_name}`}
+            // Every column on screen at 390 px: the comparison label wraps,
+            // the statistics do not (METHODS 5.9's "no pane overflows").
+            fit
             columns={[
               { key: "pair", label: "Comparison" },
               { key: "n", label: "n (a / b)", align: "right" },
@@ -201,7 +314,9 @@ export function DatasetPanel({
                 <span data-testid="crosses-stratum" className="text-ink-mute">
                   {t.group_a} vs {t.group_b}
                   <span
-                    className="ml-1.5 whitespace-nowrap rounded-[2px] border border-warn/40 px-1 font-mono text-[10px] text-warn"
+                    // Wraps inside its border rather than widening the
+                    // fitted table past a phone screen.
+                    className="ml-1.5 inline-block max-w-full rounded-[2px] border border-warn/40 px-1 font-mono text-[10px] text-warn"
                     title={`${t.group_a} is ${t.crosses_stratum.column} ${t.crosses_stratum.group_a}; ${t.group_b} is ${t.crosses_stratum.column} ${t.crosses_stratum.group_b}`}
                   >
                     different {t.crosses_stratum.column} ({t.crosses_stratum.group_a} vs {t.crosses_stratum.group_b})
@@ -294,6 +409,10 @@ function SingleGeneCompareTab() {
   const shownResults = data?.datasets ?? [];
   const runnable = shownResults.filter((r) => !r.skipped);
   const skipped = shownResults.filter((r) => r.skipped);
+  const groupColors = useMemo(
+    () => groupColorMap((data?.datasets ?? []).filter((r) => !r.skipped).map((r) => r.points ?? [])),
+    [data],
+  );
 
   return (
     <>
@@ -445,6 +564,8 @@ function SingleGeneCompareTab() {
                   key={r.dataset_id}
                   result={r}
                   gene={data.gene}
+                  groupColors={groupColors}
+                  groupColumn={data.group_column}
                   hasContrasts={(datasets.find((d) => d.dataset_id === r.dataset_id)?.n_contrasts ?? 0) > 0}
                 />
               ))}
@@ -753,6 +874,7 @@ export function DifferentialGenesTab() {
             )}
           </p>
           <DataTable
+            label={`Top differential genes, ${data.group_a} vs ${data.group_b}`}
             columns={[
               { key: "rank", label: "#", align: "right" },
               { key: "gene", label: "Gene" },
@@ -767,6 +889,13 @@ export function DifferentialGenesTab() {
               q: g.q_value < 0.001 ? g.q_value.toExponential(2) : g.q_value.toFixed(4),
               diff: g.median_diff.toFixed(3),
             }))}
+          />
+          <FigureCaption
+            text={differentialCaption(
+              data,
+              datasets.find((d) => d.dataset_id === query?.datasetId)?.display_name ?? query?.datasetId ?? "",
+              datasets.find((d) => d.dataset_id === query?.datasetId)?.expression_unit,
+            )}
           />
         </Panel>
       )}

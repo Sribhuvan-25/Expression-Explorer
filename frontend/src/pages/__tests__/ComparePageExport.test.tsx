@@ -167,3 +167,34 @@ describe("Expression Compare grouped by a per-sample identifier", () => {
     expect(container.querySelector("svg[role=img]")).toBeNull();
   });
 });
+
+describe("Expression Compare figure caption", () => {
+  it("prints the on-screen caption into the PNG, stating what this facet actually ran", async () => {
+    const r = result("target_all_p2", "TARGET ALL-P2");
+    r.pairwise_tests = [
+      { group_a: "ETP", group_b: "non-ETP", n_a: 3, n_b: 3, u_stat: 9, p_value: 0.1, min_p_achievable: 0.1 },
+    ] as CompareMultiDatasetResult["pairwise_tests"];
+    const { container } = render(<DatasetPanel result={r} gene="MYCN" groupColumn="etp_status" />);
+    const onScreen = container.querySelector("[data-figure-caption]")!.textContent!;
+    expect(onScreen).toContain("MYCN expression (TPM) in TARGET ALL-P2, grouped by etp_status: n = 6 samples in 2 groups");
+    expect(onScreen).toContain("whiskers: minimum to maximum");
+    expect(onScreen).toContain("two-sided Mann–Whitney U test (exact); one pair, so no FDR correction");
+    await userEvent.click(screen.getByRole("button", { name: /png/i }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect((spy.mock.calls.at(-1)![2] as { caption?: string }).caption).toBe(onScreen);
+  });
+
+  it("names the BH family and the approximate test when that is what ran", async () => {
+    const { compareCaption } = await import("../ComparePage");
+    const r = result("target_all_p2", "TARGET ALL-P2");
+    r.pairwise_tests = [
+      { group_a: "A", group_b: "B", n_a: 19, n_b: 146, u_stat: 1, p_value: 1e-7, q_value: 3e-7, min_p_achievable: null },
+      { group_a: "A", group_b: "C", n_a: 19, n_b: 25, u_stat: 1, p_value: 0.03, q_value: 0.03, min_p_achievable: null },
+    ] as CompareMultiDatasetResult["pairwise_tests"];
+    const text = compareCaption({ gene: "MYCN", result: r, groupColumn: "etp_status", shownCount: 3 });
+    expect(text).toContain(
+      "normal approximation with tie and continuity correction); FDR q by Benjamini–Hochberg across the 2 pairs listed",
+    );
+    expect(text).toContain("The chart shows 3 of these 6 samples");
+  });
+});
