@@ -290,6 +290,16 @@ comparisons these placeholders are missing values, not groups (§4.1).
 
 `survival.py:26-27`
 
+**Endpoint named (2026-11-16).** This endpoint is **overall survival**
+(death from any cause; patients not recorded as dead, including
+"Unknown", are censored at last follow-up). It is stated once in
+`survival.py` → `ENDPOINT` and returned as `endpoint` by the survival
+API, so the figure's axis title, panel and PNG titles and caption name it
+from the analysis, not from page copy. Added after a clinician reviewer
+could not tell which endpoint the curve showed. Days are not claimed to
+run from diagnosis: the GDC index date is not fetched, so the axis says
+"Days" and the definition says days to death / last follow-up.
+
 ### 3.3 Excluded patients
 **Decided.** A patient with neither `days_to_death` nor
 `days_to_last_follow_up` has no time axis and is dropped.
@@ -323,6 +333,19 @@ fit on the continuous score among the samples in the two arms only, so
 its HR moves with which samples the split keeps (MEF2C: 5.47 quartile
 trim, 135 quartile exclude); the caption says it is fit on the patients
 shown.
+
+**Update 2026-11-16 (figure fields).** Each curve also returns
+`n_events`, `n_censored`, `censor_marks` (distinct censoring times at
+S(t), after any death at the same t, as R draws them) and `at_risk` (one
+step per distinct observed time, from lifelines' `event_table`). The
+number at risk at t is the number of patients with follow-up ≥ t, so a
+death or censoring at exactly t counts at t — R survival's
+`summary(survfit, times = t)$n.risk`, stated in `at_risk_convention`; the
+frontend reads the first step at or after t (`atRiskAt`,
+`SurvivalCurve.tsx`). Verified against R survival 3.3.1 on TARGET-ALL-P2
+ETP-TF5, median and quartile splits: 44/44 counts and every censoring
+time identical. Additions only: every existing field was compared before
+and after on three configurations and is bit-identical.
 
 ### 3.5 Cox failures
 **Decided.** If the Cox model cannot be fit (too few complete cases, an
@@ -415,7 +438,7 @@ and stays there; on a log2 axis it is just a low reading. Found in
 user-standpoint testing: GSE66586 PPP2R5B (7.5–10.0 log2 intensity) on a
 0-based axis filled the top quarter of the plot and the MYCN-status
 difference was barely visible. The axis title now names the unit
-("EXPRESSION (LOG2 INTENSITY)"), so an exported PNG says what its numbers
+("Expression (log2 intensity)" since §5.12; it was upper-cased mono), so an exported PNG says what its numbers
 are.
 
 ### 5.2 Axis headroom
@@ -603,7 +626,7 @@ positives on a working configuration.
   after median and quartile (and Pearson and Spearman) exports were found
   overwriting each other. At 390 px every view was screenshotted: charts
   now lay out at the real width instead of shrinking to 67%, panel headers
-  wrap, and the fold-change chart keeps native size and scrolls sideways
+  wrap, and the fold-change chart fills its pane down to 520 px and scrolls sideways below that (§11.6; it kept a native size until 2026-11-16)
   (it had shrunk to unreadable ~3 px text). IGV zoom, drag-pan and typed
   search work; the preset button un-highlights once IGV moves away.
   Every calculation this audit changed was re-checked against R on the
@@ -631,6 +654,22 @@ changed.
 - *Collapsing queries, statistics beside the chart.* After a run the
   query folds to one line with Edit; on wide panes the statistics sit
   beside the figure.
+- *Context bar optional; shortcuts on request; question-led nav
+  (2026-11-16, researcher-committee review).* First-time reviewers could
+  not tell whether the bar had to be filled in, or which analysis
+  answered which question, and on a 390 px phone the bar took two rows
+  and the icon-only nav had no labels. The bar is labelled "(optional)"
+  with help text saying it is not required; the header key hints became
+  one "Keyboard shortcuts" list (button or "?"), no shortcut changed. Each
+  nav entry shows the question it answers (Survival: "Does it predict
+  survival?"), the method in its tooltip and screen-reader description.
+  A one-line first-run cue points to the nav until dismissed; the default
+  pane is unchanged. Below 640 px the header is one row, the context bar
+  folds behind a "Context" button and the nav is a drawer with every
+  name, question, the datasets and Sources; from 640 to 1023 px the icon
+  rail shows short names. "/" unfolds the context bar before focusing its
+  gene field. `AppShell.tsx` (`NAV_ITEMS`, `ShortcutsHelp`,
+  `FirstRunCue`, phone header and drawer), `ContextBar.tsx`.
 - *Type.* IBM Plex Sans and IBM Plex Mono throughout, tabular numerals,
   sentence-case field labels (replacing Space Grotesk, JetBrains Mono and
   uppercase mono labels).
@@ -651,6 +690,78 @@ caption is one plain-text string (`FigureCaption` in
 below the statistics — so the PNG carries exactly the caption on screen.
 A caption describes; it never adds a statistic the analysis did not
 compute.
+
+*Where captions are (2026-11-16).* Expression Compare (each facet, and
+the Top differential genes table), Survival, Perturbation Contrasts,
+Correlation (scatter; the co-expression table; PCA), Multi-omics
+(mutation box plot, CRISPR and drug scatter) and the Signature Score
+histogram. Sample Ranking and Genome Tracks have no figure of their own.
+Caption builders read every clause from the response they describe:
+`compareCaption`/`differentialCaption` (`ComparePage.tsx`),
+`survivalCaption` (`SurvivalPage.tsx`), `foldChangeCaption`
+(`ContrastsPage.tsx`), and `frontend/src/lib/figureCaptions.ts` for the
+rest. Checked against the backend: box whiskers are minimum to maximum
+(what `BoxPlot` draws, not 1.5 × IQR); pairwise Mann–Whitney is two-sided,
+exact or normal approximation with tie and continuity correction as run
+per pair (§1.4a), and a one-pair comparison says it has no FDR
+correction (and its PNG subtitle no longer claims one); PCA standardises
+each gene (§7.7); the network is a top-N cut with no r threshold or
+p-value (§7.6); the mutation split uses the explicit non-silent class
+list (§8.2). Two notes that were PNG stat lines (the correlation
+pooled-groups and pooled-experiments caveats) now live only in the
+caption, so they appear once on screen and once in the image.
+
+### 5.12 Compare: one colour per group label, axis titles, phone tables
+**Decided (2026-11-16), researcher-committee review.** Presentation only.
+- *A group label has one colour in every facet.* BoxPlot coloured groups
+  by median rank within each plot, so MYCN by etp_status showed non-ETP
+  ochre in TARGET-ALL-P2 (third by median) and red in GDS4299 (second),
+  and readers match groups across facets by colour. Compare now builds
+  one label→colour map per result: facets in display order, each facet's
+  labels by descending median, first appearance wins, same palette. It
+  uses the full unfiltered points, so a single dataset keeps its old
+  colours and hiding a group with the filter no longer recolours the
+  rest. `frontend/src/lib/groupColors.ts` (`groupColorMap`) →
+  `ComparePage.tsx` → `BoxPlot.tsx` (`groupColors`).
+- *Axis titles say the scale.* Chart axis titles everywhere are sentence
+  case in the body face (IBM Plex Sans), replacing upper-cased tracked
+  mono ("LOG2(TPM+1)" misstated the unit's notation and read as a code
+  token); tick numbers stay mono. On the box plot's log1p axis (§5.1) the
+  title adds ", log scale: log(1 + x)", because the ticks print raw
+  values and start at a 0 that a plain log axis cannot have.
+  `BoxPlot.tsx`, `ScatterPlot.tsx`, `SurvivalCurve.tsx`,
+  `ContrastsPage.tsx`.
+- *Every statistic is visible on a phone; numbers never wrap.* At 390 px
+  the shared table's 28rem minimum width pushed p and FDR q off-screen,
+  and values wrapped mid-number ("2.29e-" / "7"). Numeric cells are
+  `nowrap` in every table; the pairwise table uses `DataTable fit` (no
+  minimum width, the comparison label wraps). Measured at 390×844: no
+  horizontal overflow, every column visible. The Top differential genes
+  table still scrolls sideways at 390 px, because wrapping gene symbols
+  reads worse. `frontend/src/components/ui.tsx`. The Survival results grid
+  had the same defect (the Cox table pushed the plot 134 px out of the
+  pane) and now uses a `minmax(0, 1fr)` column.
+
+### 5.13 Kaplan–Meier figures carry endpoint, censoring and numbers at risk
+**Decided (2026-11-16), researcher-committee review (clinician:
+"mandatory before the figure can be shown or published").** The KM plot
+names its endpoint in the y-axis title ("Overall survival probability",
+§3.2), draws a tick at each censoring time on its curve, and carries a
+numbers-at-risk table at the x-axis ticks, one row per arm in the arm's
+colour (§3.4 for the convention). Without ticks and at-risk counts a
+reader cannot judge how much of the tail rests on data. The table is
+inside the SVG, so the exported PNG has it. `SurvivalCurve.tsx`;
+caption `survivalCaption()` in `SurvivalPage.tsx`.
+
+### 5.14 Colour names in exported keys match the rendered colour
+**Decided (2026-11-16).** Exported PNGs carry a text colour key
+("teal = ETP (n=19)"), since the HTML legend is not part of the image.
+The Workbench palette made `--accent` teal (#0B6B66), but the scatter/PCA
+key still printed "blue" for it and "teal" for the actually blue
+`--cool`; the survival fallback called it "dark blue". Names now match,
+and `ColorNames.test.ts` resolves every palette entry to its `index.css`
+value and checks the hue against the printed name, so a future palette
+change cannot silently mislabel an exported key.
 
 ---
 
@@ -1514,6 +1625,15 @@ Every one reports `n_dataset_total` / `n_excluded` / `exclusion_reason`.
 The UI disables (rather than hides) tabs whose layer a dataset lacks, and
 auto-selects a tab the dataset can actually answer.
 
+**Naming both sides (2026-11-16).** Expression-vs-aux results name the
+measurement on each side with the layer's own name: "MYB expression vs
+MYB CRISPR gene effect", "<gene> expression vs viability under
+<compound> (PRISM)"; the y axis names the feature ("MYB CRISPR gene
+effect (Chronos)"); the PNG filename carries the measurement and the
+method. The default CRISPR result was titled "MYB vs MYB", unreadable in
+an exported figure, and Pearson and Spearman exports overwrote each
+other. `frontend/src/lib/auxLabels.ts`.
+
 ### 8.6 Exclusion reasons must distinguish *why* a sample is absent
 **Decided (2026-09-13), after QA.** `expression_vs_aux_correlation`
 reports `n_missing_layer` and `n_missing_feature` separately, not one
@@ -2146,6 +2266,27 @@ whatever its q. Code: `describeAcross` in
 `frontend/src/pages/ContrastsPage.tsx`; the panel CSV's `across_both_experiments` column
 uses the same words.
 
+### 11.6 The fold-change chart
+**Decided (2026-11-16), researcher-committee review.** The gene-panel
+chart draws each tested gene's log2FC (treatment − reference) as one bar
+per experiment on a linear axis spanning the data (at least −1..+1, not
+forced symmetric), with the finest round tick step (0.25, 0.5, 1, 2, 5…)
+that keeps ticks ≥ 44 px apart; every bar is drawn to its true length
+and its value printed beside it. It previously used a symmetric axis
+capped at ±4 (present since the dataset was added, never recorded here),
+drawing MYCL's +8.24 in C4-2B — the perturbed gene — as a 4-unit bar with
+an arrow: in an exported PNG, a bar half its value. An axis break was
+rejected because a broken bar is still drawn shorter than its value. The
+chart fills its pane (minimum 520 px, scrolling sideways below that,
+§5.9), so at 1440 px |log2FC| = 0.2 still gets ~14 px. A key inside the
+SVG explains colour (higher/lower in treatment), solid q < 0.05 vs faded
+q ≥ 0.05, the printed values (point estimates; no interval is drawn),
+the experiment tags and — only when present — "not tested" and † for the
+TPM-vs-counts direction flag (§11.3), which the chart never showed
+before. Code: `foldChangeAxis`, `FoldChangeChart`, `foldChangeCaption`
+in `frontend/src/pages/ContrastsPage.tsx`. Verified: all 44 bars on
+screen equal the served log2FC, at one scale (71.692 px per unit).
+
 ---
 
 ## Change log
@@ -2198,3 +2339,4 @@ uses the same words.
 | 2026-11-15 | §3 Survival, from user-standpoint testing: TARGET MEF2C median split re-run in R `survival` on the same scores — n 466 (233/233), log-rank p 1.797e-13 vs app 1.798e-13, Cox HR 7.003 (3.904–12.562), p 6.628e-11, identical. Day-axis ticks now round (0, 1000 … 4000, was 1096, 2192 …); a caption under the Cox table says the signature_score hazard ratio is per 1.0 of a 0–1 AUC score — its whole range — since "HR 27.7" for ETP-TF5 otherwise reads as a per-unit effect. Censoring marks are not drawn (the API does not return censoring times); noted, not done. |
 | 2026-11-16 | §2.1–2.3: the AUC signature score now reproduces AUCell exactly — step-function area and AUCell's maxAUC normalisation instead of a trapezoid over `aucThreshold × n`; ties scored as the exact expectation of AUCell's random tie-breaking. Verified against R AUCell 1.20.2 on five datasets (untied samples ≤ 6e-17) and the TARGET ETP-TF5 survival result against R `survival`. Scores fall by up to 0.10; 16 DepMap / 8 TARGET / 2 GDS4299 samples change median-split side for ETP-TF5; TARGET ETP-TF5 Cox HR 27.7 → 23.5, log-rank p 2.20e-14 → 2.53e-14. |
 | 2026-11-16 | Full-feature audit (three independent agents recomputing every endpoint in R, plus a pane-by-pane UI pass). Numbers matched R throughout: compare/differential (1,475 pairs), correlation, PCA, aux joins, survival arms/KM/log-rank (80 configurations), contrasts. Fixed: KW 500 on constant genes (§1.2); placeholder group labels as groups and undeclared grouping columns (§4.1); survival exclusions merged, trim tie-break by sample id with a new sensitivity range, 1-vs-1 log-rank, Cox precision, captions (§3.1, §3.1a, §3.4); duplicate symbols and repeated genes (§7.4a); correlation scale, Spearman p, constant genes, co-expression caveat (§7.6a); PCA symbols/axes (§7.7); differential accounting (§7.8); GDS4299 aliases (§7.4); mutation usable count (§8.2); 404s for unknown datasets; figures, defaults and accessibility (§5.9). §3.1a numbers re-measured after the AUCell change. |
+| 2026-11-16 | Every open finding from the researcher-committee review of the Workbench design, built on separate branches and merged one at a time (PRs #10–#17). §5.11 figure captions on every figure, the same string printed into the PNG; §5.12 one colour per group label across Compare facets, sentence-case axis titles everywhere ("log scale: log(1 + x)" on the log1p axis), statistics tables that fit 390 px with numbers that never wrap; §3.2/§3.4/§5.13 the survival API names the endpoint (overall survival) and returns censoring marks and at-risk steps (additions only, existing fields bit-identical), and the KM figure draws ticks and a numbers-at-risk table (44/44 counts match R `survival`); §11.6 the fold-change chart's ±4 cap removed (MYCL +8.24 was drawn as 4), full-width chart with an in-figure key; §8.5 CRISPR/drug results name both measurements ("MYB vs MYB" before); §5.10 context bar marked optional, question-led nav, one-row phone header and labelled nav drawer; §5.14 exported colour keys named teal "blue" after the palette change. Verified on merged main against a freshly started backend: UI-vs-API sweep 72/72 (KW p 2.89e-8 / 9.25e-5, survival log-rank 2.53e-14 and HR 23.504, correlation r −0.847, CRISPR r −0.652 n 91 — unchanged and as previously verified against R), exports, axe (no violations), Alt+1–8 / Delete / "/" and 390 px 28/28; backend 314 passed, frontend 145 passed. Each new test was validated by reintroducing its defect. |
