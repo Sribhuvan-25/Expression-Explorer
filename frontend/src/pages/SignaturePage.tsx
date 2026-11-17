@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
+import { FigureCaption, GeneTagInput, PageHeader, Panel, PresetButton, PrimaryButton, EmptyState, ErrorState, DataTable, QueryPanel, SummaryParts, Gene, FieldLabel } from "../components/ui";
 import { useContextHasGenes, useLinkedDataset, useLinkedGenes } from "../lib/workbench";
+import { signatureCaption } from "../lib/figureCaptions";
 
 const PRESETS: Record<string, string[]> = {
   "ETP-TF5": ["MEF2C", "LYL1", "HHEX", "LMO2", "MYCN"],
@@ -75,7 +76,18 @@ export function histogramBinCount(scores: number[]): number {
  * distinct population or the tail of one continuous distribution -- which
  * is the actual question when picking candidates.
  */
-export function ScoreDistribution({ scores, shown, scoreLabel = "Score" }: { scores: number[]; shown: number; scoreLabel?: string }) {
+export function ScoreDistribution({
+  scores,
+  shown,
+  scoreLabel = "Score",
+  caption,
+}: {
+  scores: number[];
+  shown: number;
+  scoreLabel?: string;
+  /** Caption text given the bin count the histogram settled on. */
+  caption?: (bins: number) => string;
+}) {
   if (scores.length < 4) return null;
   const min = Math.min(...scores);
   const max = Math.max(...scores);
@@ -133,6 +145,7 @@ export function ScoreDistribution({ scores, shown, scoreLabel = "Score" }: { sco
         <span>{max.toFixed(3)}</span>
       </div>
       <p className="mt-0.5 text-center text-[11px] text-ink-mute">{scoreLabel}</p>
+      {caption && <FigureCaption text={caption(BINS)} />}
     </div>
   );
 }
@@ -323,6 +336,19 @@ export function SignaturePage() {
               scores={rows.map(([, v]) => v)}
               shown={Math.min(25, rows.length)}
               scoreLabel={query?.method === "log2_mean" ? "log2-mean score" : "AUCell score (0–1)"}
+              caption={
+                query
+                  ? (bins) =>
+                      signatureCaption({
+                        method: query.method,
+                        genes: data.genes,
+                        datasetUnit: datasets.find((d) => d.dataset_id === query.datasetId)?.expression_unit,
+                        n: rows.length,
+                        bins,
+                        shown: Math.min(25, rows.length),
+                      })
+                  : undefined
+              }
             />
             <DataTable
               columns={[

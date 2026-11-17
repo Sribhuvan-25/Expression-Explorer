@@ -159,26 +159,27 @@ export function ScatterPlot({
             {t.toFixed(xDigits)}
           </text>
         ))}
+        {/* Axis titles in the body face, sentence case, as given: uppercase
+            tracked mono ("EXPRESSION (TPM)") read as a code token and
+            turned "log2(TPM+1)" into "LOG2(TPM+1)". */}
         <text
           x={margin.left + plotW / 2}
           y={height - 6}
           textAnchor="middle"
-          fontSize={10.5}
-          fontFamily="var(--f-mono)"
-          className="fill-[var(--ink-mute)]"
-          style={{ letterSpacing: "0.04em" }}
+          fontSize={11.5}
+          fontFamily="var(--f-body)"
+          className="fill-[var(--ink-soft)]"
         >
-          {xLabel.toUpperCase()}
+          {xLabel}
         </text>
         <text
           transform={`translate(14, ${margin.top + plotH / 2}) rotate(-90)`}
           textAnchor="middle"
-          fontSize={10.5}
-          fontFamily="var(--f-mono)"
-          className="fill-[var(--ink-mute)]"
-          style={{ letterSpacing: "0.04em" }}
+          fontSize={11.5}
+          fontFamily="var(--f-body)"
+          className="fill-[var(--ink-soft)]"
         >
-          {yLabel.toUpperCase()}
+          {yLabel}
         </text>
 
         <line x1={margin.left} x2={margin.left} y1={margin.top} y2={margin.top + plotH} stroke="var(--rule-firm)" />

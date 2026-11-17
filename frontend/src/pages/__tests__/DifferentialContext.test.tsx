@@ -20,6 +20,11 @@ function Grab() {
 
 afterEach(() => localStorage.clear());
 
+// The page loads datasets and group values before the button enables;
+// under a heavily loaded machine that took longer than waitFor's 1 s
+// default and the test failed intermittently, with nothing wrong.
+const SLOW = { timeout: 5000 };
+
 describe("differential genes with the context bar", () => {
   it("reopens the collapsed query when the context dataset changes", async () => {
     vi.spyOn(api, "listDatasets").mockResolvedValue({
@@ -45,11 +50,11 @@ describe("differential genes with the context bar", () => {
         </WorkbenchProvider>
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /rank genes/i })).toBeEnabled(), SLOW);
     fireEvent.click(screen.getByRole("button", { name: /rank genes/i }));
-    expect(await screen.findByTestId("query-summary")).toHaveTextContent("TARGET");
+    expect(await screen.findByTestId("query-summary", {}, SLOW)).toHaveTextContent("TARGET");
 
     await act(async () => setContext!({ datasetId: "gds4299" }));
-    await waitFor(() => expect(screen.queryByTestId("query-summary")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("query-summary")).toBeNull(), SLOW);
   });
 });

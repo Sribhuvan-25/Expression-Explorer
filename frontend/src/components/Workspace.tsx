@@ -65,7 +65,7 @@ function EmptyWorkspace({ containerApi }: IWatermarkPanelProps) {
       <div>
         <p className="text-[13.5px] font-medium text-ink-soft">No analysis open</p>
         <p className="mt-1 max-w-[36ch] text-[12.5px] text-ink-mute">
-          Choose one from the Analyses list, or press Alt+1 to Alt+8.
+          Each analysis in the Analyses list answers one question — pick the one closest to yours.
         </p>
       </div>
       <button
