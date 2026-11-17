@@ -7,15 +7,19 @@ import { DatasetStatus } from "./DatasetStatus";
 import { ContextBar } from "./ContextBar";
 import { WorkbenchProvider } from "../lib/workbench";
 
-const NAV_ITEMS: { type: PaneType; hint: string }[] = [
-  { type: "compare", hint: "Gene across groups" },
-  { type: "contrasts", hint: "Designed experiments, per gene" },
-  { type: "signature", hint: "Gene set, ranked" },
-  { type: "rank", hint: "Pick candidates" },
-  { type: "survival", hint: "Kaplan–Meier + Cox" },
-  { type: "correlation", hint: "Gene vs gene, network, PCA" },
-  { type: "multi-omics", hint: "Mutations, CRISPR, drugs" },
-  { type: "genome-tracks", hint: "ChIP-seq / ATAC-seq" },
+// Each analysis is introduced by the question a biologist would bring to
+// it (the review's first-year student could not tell which analysis
+// answered which question from method names alone); the name stays the
+// row's title and the method sits in its tooltip and description.
+const NAV_ITEMS: { type: PaneType; question: string; method: string }[] = [
+  { type: "compare", question: "Does a gene differ by group?", method: "Box plot, Mann–Whitney + FDR; top differential genes" },
+  { type: "contrasts", question: "What does a perturbation change?", method: "Precomputed limma contrasts, per gene" },
+  { type: "signature", question: "How active is a gene set?", method: "AUCell or log2-mean signature score per sample" },
+  { type: "rank", question: "Which samples express it most?", method: "Samples sorted by a gene or signature" },
+  { type: "survival", question: "Does it predict survival?", method: "Kaplan–Meier, log-rank + Cox" },
+  { type: "correlation", question: "Which genes move together?", method: "Gene vs gene, co-expression network, PCA" },
+  { type: "multi-omics", question: "Tied to mutations, CRISPR, drugs?", method: "Mutations, CRISPR dependency, drug response" },
+  { type: "genome-tracks", question: "Is a region bound or open?", method: "ChIP-seq / ATAC-seq signal tracks" },
 ];
 
 // One small distinct glyph per analysis type so the collapsed, icon-only
@@ -170,13 +174,15 @@ function ShortcutsHelp({ open, setOpen }: { open: boolean; setOpen: (open: boole
 
 function NavRow({
   type,
-  hint,
+  question,
+  method,
   index,
   active,
   onOpen,
 }: {
   type: PaneType;
-  hint: string;
+  question: string;
+  method: string;
   index: number;
   active: boolean;
   onOpen: (splitRight: boolean) => void;
@@ -188,8 +194,9 @@ function NavRow({
       onClick={(e) => onOpen(e.altKey || e.metaKey)}
       aria-current={active ? "page" : undefined}
       aria-keyshortcuts={`Alt+${index + 1}`}
-      aria-label={`${PANE_LABELS[type]} — ${hint}`}
-      title={`${PANE_LABELS[type]} — click to open, alt/cmd-click to split (${ALT}${index + 1})`}
+      aria-label={`${PANE_LABELS[type]} — ${question}`}
+      aria-describedby={`nav-method-${type}`}
+      title={`${PANE_LABELS[type]}: ${method}. Click to open, alt/cmd-click to split (${ALT}${index + 1})`}
       className={[
         "group relative flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-1.5 text-left transition-colors max-lg:justify-center max-lg:px-0 max-lg:py-2",
         active ? "bg-rail-active-bg text-rail-active-ink" : "text-ink-soft hover:bg-surface-hover hover:text-ink",
@@ -199,16 +206,60 @@ function NavRow({
       <NavIcon type={type} />
       <span className="flex min-w-0 flex-1 flex-col max-lg:hidden">
         <span className={`truncate text-[13px] ${active ? "font-semibold" : "font-medium"}`}>{PANE_LABELS[type]}</span>
-        <span className="truncate text-[11px] text-ink-mute">{hint}</span>
+        <span className="text-[11px] leading-snug text-ink-mute">{question}</span>
+      </span>
+      <span id={`nav-method-${type}`} hidden>
+        {method}
       </span>
       <span
         aria-hidden="true"
-        className="wb-kbd opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 max-lg:hidden"
+        className="wb-kbd absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 max-lg:hidden"
       >
         {ALT}
         {index + 1}
       </span>
     </button>
+  );
+}
+
+const CUE_KEY = "expression-explorer:first-run-cue-dismissed";
+
+function cueDismissed(): boolean {
+  try {
+    return localStorage.getItem(CUE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One line, shown until dismissed or until the researcher opens an
+ * analysis from the nav: it points a first-time user at the question-led
+ * Analyses list and says the context bar is optional. Deliberately not a
+ * tour -- experienced users dismiss it once and never see it again.
+ */
+function FirstRunCue({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-2.5 border-b border-rule bg-accent-soft px-3 py-1.5 text-[12.5px] text-accent-ink">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+        <path d="M13 8H3M7 4L3 8L7 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <p className="min-w-0 flex-1">
+        <span className="font-semibold">New here?</span>{" "}
+        <span className="max-sm:hidden">
+          Each analysis on the left answers one question — pick the one closest to yours. Setting a context at the top is
+          optional.
+        </span>
+        <span className="sm:hidden">Tap Analyses to see the question each one answers.</span>
+      </p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="h-[24px] shrink-0 rounded-[3px] border border-accent px-2 text-[12px] font-medium text-accent-ink hover:bg-surface"
+      >
+        Got it
+      </button>
+    </div>
   );
 }
 
@@ -236,6 +287,15 @@ function Shell() {
   const [api, setApi] = useState<DockviewApi | null>(null);
   const [activeType, setActiveType] = useState<PaneType | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [cueOpen, setCueOpen] = useState(() => !cueDismissed());
+  const dismissCue = useCallback(() => {
+    setCueOpen(false);
+    try {
+      localStorage.setItem(CUE_KEY, "1");
+    } catch {
+      /* blocked storage: the cue simply shows again next visit */
+    }
+  }, []);
   const contextGeneRef = useRef<HTMLInputElement>(null);
   const navRef = useRef<HTMLElement>(null);
 
@@ -260,8 +320,10 @@ function Shell() {
       if (!api) return;
       openPane(api, type, { splitRight });
       if (focus) focusPaneHeading(api);
+      // They found the nav: the first-run cue has done its job.
+      dismissCue();
     },
-    [api],
+    [api, dismissCue],
   );
 
   // Keyboard: Alt+1..8 opens (or brings forward) an analysis; "/" jumps
@@ -357,8 +419,11 @@ function Shell() {
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-hidden">
-          <Workspace onApiReady={handleApiReady} />
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {cueOpen && <FirstRunCue onDismiss={dismissCue} />}
+          <div className="min-h-0 flex-1">
+            <Workspace onApiReady={handleApiReady} />
+          </div>
         </main>
       </div>
     </div>
