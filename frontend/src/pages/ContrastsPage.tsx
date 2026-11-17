@@ -127,18 +127,52 @@ interface ChartRow {
   row?: ContrastPanelRow;
 }
 
+/**
+ * Narrowest the fold-change chart is drawn. Below this (a 390 px phone,
+ * a pane split three ways) it keeps this width and its wrapper scrolls
+ * sideways: shrinking it to fit left ~3 px text (METHODS.md 5.9).
+ */
+export const FC_CHART_MIN_W = 560;
+const FC_CHART_DEFAULT_W = 640;
+
+/**
+ * The width the parent layout grants `el`, kept current with a
+ * ResizeObserver. Read from clientWidth, not the observer's contentRect:
+ * the SVG inside is sized from this number, and contentRect would report
+ * the SVG's own width back and latch (same reasoning as BoxPlot). Takes
+ * the element from a callback ref, not a ref object: the chart's wrapper
+ * mounts only once results arrive, and an effect keyed on a ref object
+ * would never see it appear.
+ */
+function useGrantedWidth(el: HTMLElement | null): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return width;
+}
+
 function FoldChangeChart({
   items,
   contrasts,
   svgRef,
+  width,
 }: {
   items: ChartRow[];
   contrasts: ContrastSummary[];
   svgRef: React.RefObject<SVGSVGElement | null>;
+  /** Width available in the pane; the chart fills it (never below FC_CHART_MIN_W). */
+  width: number;
 }) {
-  const W = 640;
+  // Fills the pane: at a fixed 640 it used ~40% of a 1440 px window.
+  const W = Math.max(FC_CHART_MIN_W, Math.floor(width) || FC_CHART_DEFAULT_W);
   const plotX0 = 150;
-  const plotX1 = 590;
+  const plotX1 = W - 50;
   const subH = 12;
   const geneH = contrasts.length * subH + 8;
   const headH = 20;
@@ -388,6 +422,8 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
   const [text, setText] = useState(PP2A_PRESET_TEXT);
   const [query, setQuery] = useState<{ datasetId: string; text: string; parsed: ParsedGene[] } | null>(null);
   const chartRef = useRef<SVGSVGElement>(null);
+  const [chartWrap, setChartWrap] = useState<HTMLDivElement | null>(null);
+  const chartWidth = useGrantedWidth(chartWrap);
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["contrast-panel", query?.datasetId, query?.parsed.map((p) => p.gene)],
@@ -601,8 +637,8 @@ export function GenePanelTab({ dataset, contrasts }: { dataset: DatasetSummary; 
                 />
               }
             >
-              <div className="overflow-x-auto">
-                <FoldChangeChart items={items} contrasts={shownContrasts} svgRef={chartRef} />
+              <div ref={setChartWrap} className="overflow-x-auto">
+                <FoldChangeChart items={items} contrasts={shownContrasts} svgRef={chartRef} width={chartWidth} />
               </div>
             </Panel>
 

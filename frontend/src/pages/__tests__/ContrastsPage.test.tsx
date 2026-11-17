@@ -330,3 +330,33 @@ describe("dataset notes", () => {
     expect(screen.getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
   });
 });
+
+/**
+ * The fold-change chart, from the researcher-committee review: drawn at a
+ * fixed 640 px it used ~40% of a 1440 px pane. It now fills the width its
+ * pane grants (the test setup stubs clientWidth to 800) and keeps a
+ * readable minimum, scrolling sideways below it.
+ */
+describe("fold-change chart", () => {
+  const chartSvg = () => document.querySelector("svg[aria-label='log2 fold-change per contrast']") as SVGSVGElement;
+
+  it("fills the width the pane grants", async () => {
+    mockApi(() => [row("SET", [cell("oe"), cell("kd")])]);
+    renderPage();
+    await runWith("SET");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    await waitFor(() => expect(chartSvg().getAttribute("width")).toBe("800"));
+    expect(chartSvg().getAttribute("viewBox")).toMatch(/^0 0 800 /);
+  });
+
+  it("does not shrink below its minimum in a narrow pane, and scrolls sideways instead", async () => {
+    const { FC_CHART_MIN_W } = await import("../ContrastsPage");
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    mockApi(() => [row("SET", [cell("oe"), cell("kd")])]);
+    renderPage();
+    await runWith("SET");
+    await waitFor(() => expect(chartSvg()).toBeInTheDocument());
+    expect(chartSvg().getAttribute("width")).toBe(String(FC_CHART_MIN_W));
+    expect(chartSvg().parentElement!.className).toMatch(/overflow-x-auto/);
+  });
+});
