@@ -1469,6 +1469,26 @@ already fixed once for a different reason. Added an explicit
 ("no samples currently have a value... may be temporarily unavailable")
 rather than rendering it with no options and no explanation.
 
+**Update 2026-11-17 — the ETP labels now have a committed fallback.**
+Checking production found TARGET-ALL-P2 serving `etp_status` as
+unavailable (0 of 469 samples; 190 wherever the download works). The
+Railway log shows why: Springer Nature answers the server's request for
+the Liu 2017 supplement with a 3 KB HTML page (`<!DOCTYPE html>`), not
+the 48 MB workbook — the same URL downloads from a home connection, so it
+is presumably refusing datacenter addresses. The defense above did its
+job (no crash, the dataset loaded), but Expression Compare by `etp_status`
+silently dropped TARGET in production. The 190 labels (146 non-ETP, 25
+near-ETP, 19 ETP) are now committed as
+`backend/app/ingest/data/liu2017_target_etp_status.csv`, built from a
+fresh download with the loader's own parsing and verified identical to
+the locally cached table (source workbook sha256
+`282a3ef4bed82ecd44df9da30b9e0c6130a1f6ae0df501ae1b39faee9a821d36`).
+`load_etp_status` still tries the download first and falls back to the
+snapshot, with a warning, when it fails — the same precedent as
+GDS4299's committed labels (§7.1a). The supplement is a fixed 2017
+publication, so the snapshot cannot drift from it.
+`tests/test_liu2017_etp_snapshot.py`, validated by removing the fallback.
+
 ---
 
 ## 8. Auxiliary measurement layers
@@ -2358,3 +2378,4 @@ screen equal the served log2FC, at one scale (71.692 px per unit).
 | 2026-11-16 | Follow-ups to the row above. §5.12: Top differential genes now fits 390 px (per-column `nowrap` keeps gene symbols whole). Compare's empty state points to the optional Context bar instead of a "Gene(s) field" that is folded away on phones. §5.15: igv.js controls labelled from creation, found in WebKit. The intermittent `DifferentialContext` test failure was root-caused (Profiler and query-cache timestamps): the page's chain takes ~100 ms; the first cold-jsdom `getByRole` with a name costs ~240 ms and blocks the event loop, which under parallel test load exceeded waitFor's 1 s default (reproduced 2/8 at 1 s, 8/8 pass at 5 s) — a test-tool cost, no app defect. Cross-browser on merged code: UI-vs-API sweep 72/72 in Chromium, WebKit and Firefox; UX sweep 28/28 in all three (WebKit on three runs; one earlier WebKit run errored before reporting and its log was overwritten). Real mobile Safari (iOS 18.3 Simulator, iPhone 16 Pro): Compare (colours by label, captions, every pairwise column visible, KW p 9.25e-5), the Analyses drawer and Survival (at-risk table, caption, log-rank 2.53e-14, HR 23.504) checked by tapping through. A header that once appeared scrolled off-screen in Safari did not reproduce in an A/B test of `h-screen` vs `h-dvh`, so no change was made. Plain-language statistical readings (the Guided design's, rejected by every reviewer) were never brought into the app. |
 | 2026-11-16 | Supersedes the 5 s timeout in the row above: the `DifferentialContext` test no longer races a wall-clock budget. It steps the event loop inside `act()` until each condition holds, bounded by turns rather than milliseconds, with cheap queries. Under 16 concurrent runs (load ~27) the old 1 s version failed 16/16 and the new one passed 32/32; it still fails with the reopen fix removed. Android was not tested (Chrome on the emulator requires accepting Google's terms first; the user chose to skip it), and no physical device was used. |
 | 2026-11-17 | Mobile verification, measured. Full device emulation with touch input (Playwright: Pixel 5 in Chromium, Android Chrome's engine; iPhone 13 in WebKit, Safari's engine; isMobile, hasTouch, device pixel ratio and user agent), every step driven by taps: Compare on TARGET-ALL-P2 + GDS4299 (every pairwise p and q and both Kruskal–Wallis p match the API, every column visible, each group one colour across facets), all 8 analyses opened from the Analyses drawer, Survival (log-rank 2.53e-14, HR 23.504, "Overall survival" in the figure, numbers-at-risk table), no horizontal overflow, no page errors — 15/15 on each. Not done: Chrome in the Android emulator (accepting Chrome's terms was refused by the permission system) and any physical phone (no tool here drives a physical device; the one paired iPhone was offline). |
+| 2026-11-17 | §7.10: production served TARGET-ALL-P2 without `etp_status` (Springer returns an HTML page instead of the Liu 2017 workbook to the server); the 190 ETP labels are now committed and used when the download fails, verified identical to a fresh download (sha256 recorded). Backend 317 passed; new test validated by removing the fallback. Two further production findings recorded, not changed here: the Railway volume is mounted at `/data/cahe` while the app writes to `/data/cache` (so every deploy re-downloads every dataset), and the production metadata database has no tables (the API falls back to code-registered datasets, logging an error per request). |

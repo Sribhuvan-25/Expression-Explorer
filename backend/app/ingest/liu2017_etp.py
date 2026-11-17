@@ -17,6 +17,9 @@ own dataset.
 """
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
 import pandas as pd
 
 from app.config import settings
@@ -27,6 +30,16 @@ SUPP_URL = (
     "art%3A10.1038%2Fng.3909/MediaObjects/41588_2017_BFng3909_MOESM2_ESM.xlsx"
 )
 CACHE_DIR = settings.cache_dir / "liu2017_etp"
+
+# The same labels, committed: 190 cases (146 non-ETP, 25 near-ETP, 19 ETP),
+# built from SUPP_URL with exactly the parsing below and verified identical
+# to a fresh download (source sha256 282a3ef4bed82ecd44df9da30b9e0c6130a1f6ae0df501ae1b39faee9a821d36,
+# 2026-11-17). Used when the download fails: in production Springer Nature
+# answers the server's request with a 3 KB HTML page, not the workbook, so
+# TARGET loaded with no etp_status at all (METHODS.md 7.10).
+SNAPSHOT_PATH = Path(__file__).parent / "data" / "liu2017_target_etp_status.csv"
+
+logger = logging.getLogger(__name__)
 SHEET_NAME = "Table S1 cohort"
 
 # Liu et al.'s values are unhyphenated ('nearETP', 'notETP'); normalize to
@@ -54,7 +67,11 @@ def load_etp_status(use_cache: bool = True) -> pd.Series:
         # of target_mrd.py's fetch: same single-shot-with-no-defense
         # shape, and ETP status is used more widely, so it's fixed the
         # same way rather than waiting for it to fail in production too.
-        content = fetch_with_retry(SUPP_URL, timeout=120.0, validate=validate_excel_bytes)
+        try:
+            content = fetch_with_retry(SUPP_URL, timeout=120.0, validate=validate_excel_bytes)
+        except Exception as exc:  # noqa: BLE001 -- any failure falls back to the verified snapshot
+            logger.warning("Liu 2017 supplement unavailable (%s); using the committed ETP label snapshot", exc)
+            return pd.read_csv(SNAPSHOT_PATH).set_index("sample_id")["etp_status"]
         raw = pd.read_excel(pd.io.common.BytesIO(content), sheet_name=SHEET_NAME)
         df = raw[["USI", "ETP status"]].copy()
         df["sample_id"] = "TARGET-10-" + df["USI"].astype(str)
