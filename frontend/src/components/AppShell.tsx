@@ -1,29 +1,31 @@
 import type { DockviewApi } from "dockview-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { openPane, Workspace } from "./Workspace";
 import { Sources } from "./Sources";
 import { PANE_LABELS, type PaneType } from "../panes/registry";
 import { DatasetStatus } from "./DatasetStatus";
 import { ContextBar } from "./ContextBar";
-import { WorkbenchProvider } from "../lib/workbench";
+import { useWorkbench, WorkbenchProvider } from "../lib/workbench";
 
 // Each analysis is introduced by the question a biologist would bring to
 // it (the review's first-year student could not tell which analysis
 // answered which question from method names alone); the name stays the
 // row's title and the method sits in its tooltip and description.
-const NAV_ITEMS: { type: PaneType; question: string; method: string }[] = [
-  { type: "compare", question: "Does a gene differ by group?", method: "Box plot, Mann–Whitney + FDR; top differential genes" },
-  { type: "contrasts", question: "What does a perturbation change?", method: "Precomputed limma contrasts, per gene" },
-  { type: "signature", question: "How active is a gene set?", method: "AUCell or log2-mean signature score per sample" },
-  { type: "rank", question: "Which samples express it most?", method: "Samples sorted by a gene or signature" },
-  { type: "survival", question: "Does it predict survival?", method: "Kaplan–Meier, log-rank + Cox" },
-  { type: "correlation", question: "Which genes move together?", method: "Gene vs gene, co-expression network, PCA" },
-  { type: "multi-omics", question: "Tied to mutations, CRISPR, drugs?", method: "Mutations, CRISPR dependency, drug response" },
-  { type: "genome-tracks", question: "Is a region bound or open?", method: "ChIP-seq / ATAC-seq signal tracks" },
+// `short` labels the icon in the narrow rail (640–1023px).
+const NAV_ITEMS: { type: PaneType; short: string; question: string; method: string }[] = [
+  { type: "compare", short: "Compare", question: "Does a gene differ by group?", method: "Box plot, Mann–Whitney + FDR; top differential genes" },
+  { type: "contrasts", short: "Contrasts", question: "What does a perturbation change?", method: "Precomputed limma contrasts, per gene" },
+  { type: "signature", short: "Signature", question: "How active is a gene set?", method: "AUCell or log2-mean signature score per sample" },
+  { type: "rank", short: "Ranking", question: "Which samples express it most?", method: "Samples sorted by a gene or signature" },
+  { type: "survival", short: "Survival", question: "Does it predict survival?", method: "Kaplan–Meier, log-rank + Cox" },
+  { type: "correlation", short: "Correlation", question: "Which genes move together?", method: "Gene vs gene, co-expression network, PCA" },
+  { type: "multi-omics", short: "Multi-omics", question: "Tied to mutations, CRISPR, drugs?", method: "Mutations, CRISPR dependency, drug response" },
+  { type: "genome-tracks", short: "Tracks", question: "Is a region bound or open?", method: "ChIP-seq / ATAC-seq signal tracks" },
 ];
 
-// One small distinct glyph per analysis type so the collapsed, icon-only
-// nav (below 1024px) still reads as different destinations.
+// One small distinct glyph per analysis type; in the narrow rail
+// (640–1023px) each sits above its short name.
 const NAV_ICONS: Record<PaneType, React.ReactNode> = {
   compare: (
     <path d="M4 20V10M12 20V4M20 20V14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -174,6 +176,7 @@ function ShortcutsHelp({ open, setOpen }: { open: boolean; setOpen: (open: boole
 
 function NavRow({
   type,
+  short,
   question,
   method,
   index,
@@ -181,6 +184,7 @@ function NavRow({
   onOpen,
 }: {
   type: PaneType;
+  short: string;
   question: string;
   method: string;
   index: number;
@@ -198,15 +202,20 @@ function NavRow({
       aria-describedby={`nav-method-${type}`}
       title={`${PANE_LABELS[type]}: ${method}. Click to open, alt/cmd-click to split (${ALT}${index + 1})`}
       className={[
-        "group relative flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-1.5 text-left transition-colors max-lg:justify-center max-lg:px-0 max-lg:py-2",
+        // sm:max-lg = the narrow rail (icon over a short name); below sm
+        // the row is shown full width in the nav drawer.
+        "group relative flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-1.5 text-left transition-colors sm:max-lg:flex-col sm:max-lg:gap-1 sm:max-lg:px-0.5 sm:max-lg:py-2 max-sm:py-2.5",
         active ? "bg-rail-active-bg text-rail-active-ink" : "text-ink-soft hover:bg-surface-hover hover:text-ink",
       ].join(" ")}
     >
       {active && <span aria-hidden="true" className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-accent" />}
       <NavIcon type={type} />
-      <span className="flex min-w-0 flex-1 flex-col max-lg:hidden">
+      <span className="flex min-w-0 flex-1 flex-col sm:max-lg:hidden">
         <span className={`truncate text-[13px] ${active ? "font-semibold" : "font-medium"}`}>{PANE_LABELS[type]}</span>
         <span className="text-[11px] leading-snug text-ink-mute">{question}</span>
+      </span>
+      <span aria-hidden="true" className="hidden text-center text-[10.5px] leading-tight sm:max-lg:block">
+        {short}
       </span>
       <span id={`nav-method-${type}`} hidden>
         {method}
@@ -250,7 +259,7 @@ function FirstRunCue({ onDismiss }: { onDismiss: () => void }) {
           Each analysis on the left answers one question — pick the one closest to yours. Setting a context at the top is
           optional.
         </span>
-        <span className="sm:hidden">Tap Analyses to see the question each one answers.</span>
+        <span className="sm:hidden">Tap Analyses to see the question each one answers. Context is optional.</span>
       </p>
       <button
         type="button"
@@ -296,8 +305,15 @@ function Shell() {
       /* blocked storage: the cue simply shows again next visit */
     }
   }, []);
+  // Below 640px the context bar folds behind a "Context" button and the
+  // nav becomes a drawer; both flags only change classes under max-sm.
+  const [contextOpen, setContextOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const contextGeneRef = useRef<HTMLInputElement>(null);
   const navRef = useRef<HTMLElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const contextGenes = useWorkbench()?.genes ?? [];
 
   const handleApiReady = useCallback((readyApi: DockviewApi) => {
     setApi(readyApi);
@@ -346,6 +362,12 @@ function Shell() {
       if (e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.composedPath()[0] ?? e.target)) return;
       if (e.key === "/") {
         e.preventDefault();
+        // On a phone the field may be folded away (display: none, which
+        // cannot take focus): unfold it synchronously, then focus.
+        flushSync(() => {
+          setContextOpen(true);
+          setNavOpen(false);
+        });
         contextGeneRef.current?.focus();
         contextGeneRef.current?.select();
       } else if (e.key === "?") {
@@ -359,6 +381,18 @@ function Shell() {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [open]);
+
+  // Opening the drawer moves focus into it, onto the analysis in front.
+  useEffect(() => {
+    if (!navOpen) return;
+    const rows = Array.from(navRef.current?.querySelectorAll<HTMLElement>("[data-nav-row]") ?? []);
+    (rows.find((r) => r.getAttribute("aria-current") === "page") ?? rows[0])?.focus();
+  }, [navOpen]);
+
+  const closeNav = (refocus: boolean) => {
+    setNavOpen(false);
+    if (refocus) menuButtonRef.current?.focus();
+  };
 
   // Arrow keys move between analyses in the nav list.
   const onNavKey = (e: React.KeyboardEvent) => {
@@ -378,42 +412,120 @@ function Shell() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ground text-ink">
-      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule-firm bg-surface px-3 py-2">
-        <div className="flex w-[208px] shrink-0 items-center gap-2 max-lg:w-auto">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule-firm bg-surface px-3 py-2 max-sm:gap-x-2 max-sm:py-1.5">
+        <button
+          ref={menuButtonRef}
+          type="button"
+          aria-expanded={navOpen}
+          aria-controls="app-nav"
+          onClick={() => setNavOpen((o) => !o)}
+          className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-[3px] border border-field-edge px-2 text-[12.5px] font-medium text-ink-soft sm:hidden"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          Analyses
+        </button>
+        <div className="flex w-[208px] shrink-0 items-center gap-2 max-lg:w-auto max-sm:min-w-0 max-sm:flex-1 max-sm:shrink">
           <MarkGlyph />
-          <span className="text-[13.5px] font-semibold text-ink">Expression Explorer</span>
+          <span className="truncate text-[13.5px] font-semibold text-ink">Expression Explorer</span>
         </div>
-        <ContextBar ref={contextGeneRef} />
+        <button
+          type="button"
+          aria-expanded={contextOpen}
+          aria-controls="context-region"
+          onClick={() => setContextOpen((o) => !o)}
+          className="flex h-[30px] min-w-0 shrink-0 items-center gap-1.5 rounded-[3px] border border-field-edge px-2 text-[12.5px] font-medium text-ink-soft sm:hidden"
+        >
+          Context
+          {contextGenes.length > 0 && (
+            <span className="wb-gene max-w-[9ch] truncate text-[12px] font-normal text-accent-ink">
+              {contextGenes[0]}
+              {contextGenes.length > 1 ? ` +${contextGenes.length - 1}` : ""}
+            </span>
+          )}
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" className={contextOpen ? "rotate-180" : ""}>
+            <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <div id="context-region" className={`flex min-w-0 flex-1 ${contextOpen ? "max-sm:basis-full" : "max-sm:hidden"}`}>
+          <ContextBar ref={contextGeneRef} />
+        </div>
         <ShortcutsHelp open={helpOpen} setOpen={setHelpOpen} />
       </header>
 
       <div className="flex min-h-0 flex-1">
+        {navOpen && (
+          <div aria-hidden="true" onClick={() => closeNav(false)} className="fixed inset-0 z-30 bg-black/30 sm:hidden" />
+        )}
         {/* overflow-y-auto: the dataset list below the nav runs past short
-            screens, so the column scrolls rather than clipping it. */}
-        <aside className="flex w-[232px] shrink-0 flex-col overflow-y-auto border-r border-rule bg-rail-bg max-lg:w-[48px]">
+            screens, so the column scrolls rather than clipping it. Below
+            640px the column is a drawer opened from the header. */}
+        <aside
+          ref={asideRef}
+          id="app-nav"
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && navOpen) {
+              e.stopPropagation();
+              closeNav(true);
+            }
+          }}
+          onBlur={(e) => {
+            // Tabbing out of the open drawer closes it. A null
+            // relatedTarget (a tap on iOS, which does not focus buttons)
+            // must not, or the tap that follows would land on nothing.
+            const to = e.relatedTarget as Node | null;
+            if (navOpen && to && !asideRef.current?.contains(to) && to !== menuButtonRef.current) setNavOpen(false);
+          }}
+          className={[
+            "flex w-[232px] shrink-0 flex-col overflow-y-auto border-r border-rule bg-rail-bg sm:max-lg:w-[76px]",
+            "max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-40 max-sm:w-[min(300px,86vw)] max-sm:shadow-xl",
+            navOpen ? "" : "max-sm:hidden",
+          ].join(" ")}
+        >
+          <div className="flex items-center justify-between border-b border-rule px-3 py-2 sm:hidden">
+            <span className="text-[13px] font-semibold text-ink">Analyses</span>
+            <button
+              type="button"
+              onClick={() => closeNav(true)}
+              aria-label="Close analyses"
+              className="flex h-[30px] w-[30px] items-center justify-center rounded-[3px] text-ink-mute hover:bg-surface-hover hover:text-ink"
+            >
+              <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true">
+                <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
           <nav
             ref={navRef}
             aria-label="Analyses"
             onKeyDown={onNavKey}
-            className="flex flex-col gap-px px-1.5 py-2 max-lg:px-1"
+            className="flex flex-col gap-px px-1.5 py-2 sm:max-lg:px-1"
           >
-            <p className="px-2.5 pb-1 text-[11px] font-semibold text-ink-mute max-lg:sr-only">
-              Analyses
-            </p>
+            <p className="px-2.5 pb-1 text-[11px] font-semibold text-ink-mute sm:max-lg:sr-only max-sm:hidden">Analyses</p>
             {NAV_ITEMS.map((item, i) => (
               <NavRow
                 key={item.type}
                 {...item}
                 index={i}
                 active={activeType === item.type}
-                onOpen={(splitRight) => open(item.type, splitRight)}
+                onOpen={(splitRight) => {
+                  if (navOpen) {
+                    // From the phone drawer: close it and move focus to the
+                    // pane that opened, not back to a now-hidden row.
+                    setNavOpen(false);
+                    open(item.type, false, true);
+                  } else {
+                    open(item.type, splitRight);
+                  }
+                }}
               />
             ))}
           </nav>
 
           <div className="flex-1" />
 
-          <div className="max-lg:hidden">
+          <div className="sm:max-lg:hidden">
             <DatasetStatus />
             <Sources />
           </div>
