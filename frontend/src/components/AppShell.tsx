@@ -85,6 +85,89 @@ function isTypingTarget(el: EventTarget | null): boolean {
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
 }
 
+const SHORTCUTS: { keys: string; does: string }[] = [
+  { keys: "/", does: "Jump to the context gene field" },
+  { keys: `${ALT}1–8`, does: "Open an analysis (in list order)" },
+  { keys: `${ALT}-click`, does: "Open an analysis side by side" },
+  { keys: "↑ ↓", does: "Move between analyses in the list" },
+  { keys: "Delete", does: "Close the focused tab" },
+  { keys: "Esc", does: "Undo an unapplied context edit" },
+  { keys: "?", does: "Show or hide this list" },
+];
+
+/**
+ * The keyboard shortcuts, behind one quiet "?" button. They used to sit
+ * as key hints in the header and on every nav row, which first-time
+ * users read as power-user chrome they had to understand first; the
+ * shortcuts themselves are unchanged.
+ */
+function ShortcutsHelp({ open, setOpen }: { open: boolean; setOpen: (open: boolean) => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, setOpen]);
+
+  return (
+    <div ref={rootRef} className="relative ml-auto shrink-0 max-sm:hidden">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls="shortcuts-help"
+        aria-keyshortcuts="?"
+        onClick={() => setOpen(!open)}
+        title="Keyboard shortcuts (?)"
+        className="flex h-[26px] items-center gap-1.5 rounded-[3px] px-1.5 text-[11.5px] text-ink-mute hover:bg-surface-hover hover:text-ink"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="4" width="13" height="8.5" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M4 7h1M7.5 7h1M11 7h1M5 10h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+        <span className="max-lg:sr-only">Keyboard shortcuts</span>
+      </button>
+      {open && (
+        <div
+          id="shortcuts-help"
+          role="dialog"
+          aria-labelledby="shortcuts-help-title"
+          className="absolute right-0 top-[calc(100%+6px)] z-50 w-[300px] rounded-[3px] border border-rule-firm bg-surface p-3 shadow-lg"
+        >
+          <p id="shortcuts-help-title" className="mb-2 text-[12px] font-semibold text-ink">
+            Keyboard shortcuts
+          </p>
+          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-[12px]">
+            {SHORTCUTS.map((s) => (
+              <div key={s.keys} className="contents">
+                <dt>
+                  <span className="wb-kbd">{s.keys}</span>
+                </dt>
+                <dd className="m-0 text-ink-soft">{s.does}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NavRow({
   type,
   hint,
@@ -108,7 +191,7 @@ function NavRow({
       aria-label={`${PANE_LABELS[type]} — ${hint}`}
       title={`${PANE_LABELS[type]} — click to open, alt/cmd-click to split (${ALT}${index + 1})`}
       className={[
-        "relative flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-1.5 text-left transition-colors max-lg:justify-center max-lg:px-0 max-lg:py-2",
+        "group relative flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-1.5 text-left transition-colors max-lg:justify-center max-lg:px-0 max-lg:py-2",
         active ? "bg-rail-active-bg text-rail-active-ink" : "text-ink-soft hover:bg-surface-hover hover:text-ink",
       ].join(" ")}
     >
@@ -118,7 +201,10 @@ function NavRow({
         <span className={`truncate text-[13px] ${active ? "font-semibold" : "font-medium"}`}>{PANE_LABELS[type]}</span>
         <span className="truncate text-[11px] text-ink-mute">{hint}</span>
       </span>
-      <span aria-hidden="true" className="wb-kbd max-lg:hidden">
+      <span
+        aria-hidden="true"
+        className="wb-kbd opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 max-lg:hidden"
+      >
         {ALT}
         {index + 1}
       </span>
@@ -149,6 +235,7 @@ export function AppShell() {
 function Shell() {
   const [api, setApi] = useState<DockviewApi | null>(null);
   const [activeType, setActiveType] = useState<PaneType | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const contextGeneRef = useRef<HTMLInputElement>(null);
   const navRef = useRef<HTMLElement>(null);
 
@@ -178,7 +265,8 @@ function Shell() {
   );
 
   // Keyboard: Alt+1..8 opens (or brings forward) an analysis; "/" jumps
-  // to the context gene field from anywhere you are not typing. e.code,
+  // to the context gene field and "?" lists the shortcuts, from anywhere
+  // you are not typing. e.code,
   // not e.key: on macOS Option+1 types "¡".
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -193,10 +281,14 @@ function Shell() {
       // composedPath()[0] is the element really focused: inside igv.js's
       // shadow DOM e.target is only its host, so typing "/" in igv's own
       // locus box would have jumped to the gene field.
-      if (e.key === "/" && !e.altKey && !e.ctrlKey && !e.metaKey && !isTypingTarget(e.composedPath()[0] ?? e.target)) {
+      if (e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.composedPath()[0] ?? e.target)) return;
+      if (e.key === "/") {
         e.preventDefault();
         contextGeneRef.current?.focus();
         contextGeneRef.current?.select();
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setHelpOpen((o) => !o);
       }
     };
     // Capture phase: igv.js listens for keys on the document and can stop
@@ -230,10 +322,7 @@ function Shell() {
           <span className="text-[13.5px] font-semibold text-ink">Expression Explorer</span>
         </div>
         <ContextBar ref={contextGeneRef} />
-        <p className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-mute max-xl:hidden">
-          <span className="wb-kbd">/</span> context gene
-          <span className="wb-kbd ml-2">{ALT}1–8</span> analyses
-        </p>
+        <ShortcutsHelp open={helpOpen} setOpen={setHelpOpen} />
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -247,7 +336,7 @@ function Shell() {
             className="flex flex-col gap-px px-1.5 py-2 max-lg:px-1"
           >
             <p className="px-2.5 pb-1 text-[11px] font-semibold text-ink-mute max-lg:sr-only">
-              Analyses <span className="font-normal">— alt-click to split</span>
+              Analyses
             </p>
             {NAV_ITEMS.map((item, i) => (
               <NavRow

@@ -39,12 +39,17 @@ export const ContextBar = forwardRef<HTMLInputElement>(function ContextBar(_prop
       }}
       className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 max-sm:basis-full"
     >
-      <span className="text-[11.5px] font-semibold text-ink-soft max-sm:hidden">Context</span>
+      {/* "optional" is part of the label: first-time users read an
+          unlabelled bar at the top of every page as a required step. */}
+      <span className="text-[11.5px] font-semibold text-ink-soft max-sm:hidden">
+        Context <span className="font-normal text-ink-mute">(optional)</span>
+      </span>
 
       <label className="flex min-w-0 items-center gap-1.5 max-sm:w-full">
         <span className="text-[11.5px] text-ink-mute max-sm:w-[52px] max-sm:shrink-0">Dataset</span>
         <select
           aria-label="Context dataset"
+          aria-describedby={dirty ? undefined : "context-help"}
           value={ctx.datasetId}
           onChange={(e) => ctx.setContext({ datasetId: e.target.value })}
           className="wb-field wb-field-sm !w-auto min-w-0 max-w-[30ch] max-sm:!w-full max-sm:max-w-none"
@@ -64,7 +69,7 @@ export const ContextBar = forwardRef<HTMLInputElement>(function ContextBar(_prop
           <input
             ref={geneRef}
             aria-label="Context genes"
-            aria-describedby={dirty ? undefined : "context-gene-help"}
+            aria-describedby={dirty ? undefined : "context-help"}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -73,10 +78,10 @@ export const ContextBar = forwardRef<HTMLInputElement>(function ContextBar(_prop
                 e.currentTarget.blur();
               }
             }}
-            placeholder="e.g. MYCN"
+            placeholder="Optional, e.g. MYCN"
             spellCheck={false}
             autoComplete="off"
-            className="wb-field wb-field-sm wb-gene w-[22ch] min-w-0 pr-6 max-sm:w-full"
+            className="wb-field wb-field-sm wb-gene w-[26ch] min-w-0 pr-6 max-sm:w-full"
           />
           {applied && (
             <button
@@ -101,10 +106,10 @@ export const ContextBar = forwardRef<HTMLInputElement>(function ContextBar(_prop
           {parsedDraft.length ? "Apply to all analyses" : "Clear"}
         </button>
       ) : (
-        <span id="context-gene-help" className="text-[11.5px] text-ink-mute max-md:hidden">
+        <span id="context-help" className="text-[11.5px] text-ink-mute sm:max-md:hidden">
           {applied
             ? "Shared by every analysis — a pane can override it."
-            : "Set a gene once; every analysis picks it up."}
+            : "Not required — set a gene once and every analysis fills it in."}
         </span>
       )}
     </form>
