@@ -18,7 +18,7 @@ describe("scatter group colours", () => {
   it("produces a text colour key in the same order the plot assigns colours", () => {
     const pts = ["non-malignant", "MYCN-amplified", "MYCN non-amplified", "MYCN-amplified"].map((group) => ({ group }));
     expect(scatterColorKey(pts)).toBe(
-      "blue = MYCN non-amplified (n=1), red = MYCN-amplified (n=2), amber = non-malignant (n=1)",
+      "teal = MYCN non-amplified (n=1), red = MYCN-amplified (n=2), amber = non-malignant (n=1)",
     );
     expect(scatterColorKey([{ group: null }])).toBeNull();
   });
@@ -26,7 +26,7 @@ describe("scatter group colours", () => {
   it("names samples with no value in the key instead of folding them into a group", () => {
     // TARGET by etp_status: most samples have no ETP call.
     const pts: { group: string | null }[] = [...[...Array(3)].map(() => ({ group: "ETP" })), ...[...Array(5)].map(() => ({ group: null }))];
-    expect(scatterColorKey(pts)).toBe("blue = ETP (n=3), grey = no value (n=5)");
+    expect(scatterColorKey(pts)).toBe("teal = ETP (n=3), grey = no value (n=5)");
     expect(GROUP_COLORS).not.toContain(NO_GROUP_COLOR);
   });
 });
