@@ -36,7 +36,11 @@ describe("box plot value axis", () => {
 
   it("names the unit on the axis and offers no log-of-log toggle", () => {
     render(<BoxPlot points={PPP2R5B} valueLabel="expression" unit="log2_intensity" />);
-    expect(screen.getByText("EXPRESSION (LOG2 INTENSITY)")).toBeInTheDocument();
+    // Sentence case in the body font: the title was uppercase tracked mono
+    // ("EXPRESSION (LOG2 INTENSITY)"), which read as a code identifier.
+    const title = screen.getByText("Expression (log2 intensity)");
+    expect(title).toHaveAttribute("font-family", "var(--f-body)");
+    expect(title.getAttribute("style") ?? "").not.toContain("letter-spacing");
     expect(screen.queryByText("Log scale")).toBeNull();
   });
 
@@ -44,7 +48,7 @@ describe("box plot value axis", () => {
     const tpm = PPP2R5B.map((p) => ({ ...p, value: 2 ** p.value }));
     const { container } = render(<BoxPlot points={tpm} valueLabel="expression" unit="tpm" />);
     expect(Math.min(...axisTicks(container))).toBe(0);
-    expect(screen.getByText("EXPRESSION (TPM)")).toBeInTheDocument();
+    expect(screen.getByText("Expression (TPM)")).toBeInTheDocument();
     expect(screen.getByText("Log scale")).toBeInTheDocument();
   });
 
@@ -125,5 +129,19 @@ describe("box plot with many groups on a narrow screen", () => {
     const wide = render(<BoxPlot points={pts} valueLabel="expression" unit="log2_tpm" />);
     const wideNames = [...wide.container.querySelectorAll("svg text")].filter((t) => /Subtype number/.test(t.textContent ?? ""));
     expect(wideNames.every((t) => t.getAttribute("text-anchor") === "end")).toBe(true);
+  });
+});
+
+describe("box plot log-scale axis title", () => {
+  it("says the axis is log(1 + x), which is why it has a 0 tick", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    // Right-skewed TPM (max / median > 10): the log axis engages on its own.
+    const pts = [0, 1, 2, 3, 4, 200].map((v, i) => ({ sample_id: `S${i}`, group: i < 3 ? "A" : "B", value: v }));
+    const { container } = render(<BoxPlot points={pts} valueLabel="expression" unit="tpm" />);
+    expect(screen.getByText("Expression (TPM), log scale: log(1 + x)")).toBeInTheDocument();
+    expect(axisTicks(container)).toContain(0);
+    fireEvent.click(screen.getByRole("button", { name: "Linear" }));
+    expect(screen.getByText("Expression (TPM)")).toBeInTheDocument();
+    expect(screen.queryByText(/log\(1 \+ x\)/)).toBeNull();
   });
 });

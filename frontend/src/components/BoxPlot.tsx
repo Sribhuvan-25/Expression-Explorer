@@ -99,6 +99,7 @@ export function BoxPlot({
   valueLabel = "Expression",
   unit,
   svgRef,
+  groupColors,
 }: {
   points: ComparePoint[];
   valueLabel?: string;
@@ -106,6 +107,10 @@ export function BoxPlot({
   // otherwise says only "EXPRESSION") and decides whether 0 belongs on it.
   unit?: string | null;
   svgRef?: React.RefObject<SVGSVGElement | null>;
+  // Label -> colour for a whole multi-facet result (lib/groupColors.ts),
+  // so a label is one colour in every facet. Without it, groups are
+  // coloured by their median rank in this plot alone.
+  groupColors?: Map<string, string>;
 }) {
   const logUnit = isLogUnit(unit);
   const axisLabel = unit ? `${valueLabel} (${formatUnit(unit)})` : valueLabel;
@@ -130,6 +135,14 @@ export function BoxPlot({
   }, [points]);
   const logScale = logUnit ? false : scaleChoice === null ? skewed : scaleChoice === "log";
   const setLogScale = (v: boolean) => setScaleChoice(v ? "log" : "linear");
+  // Sentence case in the body font, like every other label in the app;
+  // the uppercase tracked mono title ("EXPRESSION (TPM)") read as a code
+  // identifier. Only the first letter is raised: units and gene symbols
+  // keep their own case. On the log axis the title says which transform:
+  // the ticks print raw values, so a bare "0" at the bottom otherwise
+  // reads as an axis that cannot exist on a log scale (it is log1p(0)).
+  const axisTitle =
+    axisLabel.charAt(0).toUpperCase() + axisLabel.slice(1) + (logScale ? ", log scale: log(1 + x)" : "");
   const transform = (v: number) => (logScale ? Math.log1p(Math.max(0, v)) : v);
 
   // The chart sizes itself to whatever space it's actually given rather
@@ -176,8 +189,8 @@ export function BoxPlot({
         };
       })
       .sort((a, b) => b.median - a.median)
-      .map((g, i) => ({ ...g, color: GROUP_COLORS[i % GROUP_COLORS.length] }));
-  }, [points]);
+      .map((g, i) => ({ ...g, color: groupColors?.get(g.group) ?? GROUP_COLORS[i % GROUP_COLORS.length] }));
+  }, [points, groupColors]);
 
   const horizontal = groups.length > HORIZONTAL_THRESHOLD;
   // With a handful of samples per group (cell-line panels: 2-5) each
@@ -292,12 +305,11 @@ export function BoxPlot({
               x={plotLeft + plotW / 2}
               y={height - 6}
               textAnchor="middle"
-              fontSize={10.5}
-              fontFamily="var(--f-mono)"
-              className="fill-[var(--ink-mute)]"
-              style={{ letterSpacing: "0.04em" }}
+              fontSize={11.5}
+              fontFamily="var(--f-body)"
+              className="fill-[var(--ink-soft)]"
             >
-              {axisLabel.toUpperCase()}
+              {axisTitle}
             </text>
             <line
               x1={plotLeft}
@@ -312,7 +324,7 @@ export function BoxPlot({
               const cy = margin.top + rowH * i + (stacked ? 31 : rowH / 2);
               const single = g.values.length === 1;
               return (
-                <g key={g.group}>
+                <g key={g.group} data-group={g.group}>
                   {i % 2 === 1 && (
                     <rect
                       x={plotLeft}
@@ -500,19 +512,18 @@ export function BoxPlot({
           <text
             transform={`translate(${14}, ${margin.top + plotH / 2}) rotate(-90)`}
             textAnchor="middle"
-            fontSize={10.5}
-            fontFamily="var(--f-mono)"
-            className="fill-[var(--ink-mute)]"
-            style={{ letterSpacing: "0.04em" }}
+            fontSize={11.5}
+            fontFamily="var(--f-body)"
+            className="fill-[var(--ink-soft)]"
           >
-            {axisLabel.toUpperCase()}
+            {axisTitle}
           </text>
 
           {groups.map((g, i) => {
             const cx = margin.left + bandW * i + bandW / 2;
             const single = g.values.length === 1;
             return (
-              <g key={g.group}>
+              <g key={g.group} data-group={g.group}>
                 {single ? (
                   <circle cx={cx} cy={y(g.median)} r={4.5} fill={g.color} stroke="var(--surface)" strokeWidth={1} />
                 ) : (

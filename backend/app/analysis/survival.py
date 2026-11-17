@@ -15,6 +15,32 @@ from lifelines import CoxPHFitter, KaplanMeierFitter
 from lifelines.statistics import logrank_test
 
 
+# What the survival frame below measures, stated once so the API can return
+# it and the figure can name it (METHODS.md 3.2): the event is death from
+# any cause and the time runs to death or last follow-up, i.e. overall
+# survival -- not event-free or relapse-free survival.
+ENDPOINT = {
+    "name": "Overall survival",
+    "abbreviation": "OS",
+    "event": "death from any cause (vital status 'Dead')",
+    "censoring": "patients not recorded as dead are censored at their last follow-up",
+    "time_unit": "days",
+    "definition": (
+        "Overall survival: the event is death from any cause (vital status 'Dead'); "
+        "time is days to death, and patients not recorded as dead are censored at "
+        "their last follow-up."
+    ),
+}
+
+# How each curve's `at_risk` counts are defined: the standard KM convention,
+# the same as R survival's summary(survfit(...), times = t)$n.risk.
+AT_RISK_CONVENTION = (
+    "number at risk at time t = patients whose follow-up time is at least t "
+    "(still under observation just before t; a patient who dies or is censored "
+    "at exactly t counts as at risk at t)"
+)
+
+
 def build_survival_frame(
     samples: pd.DataFrame,
     signature_scores: pd.Series,
@@ -244,9 +270,32 @@ def kaplan_meier_curves(df: pd.DataFrame, group: pd.Series) -> dict[str, dict]:
         kmf.fit(df.loc[mask, "duration"], event_observed=df.loc[mask, "event"], label=str(label))
         sf = kmf.survival_function_.reset_index()
         sf.columns = ["days", "survival_probability"]
+        # Additions for the figure (censoring ticks and the numbers-at-risk
+        # table); they leave `points`, the KM estimate itself, untouched.
+        # lifelines' event_table has one row per distinct observed time
+        # (plus 0) whose `at_risk` is the count with follow-up >= that time,
+        # so the count at any t is the row at the first time >= t, and 0
+        # past the last one (see AT_RISK_CONVENTION).
+        et = kmf.event_table
+        estimate = kmf.survival_function_.iloc[:, 0]
+        n_events = int(df.loc[mask, "event"].sum())
         curves[str(label)] = {
             "n": int(mask.sum()),
             "points": sf.to_dict("records"),
+            "n_events": n_events,
+            "n_censored": int(mask.sum()) - n_events,
+            # One mark per distinct censoring time, at the curve's height
+            # there (S(t), after any death at the same t, as R draws it).
+            "censor_marks": [
+                {
+                    "days": float(t),
+                    "survival_probability": float(estimate.loc[t]),
+                    "n_censored": int(row["censored"]),
+                }
+                for t, row in et.iterrows()
+                if row["censored"] > 0
+            ],
+            "at_risk": [{"days": float(t), "n_at_risk": int(n)} for t, n in et["at_risk"].items()],
         }
 
     result: dict = {"curves": curves, "logrank_p_value": None}

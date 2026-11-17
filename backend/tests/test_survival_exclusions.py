@@ -106,3 +106,18 @@ def test_samples_dropped_at_a_tied_cutoff_are_their_own_reason(client):
 
     inclusive = _run(client, genes=["TIED"], cutoff_method="quartile", tie_policy="inclusive")
     assert not [e for e in inclusive["exclusion_breakdown"] if "tie policy" in e["reason"]]
+
+
+def test_response_names_the_endpoint_and_carries_censoring_and_at_risk(client):
+    """The figure must say it is overall survival and draw censoring ticks
+    and an at-risk table from the analysis (none of which the API returned)."""
+    body = _run(client)
+    assert body["endpoint"]["name"] == "Overall survival"
+    assert "at least t" in body["at_risk_convention"]
+    for c in body["curves"].values():
+        # Every patient in an arm is an event or a censoring; in this cohort
+        # the alive patients are censored at distinct times 900 + i.
+        assert c["n_events"] + c["n_censored"] == c["n"]
+        assert sum(m["n_censored"] for m in c["censor_marks"]) == c["n_censored"]
+        assert all(m["days"] >= 900 for m in c["censor_marks"])
+        assert c["at_risk"][0] == {"days": 0.0, "n_at_risk": c["n"]}
