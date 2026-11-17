@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { niceTicks } from "../lib/axis";
 import type { SurvivalCurve } from "../lib/api";
 
-const CURVE_COLORS: Record<string, string> = {
+export const CURVE_COLORS: Record<string, string> = {
   HIGH: "var(--hot)",
   LOW: "var(--cool)",
 };
-const FALLBACK_COLORS = ["var(--accent)", "var(--warn)", "#8B6DBF"];
-const CURVE_COLOR_NAMES: Record<string, string> = { HIGH: "red", LOW: "blue" };
-const FALLBACK_COLOR_NAMES = ["dark blue", "amber", "purple"];
+export const FALLBACK_COLORS = ["var(--accent)", "var(--warn)", "#8B6DBF"];
+export const CURVE_COLOR_NAMES: Record<string, string> = { HIGH: "red", LOW: "blue" };
+export const FALLBACK_COLOR_NAMES = ["teal", "amber", "purple"];
 
 /**
  * The curve legend as text, for exported PNGs: the HTML legend is not

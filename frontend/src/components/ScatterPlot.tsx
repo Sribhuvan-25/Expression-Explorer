@@ -7,7 +7,11 @@ import { niceTicks, tickDigits } from "../lib/axis";
 // indistinguishable in PCA. Names are used for the text colour key in
 // exported PNGs, which do not include the HTML legend.
 export const GROUP_COLORS = ["var(--accent)", "var(--hot)", "var(--warn)", "#8B6DBF", "#5C8A6B", "var(--cool)"];
-const GROUP_COLOR_NAMES = ["blue", "red", "amber", "purple", "green", "teal"];
+// What each colour is called in an exported image's text key. Checked
+// against the rendered token values by ColorNames.test.ts: the Workbench
+// palette made --accent teal (#0B6B66), and the key kept calling it
+// "blue" while calling the actual blue (--cool) "teal".
+export const GROUP_COLOR_NAMES = ["teal", "red", "amber", "purple", "green", "blue"];
 
 /** Groups in plotting order (sorted), as ScatterPlot assigns colours. */
 export function scatterGroups(points: { group?: string | null }[]): string[] {
@@ -17,12 +21,12 @@ export function scatterGroups(points: { group?: string | null }[]): string[] {
 }
 
 // Samples with no value in the colouring column, when colouring is on.
-// They used to fall back to --accent -- the first group's blue -- so on
+// They used to fall back to --accent -- the first group's colour -- so on
 // TARGET coloured by etp_status the 279 samples with no ETP call read as
 // ETP (19 samples). A neutral grey, drawn underneath, named in the key.
 export const NO_GROUP_COLOR = "#A3A3A3";
 
-/** "blue = A (n=3), red = B (n=5), grey = no value (n=2)" -- the legend,
+/** "teal = A (n=3), red = B (n=5), grey = no value (n=2)" -- the legend,
  * as text, for exported images. */
 export function scatterColorKey(points: { group?: string | null }[]): string | null {
   const groups = scatterGroups(points);
