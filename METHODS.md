@@ -2092,6 +2092,29 @@ default is commonly taken by another local Postgres. The container still
 listens on 5432 internally, so `DATABASE_URL` inside compose is
 unaffected.
 
+
+### 10.6 Production: the cache is on the volume, and the database is migrated at start
+**Decided (2026-11-17), from checking the live deployment.** Two defects
+found in production, both outside the code that computes results:
+- *The persistent volume was mounted at `/data/cahe`* (a typo) while the
+  app writes to `CACHE_DIR=/data/cache` (`Dockerfile`). The ~900 MB of
+  downloaded datasets therefore lived on the container's temporary disk:
+  every deploy or restart re-downloaded everything from GDC, Figshare and
+  GEO, and each dataset answered slowly or as warming until it was back.
+  The volume (which held only `lost+found`, so nothing stale) is now
+  mounted at `/data/cache`, changed with the Railway CLI.
+- *The metadata database had no tables.* The image carried no migrations,
+  so `metadata.db` was created empty and every request logged "no such
+  table: datasets" before falling back to the code-registered datasets
+  (the §10.5 floor; results were unaffected). The image now ships
+  `alembic/` and `alembic.ini` and runs `alembic upgrade head` before
+  uvicorn. It is idempotent; a failure is logged and the server starts
+  anyway, since the registry already degrades. With the tables present
+  but empty the registry serves exactly the code-registered datasets, as
+  before, without the error. Verified on the built image: first start
+  runs both migrations and serves `/health`; a restart runs none; an
+  unwritable cache logs the failure and still serves `/health`.
+
 ---
 
 ## 11. Designed perturbation experiments
@@ -2379,3 +2402,4 @@ screen equal the served log2FC, at one scale (71.692 px per unit).
 | 2026-11-16 | Supersedes the 5 s timeout in the row above: the `DifferentialContext` test no longer races a wall-clock budget. It steps the event loop inside `act()` until each condition holds, bounded by turns rather than milliseconds, with cheap queries. Under 16 concurrent runs (load ~27) the old 1 s version failed 16/16 and the new one passed 32/32; it still fails with the reopen fix removed. Android was not tested (Chrome on the emulator requires accepting Google's terms first; the user chose to skip it), and no physical device was used. |
 | 2026-11-17 | Mobile verification, measured. Full device emulation with touch input (Playwright: Pixel 5 in Chromium, Android Chrome's engine; iPhone 13 in WebKit, Safari's engine; isMobile, hasTouch, device pixel ratio and user agent), every step driven by taps: Compare on TARGET-ALL-P2 + GDS4299 (every pairwise p and q and both Kruskal–Wallis p match the API, every column visible, each group one colour across facets), all 8 analyses opened from the Analyses drawer, Survival (log-rank 2.53e-14, HR 23.504, "Overall survival" in the figure, numbers-at-risk table), no horizontal overflow, no page errors — 15/15 on each. Not done: Chrome in the Android emulator (accepting Chrome's terms was refused by the permission system) and any physical phone (no tool here drives a physical device; the one paired iPhone was offline). |
 | 2026-11-17 | §7.10: production served TARGET-ALL-P2 without `etp_status` (Springer returns an HTML page instead of the Liu 2017 workbook to the server); the 190 ETP labels are now committed and used when the download fails, verified identical to a fresh download (sha256 recorded). Backend 317 passed; new test validated by removing the fallback. Two further production findings recorded, not changed here: the Railway volume is mounted at `/data/cahe` while the app writes to `/data/cache` (so every deploy re-downloads every dataset), and the production metadata database has no tables (the API falls back to code-registered datasets, logging an error per request). |
+| 2026-11-17 | §10.6: production fixes, approved by the user. Railway volume remounted from `/data/cahe` to `/data/cache` so downloaded datasets persist across deploys; the image now ships the migrations and runs `alembic upgrade head` at start, so the metadata database has its tables and the per-request "no such table" error stops. Results unaffected (the registry served code-registered datasets before and after). Container start, restart and migration-failure paths checked on the built image. |
