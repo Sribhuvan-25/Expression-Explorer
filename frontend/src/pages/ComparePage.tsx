@@ -193,7 +193,9 @@ export function DatasetPanel({
             svgRef={chartRef}
             filename={`${gene}-${result.dataset_id}-by-group`}
             title={`${gene} — ${result.display_name}`}
-            subtitle={`n = ${filteredPoints.length} · Mann–Whitney with FDR correction`}
+            // With one pair compare.py computes no q, so "with FDR
+            // correction" would contradict the caption printed below it.
+            subtitle={`n = ${filteredPoints.length} · Mann–Whitney${pairwise.length > 1 ? " with FDR correction" : ""}`}
             statLines={[
               `Kruskal-Wallis p = ${
                 formatP(result.kruskal_wallis?.p_value)
