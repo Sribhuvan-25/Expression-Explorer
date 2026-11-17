@@ -21,12 +21,32 @@ export function survivalColorKey(curves: Record<string, SurvivalCurve>): string 
     .join(", ");
 }
 
+/**
+ * Number at risk at `days` from a curve's `at_risk` steps: patients with
+ * follow-up >= days, i.e. the first step at or after `days`, and 0 past
+ * the last one -- R survival's summary(survfit, times = t)$n.risk.
+ * Exported for tests.
+ */
+export function atRiskAt(steps: { days: number; n_at_risk: number }[], days: number): number {
+  for (const s of steps) if (s.days >= days) return s.n_at_risk;
+  return 0;
+}
+
+function curveColor(label: string, i: number): string {
+  return CURVE_COLORS[label] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+}
+
 export function SurvivalPlot({
   curves,
   svgRef,
+  endpointName,
+  timeUnit = "days",
 }: {
   curves: Record<string, SurvivalCurve>;
   svgRef?: React.RefObject<SVGSVGElement | null>;
+  /** What the curves measure, e.g. "Overall survival" (the API's `endpoint.name`). */
+  endpointName?: string;
+  timeUnit?: string;
 }) {
   const [hover, setHover] = useState<{ x: number; y: number; label: string; days: number; prob: number } | null>(null);
 
@@ -53,8 +73,20 @@ export function SurvivalPlot({
     return () => observer.disconnect();
   }, []);
 
+  const entries = Object.entries(curves);
+  // The numbers-at-risk table is drawn inside the SVG, under the day axis,
+  // so the exported PNG carries it. Only when every curve has the counts.
+  const showAtRisk = entries.length > 0 && entries.every(([, c]) => Array.isArray(c.at_risk));
+  const atRiskRowH = 16;
+  const atRiskTop = 66; // from the plot's bottom edge: tick labels, axis title, table heading
+
   const width = Math.max(containerWidth || 720, 220); // lay out at a phone-width container rather than scaling down
-  const margin = { top: 20, right: 24, bottom: 46, left: 56 };
+  const margin = {
+    top: 20,
+    right: 24,
+    bottom: showAtRisk ? atRiskTop + atRiskRowH * entries.length : 46,
+    left: 56,
+  };
   const plotW = Math.max(width - margin.left - margin.right, 130);
   // Keep a readable aspect ratio rather than a fixed height: a wide pane
   // gets a proportionally taller plot, bounded so it never becomes a
@@ -79,7 +111,9 @@ export function SurvivalPlot({
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
 
-  const entries = Object.entries(curves);
+  // Sentence case in the body font, naming the endpoint and the time unit.
+  const yTitle = endpointName ? `${endpointName} probability` : "Survival probability";
+  const xTitle = timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1);
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -117,6 +151,7 @@ export function SurvivalPlot({
         ))}
         {xTicks.map((t) => (
           <text
+            data-x-tick
             key={t}
             x={x(t)}
             y={margin.top + plotH + 18}
@@ -129,25 +164,25 @@ export function SurvivalPlot({
           </text>
         ))}
         <text
+          data-axis-title="x"
           x={margin.left + plotW / 2}
-          y={height - 6}
+          y={margin.top + plotH + 38}
           textAnchor="middle"
-          fontSize={10.5}
-          fontFamily="var(--f-mono)"
-          className="fill-[var(--ink-mute)]"
-          style={{ letterSpacing: "0.04em" }}
+          fontSize={11.5}
+          fontFamily="var(--f-body)"
+          className="fill-[var(--ink-soft)]"
         >
-          DAYS
+          {xTitle}
         </text>
         <text
+          data-axis-title="y"
           transform={`translate(14, ${margin.top + plotH / 2}) rotate(-90)`}
           textAnchor="middle"
-          fontSize={10.5}
-          fontFamily="var(--f-mono)"
-          className="fill-[var(--ink-mute)]"
-          style={{ letterSpacing: "0.04em" }}
+          fontSize={11.5}
+          fontFamily="var(--f-body)"
+          className="fill-[var(--ink-soft)]"
         >
-          SURVIVAL PROBABILITY
+          {yTitle}
         </text>
 
         <line
@@ -166,7 +201,7 @@ export function SurvivalPlot({
         />
 
         {entries.map(([label, curve], i) => {
-          const color = CURVE_COLORS[label] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+          const color = curveColor(label, i);
           const sorted = [...curve.points].sort((a, b) => a.days - b.days);
           let path = "";
           sorted.forEach((p, idx) => {
@@ -182,6 +217,19 @@ export function SurvivalPlot({
           return (
             <g key={label}>
               <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />
+              {/* A short vertical tick at each censoring time, on the curve. */}
+              {(curve.censor_marks ?? []).map((m) => (
+                <line
+                  data-censor-mark={label}
+                  key={`c${m.days}`}
+                  x1={x(m.days)}
+                  x2={x(m.days)}
+                  y1={y(m.survival_probability) - 4}
+                  y2={y(m.survival_probability) + 4}
+                  stroke={color}
+                  strokeWidth={1.25}
+                />
+              ))}
               {sorted.map((p, idx) => (
                 <circle
                   key={idx}
@@ -207,11 +255,60 @@ export function SurvivalPlot({
             </g>
           );
         })}
+
+        {showAtRisk && (
+          <g data-testid="at-risk-table" aria-label="Number at risk">
+            <text
+              x={margin.left}
+              y={margin.top + plotH + atRiskTop - 8}
+              fontSize={11}
+              fontWeight={600}
+              fontFamily="var(--f-body)"
+              className="fill-[var(--ink-soft)]"
+            >
+              Number at risk
+            </text>
+            {entries.map(([label, curve], i) => {
+              const color = curveColor(label, i);
+              const rowY = margin.top + plotH + atRiskTop + atRiskRowH * i + 6;
+              return (
+                <g key={label} data-at-risk-row={label}>
+                  {/* Clear of the count centred on the day-0 tick. */}
+                  <text
+                    x={margin.left - 16}
+                    y={rowY}
+                    textAnchor="end"
+                    fontSize={10}
+                    fontWeight={600}
+                    fontFamily="var(--f-mono)"
+                    fill={color}
+                  >
+                    {label}
+                  </text>
+                  {xTicks.map((t) => (
+                    <text
+                      data-at-risk-day={t}
+                      key={t}
+                      x={x(t)}
+                      y={rowY}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fontFamily="var(--f-mono)"
+                      fill={color}
+                    >
+                      {atRiskAt(curve.at_risk!, t)}
+                    </text>
+                  ))}
+                </g>
+              );
+            })}
+          </g>
+        )}
       </svg>
 
       <div className="mt-1 flex items-center justify-center gap-5">
         {entries.map(([label, curve], i) => {
-          const color = CURVE_COLORS[label] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+          const color = curveColor(label, i);
           return (
             <span key={label} className="flex items-center gap-1.5 text-[12px] text-ink-soft">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />

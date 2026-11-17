@@ -134,6 +134,26 @@ export interface SurvivalPoint {
 export interface SurvivalCurve {
   n: number;
   points: SurvivalPoint[];
+  // For the figure (METHODS.md 3.4); optional so an older response still
+  // renders the curve. Deaths and censorings in this arm (sum to n).
+  n_events?: number;
+  n_censored?: number;
+  // One entry per distinct censoring time, at the curve's height there.
+  censor_marks?: { days: number; survival_probability: number; n_censored: number }[];
+  // One entry per distinct observed time (plus 0): patients with
+  // follow-up >= days. The count at any t is the first entry at or after
+  // t, and 0 past the last (see `atRiskAt`).
+  at_risk?: { days: number; n_at_risk: number }[];
+}
+
+/** What the survival curves measure, as stated by the analysis (METHODS.md 3.2). */
+export interface SurvivalEndpoint {
+  name: string;
+  abbreviation: string;
+  event: string;
+  censoring: string;
+  time_unit: string;
+  definition: string;
 }
 
 export interface AuxFeature {
@@ -192,6 +212,9 @@ export interface SurvivalResult {
   exclusion_reason: string | null;
   // The same exclusions, one entry per reason; sums to n_excluded.
   exclusion_breakdown?: { reason: string; n: number }[];
+  endpoint?: SurvivalEndpoint;
+  // How each curve's at_risk counts are defined.
+  at_risk_convention?: string;
 }
 
 export interface CorrelationPoint {
