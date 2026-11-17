@@ -520,8 +520,9 @@ function SingleGeneCompareTab() {
             hint={
               geneLink.contextValue == null && (
                 <>
-                  Working on one gene across analyses? Set it once in the <strong className="font-semibold text-ink-soft">Gene(s)</strong>{" "}
-                  field at the top (press <span className="wb-kbd">/</span>) and Survival, Correlation and Multi-omics pick it up too.
+                  Working on one gene across analyses? Optionally set it once in the{" "}
+                  <strong className="font-semibold text-ink-soft">Context</strong> bar at the top (on a keyboard, press{" "}
+                  <span className="wb-kbd">/</span>) and Survival, Correlation and Multi-omics pick it up too.
                 </>
               )
             }
